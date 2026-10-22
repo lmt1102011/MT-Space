@@ -74,7 +74,10 @@ func _web_is_fullscreen() -> bool:
 func check_for_new_version() -> void:
 	if not is_web():
 		return
-	var url := REMOTE_VERSION + "?t=" + str(Time.get_unix_time_from_system())
+	var base := _page_url()
+	if base == "":
+		return
+	var url := base + REMOTE_VERSION + "?t=" + str(Time.get_unix_time_from_system())
 	var http := HTTPRequest.new()
 	add_child(http)
 	http.timeout = 8.0
@@ -88,6 +91,20 @@ func check_for_new_version() -> void:
 		_check_version(remote)
 	)
 	http.request(url)
+
+
+# The address of the page, so the version file can be asked for. The web
+# needs the whole address, a relative one is not understood.
+func _page_url() -> String:
+	if not ClassDB.class_exists("JavaScriptBridge"):
+		return ""
+	var js := """
+	(function() {
+		try { return window.location.origin + window.location.pathname; }
+		catch (e) { return ''; }
+	})();
+	"""
+	return str(JavaScriptBridge.eval(js, true))
 
 
 # Compares the version on the server with the one that is running.
