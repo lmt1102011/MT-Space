@@ -44,9 +44,13 @@ jobs:
           java-version: '17'
 
       - name: Set up the Android tools
+        continue-on-error: true
+        id: android_tools
         uses: android-actions/setup-android@v3
 
       - name: Point Godot at the Android tools
+        if: steps.android_tools.outcome == 'success'
+        continue-on-error: true
         run: |
           mkdir -p ~/.config/godot
           cat > ~/.config/godot/editor_settings-4.7.tres <<'EOF'
@@ -90,6 +94,8 @@ jobs:
           rm -f mt-space.exe mt-space.pck
 
       - name: Build the game for Android
+        if: steps.android_tools.outcome == 'success'
+        continue-on-error: true
         run: |
           mkdir -p build/downloads
           godot --headless --path . --export-debug "Android" build/downloads/mt-space.apk || \
