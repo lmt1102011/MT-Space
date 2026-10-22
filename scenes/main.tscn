@@ -1,4 +1,4 @@
-[gd_scene load_steps=16 format=3 uid="uid://cmain0001"]
+[gd_scene load_steps=17 format=3 uid="uid://cmain0001"]
 
 [ext_resource type="Script" path="res://scripts/grid_background.gd" id="1_grid"]
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="2_player"]
@@ -7,6 +7,7 @@
 [ext_resource type="Script" path="res://scripts/minimap.gd" id="5_minimap"]
 [ext_resource type="Script" path="res://scripts/upgrade_cards.gd" id="6_upgrade"]
 [ext_resource type="Script" path="res://scripts/net_world.gd" id="7_networld"]
+[ext_resource type="Script" path="res://scripts/touch_controls.gd" id="8_touch"]
 
 [sub_resource type="RectangleShape2D" id="Wall_h"]
 size = Vector2(5400, 60)
@@ -190,6 +191,18 @@ script = ExtResource("4_hud")
 
 [node name="UpgradeCards" type="CanvasLayer" parent="."]
 script = ExtResource("6_upgrade")
+
+[node name="TouchControls" type="CanvasLayer" parent="."]
+layer = 5
+
+[node name="TouchPad" type="Control" parent="TouchControls" groups=["touch_controls"]]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("8_touch")
 
 [node name="WaveLabel" type="Label" parent="HUD"]
 offset_left = 24.0

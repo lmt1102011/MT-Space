@@ -39,6 +39,8 @@ var _cooldown: float = 0.0
 var _thrust: float = 0.0
 var _flame_time: float = 0.0
 var _regen_acc: float = 0.0
+# the touch controls, they are only there when a finger is on the screen
+var _touch: Control = null
 
 @onready var _sprite: Sprite2D = $Sprite2D
 
@@ -53,6 +55,22 @@ func _ready() -> void:
 	_make_name_label()
 	# the name can still arrive after the ship was made
 	Net.players_changed.connect(_on_players_changed)
+	# the on screen stick and fire button live in the game scene, the player
+	# only asks for them
+	_setup_touch.call_deferred()
+
+
+# The on screen stick and fire button live in the game scene, the player
+# only asks for them.
+func _setup_touch() -> void:
+	_touch = get_tree().get_first_node_in_group("touch_controls") as Control
+
+
+# True while the player wants to shoot, either with the key or with the finger.
+func _shoot_held() -> bool:
+	if _touch != null and _touch.is_shooting():
+		return true
+	return Input.is_action_pressed("shoot")
 
 
 func _on_players_changed() -> void:
@@ -147,6 +165,11 @@ func _physics_process(delta: float) -> void:
 	var slow_factor := 0.55 if _slow > 0.0 else 1.0
 	var eff_max_speed := _base_max_speed * Game.upg_move_speed * slow_factor
 	var input_dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	# the touch stick takes over when a finger is on the screen
+	if _touch != null:
+		var touch_dir: Vector2 = _touch.move_direction()
+		if touch_dir != Vector2.ZERO:
+			input_dir = touch_dir.limit_length(1.0)
 
 	if input_dir.length() > 0.01:
 		velocity += input_dir * acceleration * delta
@@ -161,6 +184,8 @@ func _physics_process(delta: float) -> void:
 
 	# aim toward mouse
 	var mouse := get_global_mouse_position()
+	if _touch != null and _touch.is_shooting():
+		mouse = _touch.aim_position()
 	var aim := (mouse - global_position).angle()
 	_sprite.rotation = lerp_angle(_sprite.rotation, aim, turn_speed * delta)
 
@@ -209,7 +234,7 @@ func _shoot(delta: float) -> void:
 		velocity -= dir * 30.0
 		return
 
-	if not Input.is_action_pressed("shoot") or _cooldown > 0.0:
+	if not _shoot_held() or _cooldown > 0.0:
 		return
 
 	var base_speed := _base_bullet_speed * Game.upg_bullet_speed * (1.0 - 0.12 * float(Game.upg_rushed))
