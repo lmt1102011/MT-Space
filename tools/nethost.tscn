@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://cnethost" ]
+
+[ext_resource type="Script" path="res://tools/nethost.gd" id="1_nethost"]
+
+[node name="Netnethost" type="Node2D"]
+script = ExtResource("1_nethost")

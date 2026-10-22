@@ -1,0 +1,64 @@
+name: Build web
+
+# Builds the game for the browser and puts it on GitHub Pages.
+# Every run writes the commit into version.txt, so a running game can see
+# that there is a new version and reload itself.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Set up Godot
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.7.2
+          use-dotnet: false
+          include-templates: true
+
+      - name: Import the project
+        run: godot --headless --editor --quit --path .
+
+      - name: Write the version into the build
+        run: echo "${GITHUB_SHA}" > version_embedded.txt
+
+      - name: Export for the web
+        run: |
+          mkdir -p build/web
+          godot --headless --path . --export-release "Web" build/web/index.html
+
+      - name: Write the version file
+        run: |
+          echo "${GITHUB_SHA}" > build/web/version.txt
+
+      - name: Upload the pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

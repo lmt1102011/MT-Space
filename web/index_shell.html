@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
+		<title>$GODOT_PROJECT_NAME</title>
+		<style>
+html, body, #canvas {
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+body {
+	color: white;
+	background-color: black;
+	overflow: hidden;
+	touch-action: none;
+	font-family: 'Noto Sans', 'Droid Sans', Arial, sans-serif;
+}
+
+#canvas {
+	display: block;
+}
+
+#canvas:focus {
+	outline: none;
+}
+
+#status, #status-splash, #status-progress {
+	position: absolute;
+	left: 0;
+	right: 0;
+}
+
+#status, #status-splash {
+	top: 0;
+	bottom: 0;
+}
+
+#status {
+	background-color: #242424;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	visibility: hidden;
+}
+
+#status-splash {
+	max-height: 100%;
+	max-width: 100%;
+	margin: auto;
+}
+
+#status-splash.show-image--false {
+	display: none;
+}
+
+#status-splash.fullsize--true {
+	height: 100%;
+	width: 100%;
+	object-fit: contain;
+}
+
+#status-splash.use-filter--false {
+	image-rendering: pixelated;
+}
+
+#status-progress, #status-notice {
+	display: none;
+}
+
+#status-progress {
+	bottom: 10%;
+	width: 50%;
+	margin: 0 auto;
+}
+
+#status-notice {
+	background-color: #5b3943;
+	border-radius: 0.5rem;
+	border: 1px solid #9b3943;
+	color: #e0e0e0;
+	line-height: 1.3;
+	margin: 0 2rem;
+	overflow: hidden;
+	padding: 1rem;
+	text-align: center;
+	z-index: 1;
+}
+
+/* the fullscreen button, it sits on top of the game */
+#fullscreen {
+	position: absolute;
+	top: 10px;
+	right: 10px;
+	z-index: 10;
+	padding: 8px 14px;
+	border: 1px solid rgba(255, 255, 255, 0.35);
+	border-radius: 6px;
+	background: rgba(10, 14, 16, 0.55);
+	color: rgba(255, 255, 255, 0.85);
+	font-size: 13px;
+	letter-spacing: 0.06em;
+	cursor: pointer;
+	user-select: none;
+	-webkit-user-select: none;
+}
+
+#fullscreen:hover {
+	background: rgba(30, 44, 50, 0.75);
+	color: #fff;
+}
+
+#fullscreen.hidden {
+	display: none;
+}
+
+/* the little note that a new version is being fetched */
+#update-note {
+	position: absolute;
+	bottom: 14px;
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 10;
+	padding: 8px 16px;
+	border-radius: 6px;
+	background: rgba(10, 14, 16, 0.75);
+	border: 1px solid rgba(120, 200, 255, 0.4);
+	color: #bfe6ff;
+	font-size: 13px;
+	display: none;
+}
+		</style>
+		<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
+<link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
+<link rel="manifest" href="index.manifest.json">
+$GODOT_HEAD_INCLUDE
+	</head>
+	<body>
+		<canvas id="canvas">
+			Your browser does not support the canvas tag.
+		</canvas>
+
+		<noscript>
+			Your browser does not support JavaScript.
+		</noscript>
+
+		<div id="status">
+			<img id="status-splash" class="show-image--true fullsize--true use-filter--true" src="index.png" alt="">
+			<progress id="status-progress"></progress>
+			<div id="status-notice"></div>
+		</div>
+
+		<button id="fullscreen" type="button" title="Fullscreen (F11)">FULLSCREEN</button>
+		<div id="update-note">a new version is being downloaded...</div>
+
+		<script src="$GODOT_URL"></script>
+		<script>
+const GODOT_CONFIG = $GODOT_CONFIG;
+const GODOT_THREADS_ENABLED = false;
+const engine = new Engine(GODOT_CONFIG);
+
+(function () {
+	const statusOverlay = document.getElementById('status');
+	const statusProgress = document.getElementById('status-progress');
+	const statusNotice = document.getElementById('status-notice');
+	const fullscreenButton = document.getElementById('fullscreen');
+	const updateNote = document.getElementById('update-note');
+
+	let initializing = true;
+	let statusMode = '';
+
+	function setStatusMode(mode) {
+		if (statusMode === mode || !initializing) {
+			return;
+		}
+		if (mode === 'hidden') {
+			statusOverlay.remove();
+			initializing = false;
+			return;
+		}
+		statusOverlay.style.visibility = 'visible';
+		statusProgress.style.display = mode === 'progress' ? 'block' : 'none';
+		statusNotice.style.display = mode === 'notice' ? 'block' : 'none';
+		statusMode = mode;
+	}
+
+	function setStatusNotice(text) {
+		while (statusNotice.lastChild) {
+			statusNotice.removeChild(statusNotice.lastChild);
+		}
+		const lines = text.split('\n');
+		lines.forEach((line) => {
+			statusNotice.appendChild(document.createTextNode(line));
+			statusNotice.appendChild(document.createElement('br'));
+		});
+	}
+
+	function displayFailureNotice(err) {
+		console.error(err);
+		if (err instanceof Error) {
+			setStatusNotice(err.message);
+		} else if (typeof err === 'string') {
+			setStatusNotice(err);
+		} else {
+			setStatusNotice('An unknown error occurred.');
+		}
+		setStatusMode('notice');
+		initializing = false;
+	}
+
+	// --- the fullscreen button ------------------------------------------------
+	function isFullscreen() {
+		return document.fullscreenElement !== null;
+	}
+
+	function refreshFullscreenButton() {
+		fullscreenButton.textContent = isFullscreen() ? 'WINDOW' : 'FULLSCREEN';
+	}
+
+	function toggleFullscreen() {
+		const el = document.documentElement;
+		if (!isFullscreen()) {
+			if (el.requestFullscreen) {
+				el.requestFullscreen().catch(() => {});
+			}
+		} else if (document.exitFullscreen) {
+			document.exitFullscreen().catch(() => {});
+		}
+		refreshFullscreenButton();
+	}
+
+	fullscreenButton.addEventListener('click', toggleFullscreen);
+	document.addEventListener('fullscreenchange', refreshFullscreenButton);
+	document.addEventListener('keydown', (event) => {
+		if (event.key === 'F11') {
+			event.preventDefault();
+			toggleFullscreen();
+		}
+	});
+
+	// --- the new version check ------------------------------------------------
+	// When a newer build is on the server the old one is dropped, the caches
+	// are cleared and the page starts over with the new files.
+	const STORAGE_KEY = 'mt_space_version';
+
+	async function dropOldCaches() {
+		try {
+			if (navigator.serviceWorker) {
+				const registrations = await navigator.serviceWorker.getRegistrations();
+				for (const reg of registrations) {
+					await reg.unregister();
+				}
+			}
+			if (window.caches) {
+				const keys = await caches.keys();
+				for (const key of keys) {
+					await caches.delete(key);
+				}
+			}
+		} catch (e) {
+			// nothing to clean up
+		}
+	}
+
+	async function checkForNewVersion() {
+		try {
+			const response = await fetch('version.txt?t=' + Date.now(), { cache: 'no-store' });
+			if (!response.ok) {
+				return;
+			}
+			const remote = (await response.text()).trim();
+			if (!remote) {
+				return;
+			}
+			let stored = '';
+			try {
+				stored = window.localStorage.getItem(STORAGE_KEY) || '';
+			} catch (e) {
+				stored = '';
+			}
+			if (!stored) {
+				try { window.localStorage.setItem(STORAGE_KEY, remote); } catch (e) { }
+				return;
+			}
+			if (stored === remote) {
+				return;
+			}
+			// a new version is up there: the old files have to go
+			updateNote.style.display = 'block';
+			try { window.localStorage.removeItem(STORAGE_KEY); } catch (e) { }
+			await dropOldCaches();
+			window.location.reload(true);
+		} catch (e) {
+			// no connection, the game just keeps running
+		}
+	}
+
+	// the game asks for the check as well, this one only makes sure that the
+	// very first load already uses the newest files
+	checkForNewVersion();
+
+	const missing = Engine.getMissingFeatures({
+		threads: GODOT_THREADS_ENABLED,
+	});
+
+	if (missing.length !== 0) {
+		if (GODOT_CONFIG['serviceWorker'] && GODOT_CONFIG['ensureCrossOriginIsolationHeaders'] && 'serviceWorker' in navigator) {
+			let serviceWorkerRegistrationPromise;
+			try {
+				serviceWorkerRegistrationPromise = navigator.serviceWorker.getRegistration();
+			} catch (err) {
+				serviceWorkerRegistrationPromise = Promise.reject(new Error('Service worker registration failed.'));
+			}
+			Promise.race([
+				serviceWorkerRegistrationPromise.then((registration) => {
+					if (registration != null) {
+						return Promise.reject(new Error('Service worker already exists.'));
+					}
+					return registration;
+				}).then(() => engine.installServiceWorker()),
+				// For some reason, `getRegistration()` can stall
+				new Promise((resolve) => {
+					setTimeout(() => resolve(), 2000);
+				}),
+			]).then(() => {
+				// Reload if there was no error.
+				window.location.reload();
+			}).catch((err) => {
+				console.error('Error while registering service worker:', err);
+			});
+		} else {
+			// Display the message as usual
+			const missingMsg = 'Error\nThe following features required to run Godot projects on the Web are missing:\n';
+			displayFailureNotice(missingMsg + missing.join('\n'));
+		}
+	} else {
+		setStatusMode('progress');
+		engine.startGame({
+			'onProgress': function (current, total) {
+				if (current > 0 && total > 0) {
+					statusProgress.value = current;
+					statusProgress.max = total;
+				} else {
+					statusProgress.removeAttribute('value');
+					statusProgress.removeAttribute('max');
+				}
+			},
+		}).then(() => {
+			setStatusMode('hidden');
+		}, displayFailureNotice);
+	}
+}());
+		</script>
+	</body>
+</html>

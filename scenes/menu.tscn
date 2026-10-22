@@ -1,0 +1,113 @@
+[gd_scene format=3 uid="uid://cmenu00001"]
+
+[ext_resource type="Script" path="res://scripts/menu.gd" id="1_menu"]
+[ext_resource type="Script" path="res://scripts/menu_demo.gd" id="2_demo"]
+
+[node name="Menu" type="CanvasLayer"]
+script = ExtResource("1_menu")
+
+[node name="Demo" type="Node2D" parent="."]
+script = ExtResource("2_demo")
+
+[node name="UI" type="Control" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+
+[node name="Dim" type="ColorRect" parent="UI"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.03, 0.05, 0.05, 0.55)
+mouse_filter = 2
+
+[node name="Title" type="Label" parent="UI"]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -400.0
+offset_top = -170.0
+offset_right = 400.0
+offset_bottom = -80.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 76
+theme_override_colors/font_color = Color(0.95, 0.97, 1, 1)
+theme_override_colors/font_outline_color = Color(0.02, 0.03, 0.05, 0.9)
+theme_override_constants/outline_size = 8
+text = "MT  SPACE"
+horizontal_alignment = 1
+vertical_alignment = 1
+pivot_offset = Vector2(400, 45)
+
+[node name="Subtitle" type="Label" parent="UI"]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -400.0
+offset_top = -60.0
+offset_right = 400.0
+offset_bottom = -20.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 20
+theme_override_colors/font_color = Color(0.6, 0.72, 0.78, 1)
+text = "SURVIVE  THE  SWARM"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="PlayButton" type="Button" parent="UI"]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -130.0
+offset_top = 20.0
+offset_right = 130.0
+offset_bottom = 84.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 30
+text = "PLAY"
+
+[node name="QuitButton" type="Button" parent="UI"]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -130.0
+offset_top = 100.0
+offset_right = 130.0
+offset_bottom = 152.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 20
+text = "QUIT"
+
+[node name="FullscreenButton" type="Button" parent="UI"]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = 130.0
+offset_top = 100.0
+offset_right = 330.0
+offset_bottom = 152.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 15
+text = "FULLSCREEN"
+
+[node name="Version" type="Label" parent="UI"]
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -44.0
+offset_right = 400.0
+offset_bottom = -16.0
+grow_vertical = 0
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.45, 0.52, 0.56, 1)
+text = "v1.0  -  local build"

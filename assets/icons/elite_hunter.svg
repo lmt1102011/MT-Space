@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+<g transform="translate(32,32)">
+<path fill="#ffffff" stroke="none" d="M0,-18 L15,0 L0,18 L-15,0 Z"/><line fill="none" stroke="#ffffff" x1="22" y1="0" x2="30" y2="0" stroke-width="3" stroke-linecap="round"/><line fill="none" stroke="#ffffff" x1="0" y1="22" x2="0" y2="30" stroke-width="3" stroke-linecap="round"/><line fill="none" stroke="#ffffff" x1="-22" y1="0" x2="-30" y2="0" stroke-width="3" stroke-linecap="round"/><line fill="none" stroke="#ffffff" x1="-0" y1="-22" x2="-0" y2="-30" stroke-width="3" stroke-linecap="round"/>
+</g>
+</svg>

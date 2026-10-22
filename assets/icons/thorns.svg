@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+<g transform="translate(32,32)">
+<path fill="#ffffff" stroke="none" d="M8,5 L25,0 L8,-5 Z"/><path fill="#ffffff" stroke="none" d="M2.121,9.192 L17.678,17.678 L9.192,2.121 Z"/><path fill="#ffffff" stroke="none" d="M-5,8 L0,25 L5,8 Z"/><path fill="#ffffff" stroke="none" d="M-9.192,2.121 L-17.678,17.678 L-2.121,9.192 Z"/><path fill="#ffffff" stroke="none" d="M-8,-5 L-25,0 L-8,5 Z"/><path fill="#ffffff" stroke="none" d="M-2.121,-9.192 L-17.678,-17.678 L-9.192,-2.121 Z"/><path fill="#ffffff" stroke="none" d="M5,-8 L-0,-25 L-5,-8 Z"/><path fill="#ffffff" stroke="none" d="M9.192,-2.121 L17.678,-17.678 L2.121,-9.192 Z"/><circle fill="#ffffff" stroke="none" cx="0" cy="0" r="11"/><circle fill="#c8c8c8" stroke="none" cx="0" cy="0" r="5"/>
+</g>
+</svg>
