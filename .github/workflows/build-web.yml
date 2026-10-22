@@ -68,7 +68,10 @@ jobs:
           ls -la ~/.android/ || true
 
       - name: Import the project
-        run: godot --headless --editor --quit --path .
+        run: |
+          # the build folder is not part of the game, godot must not import it
+          touch build/.gdignore
+          godot --headless --editor --quit --path .
 
       - name: Write the version into the build
         run: echo "${GITHUB_SHA}" > version_embedded.txt
