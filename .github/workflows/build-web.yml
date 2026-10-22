@@ -44,16 +44,31 @@ jobs:
           java-version: '17'
 
       - name: Set up the Android tools
-        continue-on-error: true
         id: android_tools
-        uses: android-actions/setup-android@v3
+        continue-on-error: true
+        env:
+          ANDROID_HOME: ${{ runner.temp }}/android-sdk
+        run: |
+          # the command line tools are enough, godot only needs the
+          # platform-tools and the build-tools
+          mkdir -p "$ANDROID_HOME/cmdline-tools"
+          cd "$ANDROID_HOME/cmdline-tools"
+          curl -sSLo tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q tools.zip
+          mv cmdline-tools latest
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platform-tools" "build-tools;34.0.0" "platforms;android-34" > /dev/null 2>&1 || true
+          ls "$ANDROID_HOME"
 
       - name: Point Godot at the Android tools
         if: steps.android_tools.outcome == 'success'
         continue-on-error: true
+        env:
+          ANDROID_HOME: ${{ runner.temp }}/android-sdk
         run: |
           mkdir -p ~/.config/godot
-          cat > ~/.config/godot/editor_settings-4.7.tres <<'EOF'
+          cat > ~/.config/godot/editor_settings-4.7.tres <<EOF
           [gd_resource type="EditorSettings" format=3]
           [resource]
           export/android/android_sdk_path = "$ANDROID_HOME"
@@ -96,6 +111,8 @@ jobs:
       - name: Build the game for Android
         if: steps.android_tools.outcome == 'success'
         continue-on-error: true
+        env:
+          ANDROID_HOME: ${{ runner.temp }}/android-sdk
         run: |
           mkdir -p build/web/downloads
           godot --headless --path . --export-debug "Android" build/web/downloads/mt-space.apk || \
