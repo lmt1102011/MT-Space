@@ -87,9 +87,9 @@ jobs:
 
       - name: Build the game for Windows
         run: |
-          mkdir -p build/downloads
-          godot --headless --path . --export-release "Windows" build/downloads/mt-space.exe
-          cd build/downloads
+          mkdir -p build/web/downloads
+          godot --headless --path . --export-release "Windows" build/web/downloads/mt-space.exe
+          cd build/web/downloads
           zip -r mt-space-windows.zip mt-space.exe mt-space.pck
           rm -f mt-space.exe mt-space.pck
 
@@ -97,8 +97,8 @@ jobs:
         if: steps.android_tools.outcome == 'success'
         continue-on-error: true
         run: |
-          mkdir -p build/downloads
-          godot --headless --path . --export-debug "Android" build/downloads/mt-space.apk || \
+          mkdir -p build/web/downloads
+          godot --headless --path . --export-debug "Android" build/web/downloads/mt-space.apk || \
             echo "the android build did not work, the site goes out without it"
 
       - name: Put the website together
