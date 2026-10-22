@@ -41,6 +41,8 @@ var _flame_time: float = 0.0
 var _regen_acc: float = 0.0
 # the touch controls, they are only there when a finger is on the screen
 var _touch: Control = null
+# the little ghost the player becomes while watching somebody else
+var _ghost: Node2D = null
 
 @onready var _sprite: Sprite2D = $Sprite2D
 
@@ -60,10 +62,14 @@ func _ready() -> void:
 	_setup_touch.call_deferred()
 
 
-# The on screen stick and fire button live in the game scene, the player
-# only asks for them.
+# The on screen sticks live in the game scene, the player only asks for them.
 func _setup_touch() -> void:
 	_touch = get_tree().get_first_node_in_group("touch_controls") as Control
+	if _touch == null:
+		return
+	# in the phone mode the sticks are always there
+	if _touch.has_method("always_visible") and bool(_touch.call("always_visible")):
+		_touch.visible = true
 
 
 # True while the player wants to shoot, either with the key or with the finger.
@@ -185,7 +191,10 @@ func _physics_process(delta: float) -> void:
 	# aim toward mouse
 	var mouse := get_global_mouse_position()
 	if _touch != null and _touch.is_shooting():
-		mouse = _touch.aim_position()
+		# the right stick aims where the finger points
+		var aim_dir: Vector2 = _touch.aim_direction()
+		if aim_dir != Vector2.ZERO:
+			mouse = global_position + aim_dir * 200.0
 	var aim := (mouse - global_position).angle()
 	_sprite.rotation = lerp_angle(_sprite.rotation, aim, turn_speed * delta)
 
@@ -330,13 +339,15 @@ func _limit_bullets() -> void:
 
 
 func _process(delta: float) -> void:
-	if _shake_t <= 0.0:
-		return
-	_shake_t = maxf(_shake_t - delta, 0.0)
-	var amount := 5.0 * clampf(_shake_t, 0.0, 1.0)
-	_sprite.position = Vector2(randf_range(-amount, amount), randf_range(-amount, amount))
-	if _shake_t <= 0.0:
-		_sprite.position = Vector2.ZERO
+	if _shake_t > 0.0:
+		_shake_t = maxf(_shake_t - delta, 0.0)
+		var amount := 5.0 * clampf(_shake_t, 0.0, 1.0)
+		_sprite.position = Vector2(randf_range(-amount, amount), randf_range(-amount, amount))
+		if _shake_t <= 0.0:
+			_sprite.position = Vector2.ZERO
+	# while spectating the camera follows the player that is watched
+	if Game.spectate_mode and _ghost != null:
+		_update_spectate()
 
 
 func take_damage(amount: int) -> void:
@@ -413,7 +424,82 @@ func _die() -> void:
 	get_tree().current_scene.add_child(boom)
 	Game.sfx("boom_big", -8.0, 0.85, 1.02)
 	_sprite.visible = false
+	# the name under the ship is not needed while the ship is a ghost
+	var name_label := get_node_or_null("NameLabel") as Label
+	if name_label:
+		name_label.visible = false
 	Game.notify_player_died()
+	# when somebody is still playing the dead player becomes a ghost and
+	# watches them
+	if Game.spectate_mode:
+		_start_spectating()
+
+
+# The dead player turns into a little ghost that floats around the player
+# that is being watched.
+func _start_spectating() -> void:
+	var ghost := Node2D.new()
+	ghost.set_script(load("res://scripts/ghost.gd"))
+	ghost.set("ghost_name", Net.player_name if Net.player_name != "" else "YOU")
+	add_child(ghost)
+	_ghost = ghost
+	Game.spectate_changed.connect(_on_spectate_changed)
+	_on_spectate_changed(Game.spectate_target)
+	set_process(true)
+
+
+func _on_spectate_changed(target_id: int) -> void:
+	if _ghost == null:
+		return
+	var target: Node2D = null
+	if Net.world != null and Net.world.has_method("peer_node"):
+		target = Net.world.call("peer_node", target_id) as Node2D
+	if target == null:
+		# nobody to watch, the ghost just stays where it is
+		_ghost.call("set_target", null)
+		return
+	_ghost.call("set_target", target)
+
+
+func _update_spectate() -> void:
+	var target: Node2D = null
+	if Net.world != null and Net.world.has_method("peer_node"):
+		target = Net.world.call("peer_node", Game.spectate_target) as Node2D
+	if target != null:
+		var cam := get_node_or_null("Camera2D") as Camera2D
+		if cam != null:
+			cam.global_position = target.global_position
+	# when the player that is watched dies, another one is picked
+	if target == null or not bool(target.get("net_alive")):
+		var alive := Game.alive_peers()
+		if not alive.is_empty():
+			Game.spectate_target = int(alive[0])
+			Game.spectate_changed.emit(Game.spectate_target)
+		else:
+			# everybody is gone, the game is over
+			Game.spectate_mode = false
+			Game.notify_player_died()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	# while watching somebody the tab key picks the next one
+	if not Game.spectate_mode:
+		return
+	if event is InputEventKey and event.pressed and not event.echo:
+		var key := event as InputEventKey
+		if key.physical_keycode == KEY_TAB:
+			_next_spectate_target()
+			get_viewport().set_input_as_handled()
+
+
+# Picks the next player that is still in the game.
+func _next_spectate_target() -> void:
+	var alive := Game.alive_peers()
+	if alive.size() < 2:
+		return
+	var index := alive.find(Game.spectate_target)
+	Game.spectate_target = int(alive[(index + 1) % alive.size()])
+	Game.spectate_changed.emit(Game.spectate_target)
 
 
 func _draw() -> void:

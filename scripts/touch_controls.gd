@@ -1,24 +1,28 @@
 extends Control
 
-# The touch controls, they only show up when the screen is touched.
+# The controls for a phone: two sticks.
 #
-# On the left a small stick moves the ship, on the right a button shoots. The
-# stick is drawn where the finger went down, so the player does not have to
-# look at it.
+# The left stick moves the ship, the right stick aims and shoots at the same
+# time. The sticks are drawn where the finger went down, so the player does
+# not have to look at them.
+#
+# On a computer the sticks are hidden, the keyboard does the job.
 
+# how big the sticks are
+const STICK_RADIUS := 68.0
 # how far the finger may go from the middle of the stick
-const STICK_RADIUS := 70.0
-# the shoot button is this big
-const FIRE_RADIUS := 56.0
-# how far from the edge of the screen the controls sit
-const EDGE := 150.0
+const MAX_OFFSET := 66.0
+# how far from the edge of the screen the sticks sit
+const EDGE := 140.0
 
-var _stick_touch: int = -1
-var _fire_touch: int = -1
-var _stick_center: Vector2 = Vector2.ZERO
-var _stick_pos: Vector2 = Vector2.ZERO
-var _fire_pos: Vector2 = Vector2.ZERO
-var _visible: bool = false
+var _move_touch: int = -1
+var _aim_touch: int = -1
+var _move_center: Vector2 = Vector2.ZERO
+var _move_pos: Vector2 = Vector2.ZERO
+var _aim_center: Vector2 = Vector2.ZERO
+var _aim_pos: Vector2 = Vector2.ZERO
+# true when the player touched the screen, the sticks show up then
+var _touched: bool = false
 
 
 func _ready() -> void:
@@ -29,14 +33,15 @@ func _ready() -> void:
 	visible = false
 
 
-# The controls sit in the bottom corners, they follow the size of the window.
+# The sticks sit in the bottom corners, they follow the size of the window.
 func _resize_home() -> void:
 	var size := get_viewport_rect().size
-	if _stick_touch == -1:
-		_stick_center = Vector2(EDGE, size.y - EDGE)
-		_stick_pos = _stick_center
-	if _fire_touch == -1:
-		_fire_pos = Vector2(size.x - EDGE, size.y - EDGE)
+	if _move_touch == -1:
+		_move_center = Vector2(EDGE, size.y - EDGE)
+		_move_pos = _move_center
+	if _aim_touch == -1:
+		_aim_center = Vector2(size.x - EDGE, size.y - EDGE)
+		_aim_pos = _aim_center
 	queue_redraw()
 
 
@@ -62,66 +67,91 @@ func _touch_from_mouse(pressed: bool, pos: Vector2, index: int) -> InputEventScr
 
 func _on_touch(t: InputEventScreenTouch) -> void:
 	if t.pressed:
-		_visible = true
+		_touched = true
 		visible = true
+		# the left half moves, the right half aims and shoots
 		if t.position.x < get_viewport_rect().size.x * 0.5:
-			if _stick_touch == -1:
-				_stick_touch = t.index
-				_stick_center = t.position
-				_stick_pos = t.position
+			if _move_touch == -1:
+				_move_touch = t.index
+				_move_center = t.position
+				_move_pos = t.position
 		else:
-			if _fire_touch == -1:
-				_fire_touch = t.index
-				_fire_pos = t.position
+			if _aim_touch == -1:
+				_aim_touch = t.index
+				_aim_center = t.position
+				_aim_pos = t.position
 	else:
-		if t.index == _stick_touch:
-			_stick_touch = -1
+		if t.index == _move_touch:
+			_move_touch = -1
 			_resize_home()
-		elif t.index == _fire_touch:
-			_fire_touch = -1
+		elif t.index == _aim_touch:
+			_aim_touch = -1
 			_resize_home()
 	queue_redraw()
 
 
 func _on_drag(d: InputEventScreenDrag) -> void:
-	if d.index == _stick_touch:
-		_stick_pos = d.position
-		queue_redraw()
+	if d.index == _move_touch:
+		_move_pos = d.position
+	elif d.index == _aim_touch:
+		_aim_pos = d.position
+	queue_redraw()
 
 
-# The direction the stick points in, for the ship.
+# The direction the left stick points in, for the ship.
 func move_direction() -> Vector2:
-	if _stick_touch == -1:
+	if _move_touch == -1:
 		return Vector2.ZERO
-	var delta := _stick_pos - _stick_center
-	if delta.length() < 8.0:
-		return Vector2.ZERO
-	return delta / STICK_RADIUS
+	return _stick_vector(_move_pos - _move_center)
 
 
-# True while the shoot button is held down.
+# The direction the right stick points in, that is where the ship aims.
+func aim_direction() -> Vector2:
+	if _aim_touch == -1:
+		return Vector2.ZERO
+	return _stick_vector(_aim_pos - _aim_center)
+
+
+# The right stick shoots as long as it is held down.
 func is_shooting() -> bool:
-	return _fire_touch != -1
+	return _aim_touch != -1
 
 
-# Where the player is aiming, the finger on the fire button.
+# The place the ship aims at, the finger on the right stick.
 func aim_position() -> Vector2:
-	return _fire_pos
+	return _aim_pos
+
+
+# True when the sticks have to be shown all the time, that is the phone mode.
+func always_visible() -> bool:
+	return Game.is_mobile_mode()
+
+
+func _stick_vector(offset: Vector2) -> Vector2:
+	if offset.length() < 10.0:
+		return Vector2.ZERO
+	if offset.length() > MAX_OFFSET:
+		offset = offset.normalized() * MAX_OFFSET
+	return offset / MAX_OFFSET
+
+
+func _process(_delta: float) -> void:
+	# in the phone mode the sticks are always there
+	if always_visible() and not visible:
+		visible = true
 
 
 func _draw() -> void:
-	if not _visible:
+	if not visible:
 		return
-	# the stick
-	var base := _stick_center
-	var knob := _stick_pos
-	draw_circle(base, STICK_RADIUS, Color(0.1, 0.14, 0.16, 0.35))
-	draw_arc(base, STICK_RADIUS, 0.0, TAU, 32, Color(0.6, 0.8, 0.9, 0.35), 3.0)
-	var off := knob - base
-	if off.length() > STICK_RADIUS:
-		off = off.normalized() * STICK_RADIUS
-	draw_circle(base + off, 26.0, Color(0.45, 0.85, 1.0, 0.5))
-	# the shoot button
-	var fire := _fire_pos
-	draw_circle(fire, FIRE_RADIUS, Color(0.9, 0.35, 0.2, 0.4 if _fire_touch != -1 else 0.22))
-	draw_arc(fire, FIRE_RADIUS, 0.0, TAU, 32, Color(1.0, 0.6, 0.4, 0.5), 3.0)
+	_draw_stick(_move_center, _move_pos, Color(0.45, 0.85, 1.0), _move_touch != -1)
+	_draw_stick(_aim_center, _aim_pos, Color(1.0, 0.6, 0.35), _aim_touch != -1)
+
+
+func _draw_stick(center: Vector2, knob: Vector2, tint: Color, held: bool) -> void:
+	draw_circle(center, STICK_RADIUS, Color(0.1, 0.14, 0.16, 0.35))
+	draw_arc(center, STICK_RADIUS, 0.0, TAU, 32, Color(tint.r, tint.g, tint.b, 0.35), 3.0)
+	var off := knob - center
+	if off.length() > MAX_OFFSET:
+		off = off.normalized() * MAX_OFFSET
+	draw_circle(center + off, 26.0, Color(tint.r, tint.g, tint.b, 0.5 if held else 0.35))

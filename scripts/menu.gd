@@ -8,12 +8,25 @@ const PROMPT_SCENE := preload("res://scenes/name_prompt.tscn")
 @onready var _full_btn: Button = $UI/FullscreenButton
 @onready var _title: Label = $UI/Title
 @onready var _subtitle: Label = $UI/Subtitle
+@onready var _settings_btn: Button = $UI/SettingsButton
+@onready var _settings_panel: Control = $UI/SettingsPanel
+@onready var _volume_slider: HSlider = $UI/SettingsPanel/VolumeSlider
+@onready var _volume_value: Label = $UI/SettingsPanel/VolumeValue
+@onready var _mode_btn: Button = $UI/SettingsPanel/ModeButton
+@onready var _settings_close: Button = $UI/SettingsPanel/CloseButton
 
 
 func _ready() -> void:
 	_play_btn.pressed.connect(_on_play)
 	_quit_btn.pressed.connect(_on_quit)
 	_full_btn.pressed.connect(_on_fullscreen)
+	_settings_btn.pressed.connect(_on_settings_pressed)
+	_settings_close.pressed.connect(_on_settings_close)
+	_mode_btn.pressed.connect(_on_toggle_mode)
+	_volume_slider.value = Game.get_master_volume()
+	_volume_slider.value_changed.connect(_on_volume_changed)
+	_on_volume_changed(_volume_slider.value)
+	_refresh_mode_text()
 	# gentle fade in (fade the Control, a CanvasLayer has no modulate)
 	_ui.modulate.a = 0.0
 	var tw := create_tween()
@@ -48,6 +61,37 @@ func _on_fullscreen() -> void:
 
 func _refresh_fullscreen_text() -> void:
 	_full_btn.text = "WINDOW" if Web.is_fullscreen() else "FULLSCREEN"
+
+
+# --- the settings ----------------------------------------------------------
+func _on_settings_pressed() -> void:
+	Game.sfx("click", -10.0, 0.95, 1.05)
+	_settings_panel.visible = not _settings_panel.visible
+
+
+func _on_settings_close() -> void:
+	Game.sfx("click", -10.0, 0.95, 1.05)
+	_settings_panel.visible = false
+
+
+func _on_volume_changed(value: float) -> void:
+	Game.set_master_volume(value)
+	_volume_value.text = "%d%%" % int(round(value * 100.0))
+
+
+# The player picks between the keyboard and the two sticks of a phone.
+func _on_toggle_mode() -> void:
+	Game.sfx("click", -10.0, 0.95, 1.05)
+	if Game.is_mobile_mode():
+		Game.set_control_mode(Game.CONTROL_PC)
+	else:
+		Game.set_control_mode(Game.CONTROL_MOBILE)
+	_refresh_mode_text()
+
+
+func _refresh_mode_text() -> void:
+	_mode_btn.text = "CONTROLS: TWO STICKS (PHONE)" if Game.is_mobile_mode() \
+		else "CONTROLS: KEYBOARD AND MOUSE"
 
 
 func _unhandled_input(event: InputEvent) -> void:

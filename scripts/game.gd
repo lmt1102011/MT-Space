@@ -7,11 +7,16 @@ signal xp_changed(xp: int, xp_needed: int)
 signal level_changed(level: int)
 signal game_over
 signal card_collected(card: Dictionary)
+signal spectate_changed(target_id: int)
 
 var wave: int = 0
 var active: bool = true
 var is_game_over: bool = false
 var player_dead: bool = false
+# true when the player is dead but the game goes on and is being watched
+var spectate_mode: bool = false
+# the peer that is being watched
+var spectate_target: int = 0
 
 var level: int = 1
 var xp: int = 0
@@ -65,6 +70,7 @@ var _fire_on: bool = false
 
 
 func _ready() -> void:
+	_load_settings()
 	for i in SfxLib.POOL:
 		var p := AudioStreamPlayer.new()
 		# must keep playing while the tree is paused (card screen, game over)
@@ -87,6 +93,57 @@ func _ready() -> void:
 func sfx(sound: String, volume_db: float = 0.0,
 		pitch_lo: float = 0.93, pitch_hi: float = 1.09) -> void:
 	SfxLib.play(sound, volume_db, pitch_lo, pitch_hi)
+
+
+# The volume of the player, from 0 to 1.
+func get_master_volume() -> float:
+	return SfxLib.master_volume
+
+
+func set_master_volume(value: float) -> void:
+	SfxLib.master_volume = clampf(value, 0.0, 1.0)
+	# the burning loop follows the volume too
+	if _fire_player != null and _fire_on:
+		_fire_player.volume_db = SfxLib._master_db() - 20.0
+	_save_settings()
+
+
+# --- how the game is played --------------------------------------------------
+# 0 means the keyboard and the mouse, 1 means the two sticks on a phone
+const CONTROL_PC := 0
+const CONTROL_MOBILE := 1
+
+var control_mode: int = CONTROL_PC
+
+
+func is_mobile_mode() -> bool:
+	return control_mode == CONTROL_MOBILE
+
+
+func set_control_mode(mode: int) -> void:
+	control_mode = CONTROL_MOBILE if mode == CONTROL_MOBILE else CONTROL_PC
+	_save_settings()
+
+
+# The settings are kept, so the player does not have to do it again.
+const SETTINGS_PATH := "user://settings.cfg"
+
+
+func _load_settings() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(SETTINGS_PATH) != OK:
+		return
+	SfxLib.master_volume = clampf(float(cfg.get_value("audio", "volume", 1.0)), 0.0, 1.0)
+	control_mode = int(cfg.get_value("game", "control_mode", CONTROL_PC))
+	if control_mode != CONTROL_MOBILE:
+		control_mode = CONTROL_PC
+
+
+func _save_settings() -> void:
+	var cfg := ConfigFile.new()
+	cfg.set_value("audio", "volume", SfxLib.master_volume)
+	cfg.set_value("game", "control_mode", control_mode)
+	cfg.save(SETTINGS_PATH)
 
 
 # Start/stop the burning loop
@@ -150,13 +207,47 @@ func reset_run() -> void:
 	active = true
 	is_game_over = false
 	player_dead = false
+	spectate_mode = false
+	spectate_target = 0
 
 
 func notify_player_died() -> void:
 	if is_game_over:
 		return
+	# when somebody else is still playing the game goes on and the dead
+	# player watches them
+	var alive := alive_peers()
+	if not alive.is_empty():
+		spectate_mode = true
+		spectate_target = int(alive[0])
+		spectate_changed.emit(spectate_target)
+		return
 	is_game_over = true
 	game_over.emit()
+
+
+# The players that are still in the game, the host does not count.
+func alive_peers() -> Array:
+	var out: Array = []
+	if Net.world == null:
+		return out
+	if not Net.world.has_method("alive_peers"):
+		return out
+	for id in Net.world.call("alive_peers"):
+		out.append(int(id))
+	return out
+
+
+# The name of the player that is being watched.
+func spectate_name() -> String:
+	if spectate_target == 0:
+		return ""
+	return Net.player_name_of(spectate_target)
+
+
+# True when the game is played in a room with other people.
+func in_a_room() -> bool:
+	return Net.is_online()
 
 
 # Directly grant a card to the player (used by elite drops). Returns false if maxed.

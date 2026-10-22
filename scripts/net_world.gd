@@ -162,6 +162,26 @@ func player_state(id: int, pos: Vector2, rot: float, hp: float, alive: bool) -> 
 	p.set("net_alive", alive)
 
 
+# The players that are still in the game, so a dead one knows who to watch.
+func alive_peers() -> Array:
+	var out: Array = []
+	for id in _players:
+		var p: Node2D = _players[id]
+		if p == null or not is_instance_valid(p):
+			continue
+		if bool(p.get("net_alive")):
+			out.append(int(id))
+	return out
+
+
+# The ship of a player, so the camera can follow it.
+func peer_node(id: int) -> Node2D:
+	var p: Node2D = _players.get(id)
+	if p == null or not is_instance_valid(p):
+		return null
+	return p
+
+
 func _make_remote_player(id: int) -> Node2D:
 	var p := REMOTE_PLAYER.instantiate() as Node2D
 	add_child(p)

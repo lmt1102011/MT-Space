@@ -8,6 +8,13 @@ const CardScript := preload("res://scripts/card.gd")
 @onready var _lv_label: Label = $XpBar/LvLabel
 @onready var _xp_fill: ColorRect = $XpBar/Bg/Fill
 @onready var _xp_bg: ColorRect = $XpBar/Bg
+@onready var _settings_btn: Button = $SettingsButton
+@onready var _settings_panel: Control = $SettingsPanel
+@onready var _volume_slider: HSlider = $SettingsPanel/VolumeSlider
+@onready var _volume_value: Label = $SettingsPanel/VolumeValue
+@onready var _settings_close: Button = $SettingsPanel/CloseButton
+@onready var _settings_quit: Button = $SettingsPanel/QuitButton
+@onready var _spectate_label: Label = $SpectateLabel
 
 var _countdown: int = 0
 
@@ -23,6 +30,7 @@ func _ready() -> void:
 	Game.countdown_changed.connect(_on_countdown_changed)
 	Game.game_over.connect(_on_game_over)
 	Game.card_collected.connect(show_card_reward)
+	Game.spectate_changed.connect(_on_spectate_changed)
 	var spawner := get_node_or_null("../Spawner")
 	if spawner:
 		spawner.wave_cleared_text.connect(_on_wave_cleared)
@@ -31,6 +39,56 @@ func _ready() -> void:
 	call_deferred("_refresh_xp")
 	_clear_label.visible = false
 	_countdown_label.visible = false
+	_setup_settings()
+
+
+# The little panel with the volume and the quit button.
+func _setup_settings() -> void:
+	if _settings_btn:
+		_settings_btn.pressed.connect(_on_settings_pressed)
+	if _settings_close:
+		_settings_close.pressed.connect(_on_settings_close)
+	if _settings_quit:
+		_settings_quit.pressed.connect(_on_settings_quit)
+	if _volume_slider:
+		_volume_slider.value = Game.get_master_volume()
+		_volume_slider.value_changed.connect(_on_volume_changed)
+		_on_volume_changed(_volume_slider.value)
+
+
+func _on_settings_pressed() -> void:
+	Game.sfx("click", -12.0, 0.95, 1.05)
+	if _settings_panel:
+		_settings_panel.visible = not _settings_panel.visible
+
+
+func _on_settings_close() -> void:
+	Game.sfx("click", -12.0, 0.95, 1.05)
+	if _settings_panel:
+		_settings_panel.visible = false
+
+
+func _on_settings_quit() -> void:
+	Game.sfx("click", -12.0, 0.95, 1.05)
+	get_tree().quit()
+
+
+func _on_volume_changed(value: float) -> void:
+	Game.set_master_volume(value)
+	if _volume_value:
+		_volume_value.text = "%d%%" % int(round(value * 100.0))
+
+
+# The dead player watches somebody, the name of that player is shown.
+func _on_spectate_changed(_target_id: int) -> void:
+	if not _spectate_label:
+		return
+	if not Game.spectate_mode:
+		_spectate_label.visible = false
+		return
+	var who := Game.spectate_name()
+	_spectate_label.text = "SPECTATING %s" % who if who != "" else "SPECTATING"
+	_spectate_label.visible = true
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -174,6 +232,11 @@ func _on_game_over() -> void:
 
 func _on_play_again() -> void:
 	Game.sfx("click", -14.0, 0.95, 1.05)
+	# when the game was played in a room, the player goes back to the room
+	if Game.in_a_room():
+		Game.reset_run()
+		get_tree().change_scene_to_file("res://scenes/lobby.tscn")
+		return
 	Game.reset_run()
 	get_tree().reload_current_scene()
 

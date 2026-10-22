@@ -43,6 +43,8 @@ const BANK_PATHS := {
 }
 
 static var enabled: bool = true
+# the volume the player picked in the settings, from 0 to 1
+static var master_volume: float = 1.0
 static var _players: Array = []
 static var _idx: int = 0
 static var _bank: Dictionary = {}
@@ -87,9 +89,16 @@ static func play(sound: String, volume_db: float = 0.0,
 	var p: AudioStreamPlayer = _players[_idx]
 	_idx = (_idx + 1) % _players.size()
 	p.stream = list[0]
-	p.volume_db = volume_db + MASTER_DB
+	p.volume_db = volume_db + _master_db()
 	# only a tiny pitch jitter so rapid repeats never phase match
 	var mid := (pitch_lo + pitch_hi) * 0.5
 	var half := (pitch_hi - pitch_lo) * 0.18
 	p.pitch_scale = randf_range(mid - half, mid + half)
 	p.play()
+
+
+# The volume of the player, turned into the decibel the players use.
+static func _master_db() -> float:
+	if master_volume <= 0.001:
+		return -80.0
+	return linear_to_db(clampf(master_volume, 0.0, 1.0))
