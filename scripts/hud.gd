@@ -8,7 +8,6 @@ const CardScript := preload("res://scripts/card.gd")
 @onready var _lv_label: Label = $XpBar/LvLabel
 @onready var _xp_fill: ColorRect = $XpBar/Bg/Fill
 @onready var _xp_bg: ColorRect = $XpBar/Bg
-@onready var _full_btn: Button = $FullscreenButton
 
 var _countdown: int = 0
 
@@ -24,8 +23,6 @@ func _ready() -> void:
 	Game.countdown_changed.connect(_on_countdown_changed)
 	Game.game_over.connect(_on_game_over)
 	Game.card_collected.connect(show_card_reward)
-	if _full_btn:
-		_full_btn.pressed.connect(_on_fullscreen)
 	var spawner := get_node_or_null("../Spawner")
 	if spawner:
 		spawner.wave_cleared_text.connect(_on_wave_cleared)
@@ -36,19 +33,13 @@ func _ready() -> void:
 	_countdown_label.visible = false
 
 
-func _on_fullscreen() -> void:
-	Game.sfx("click", -12.0, 0.95, 1.05)
-	Web.toggle_fullscreen()
-	if _full_btn:
-		_full_btn.text = "WIN" if Web.is_fullscreen() else "FULL"
-
-
 func _unhandled_input(event: InputEvent) -> void:
 	# F11 is the usual key for fullscreen
 	if event is InputEventKey and event.pressed and not event.echo:
 		var key := event as InputEventKey
 		if key.physical_keycode == KEY_F11:
-			_on_fullscreen()
+			Game.sfx("click", -12.0, 0.95, 1.05)
+			Web.toggle_fullscreen()
 			get_viewport().set_input_as_handled()
 
 

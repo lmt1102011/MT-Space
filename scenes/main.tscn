@@ -261,18 +261,6 @@ offset_bottom = 146.0
 grow_horizontal = 0
 script = ExtResource("5_minimap")
 
-[node name="FullscreenButton" type="Button" parent="HUD"]
-anchors_preset = 1
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -104.0
-offset_top = 152.0
-offset_right = -24.0
-offset_bottom = 184.0
-grow_horizontal = 0
-theme_override_font_sizes/font_size = 13
-text = "FULL"
-
 [node name="XpBar" type="Control" parent="HUD"]
 anchor_left = 0.5
 anchor_top = 1.0

@@ -107,6 +107,47 @@ text = "no rooms yet - create one"
 horizontal_alignment = 1
 vertical_alignment = 1
 
+[node name="AddressPanel" type="Control" parent="UI"]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -320.0
+offset_top = 30.0
+offset_right = 320.0
+offset_bottom = 90.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="AddressEdit" type="LineEdit" parent="UI/AddressPanel"]
+anchor_right = 1.0
+offset_right = -110.0
+offset_bottom = 44.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 17
+alignment = 1
+placeholder_text = "host address, e.g. 192.168.1.5"
+
+[node name="AddressJoin" type="Button" parent="UI/AddressPanel"]
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -100.0
+offset_bottom = 44.0
+grow_horizontal = 0
+theme_override_font_sizes/font_size = 16
+text = "JOIN"
+
+[node name="AddressHint" type="Label" parent="UI/AddressPanel"]
+anchor_right = 1.0
+offset_top = 46.0
+offset_bottom = 68.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.45, 0.52, 0.55, 1)
+text = "a browser cannot find rooms by itself, so type the address of the host"
+horizontal_alignment = 1
+vertical_alignment = 1
+
 [node name="CreatePanel" type="Control" parent="UI"]
 anchor_left = 0.5
 anchor_top = 0.5
@@ -161,6 +202,14 @@ offset_bottom = 192.0
 grow_horizontal = 2
 theme_override_font_sizes/font_size = 20
 text = "CREATE"
+
+[node name="WebModeButton" type="Button" parent="UI/CreatePanel"]
+anchor_right = 1.0
+offset_top = 96.0
+offset_bottom = 130.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 14
+text = "CONNECTION: FAST (LAN)"
 
 [node name="CreateCancel" type="Button" parent="UI/CreatePanel"]
 anchor_left = 0.5

@@ -21,8 +21,12 @@ const ROOM_NAMES := [
 @onready var _sub_header: Label = $UI/SubHeader
 @onready var _create_panel: Control = $UI/CreatePanel
 @onready var _name_edit: LineEdit = $UI/CreatePanel/NameEdit
+@onready var _web_mode_btn: Button = $UI/CreatePanel/WebModeButton
 @onready var _create_confirm: Button = $UI/CreatePanel/CreateConfirm
 @onready var _create_cancel: Button = $UI/CreatePanel/CreateCancel
+@onready var _address_panel: Control = $UI/AddressPanel
+@onready var _address_edit: LineEdit = $UI/AddressPanel/AddressEdit
+@onready var _address_join: Button = $UI/AddressPanel/AddressJoin
 @onready var _room_panel: Control = $UI/RoomPanel
 @onready var _room_title: Label = $UI/RoomPanel/RoomTitle
 @onready var _status: Label = $UI/RoomPanel/Status
@@ -37,6 +41,8 @@ const ROOM_NAMES := [
 var _my_room: int = -1          # index into Net.rooms
 var _creating: bool = false
 var _in_room: bool = false
+# a room that speaks websocket can be joined from a browser
+var _web_mode: bool = false
 
 
 func _ready() -> void:
@@ -47,6 +53,9 @@ func _ready() -> void:
 	_start_btn.pressed.connect(_on_start)
 	_create_confirm.pressed.connect(_on_create_confirm)
 	_create_cancel.pressed.connect(_on_create_cancel)
+	_web_mode_btn.pressed.connect(_on_toggle_web_mode)
+	_address_join.pressed.connect(_on_join_address)
+	_address_edit.text_submitted.connect(func(_t): _on_join_address())
 	_name_edit.text_submitted.connect(func(_t): _on_create_confirm())
 	Net.rooms_changed.connect(_refresh)
 	Net.players_changed.connect(_refresh)
@@ -54,10 +63,14 @@ func _ready() -> void:
 	Net.room_left.connect(_on_room_left)
 	Net.session_failed.connect(_on_session_failed)
 	_refresh()
-	# the web build has no udp, so there is nothing to look for there
-	if not Net.is_network_available():
+	_refresh_web_mode()
+	# a browser cannot host, and it cannot look for rooms either
+	if not Net.can_host():
 		_create_btn.disabled = true
-		_sub_header.text = "multiplayer is not available in the browser - single player only"
+		_create_btn.text = "HOSTING IS NOT POSSIBLE HERE"
+		_sub_header.text = "a browser can only join a room - type the address of the host below"
+	elif OS.has_feature("web"):
+		_sub_header.text = "a browser cannot find rooms by itself, so type the address of the host"
 
 
 # --- views ----------------------------------------------------------------
@@ -73,10 +86,18 @@ func _refresh() -> void:
 	_create_btn.visible = not _in_room
 	_empty_label.visible = not _in_room
 	_back_btn.visible = not _in_room
+	# the box to type an address is only useful when there are no rooms to
+	# pick, that is the case in a browser
+	_address_panel.visible = not _in_room
 	if _in_room:
 		_refresh_room()
 	else:
 		_refresh_room_list()
+
+
+func _refresh_web_mode() -> void:
+	_web_mode_btn.text = "CONNECTION: BROWSER FRIENDLY" if _web_mode \
+		else "CONNECTION: FAST (LAN)"
 
 
 func _refresh_room_list() -> void:
@@ -89,8 +110,9 @@ func _refresh_room_list() -> void:
 		var room: Dictionary = Net.rooms[i]
 		var count := int(room["count"])
 		var b := Button.new()
-		b.text = "%s        %d / %d        %s" % [
-			str(room["name"]), count, MAX_PLAYERS, str(room["address"])]
+		var tag := " (browser)" if bool(room.get("web", false)) else ""
+		b.text = "%s%s        %d / %d        %s" % [
+			str(room["name"]), tag, count, MAX_PLAYERS, str(room["address"])]
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		b.custom_minimum_size = Vector2(0, 40)
 		b.add_theme_font_size_override("font_size", 17)
@@ -175,7 +197,40 @@ func _on_create_confirm() -> void:
 	if name == "":
 		name = ROOM_NAMES[randi() % ROOM_NAMES.size()]
 	Net.player_name = _player_name()
-	if not Net.host_room(name):
+	if not Net.host_room(name, Net.DEFAULT_PORT, _web_mode):
+		_refresh()
+		return
+	_in_room = true
+	_refresh()
+
+
+func _on_toggle_web_mode() -> void:
+	Game.sfx("click", -10.0, 0.95, 1.05)
+	_web_mode = not _web_mode
+	_refresh_web_mode()
+
+
+# The player typed the address of a host, that is the only way to find a room
+# from a browser.
+func _on_join_address() -> void:
+	Game.sfx("click", -10.0, 0.95, 1.05)
+	var text := _address_edit.text.strip_edges()
+	if text == "":
+		return
+	var address := text
+	var port := Net.DEFAULT_PORT
+	# an address may come with the port on it
+	if text.contains(":"):
+		var bits := text.rsplit(":", true, 1)
+		address = bits[0]
+		if bits[1].is_valid_int():
+			port = int(bits[1])
+	Net.player_name = _player_name()
+	# a websocket room is the only kind a browser can reach
+	var web := true
+	if address.begins_with("ws://") or address.begins_with("wss://"):
+		web = true
+	if not Net.join_room(address, port, web):
 		return
 	_in_room = true
 	_refresh()
@@ -187,7 +242,9 @@ func _on_join(index: int) -> void:
 		return
 	var room: Dictionary = Net.rooms[index]
 	Net.player_name = _player_name()
-	if not Net.join_room(str(room["address"]), int(room["port"])):
+	# the room tells how it talks, a browser can only join a websocket room
+	var web := bool(room.get("web", false))
+	if not Net.join_room(str(room["address"]), int(room["port"]), web):
 		return
 	_in_room = true
 	_refresh()

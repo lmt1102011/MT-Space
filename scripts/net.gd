@@ -42,10 +42,12 @@ var rooms: Array = []
 # the world node, set by the game scene
 var world: Node = null
 
-var _peer: ENetMultiplayerPeer = null
+var _peer: MultiplayerPeer = null
 # the multiplayer api of the scene tree, the net node uses it for the rpcs
 var _api: MultiplayerAPI = null
 var _hosting: bool = false
+# true when the room speaks websocket instead of enet
+var _web_mode: bool = false
 var _discovery: PacketPeerUDP = null
 var _disc_timer: float = 0.0
 var _net_timer: float = 0.0
@@ -57,6 +59,15 @@ var _hello_timer: float = 0.0
 var _closing: bool = false
 # true while the client is still waiting to be let into the room
 var _wait_for_hello: bool = false
+# the room this client wants to be in, so it can come back after a drop
+var _last_address: String = ""
+var _last_port: int = DEFAULT_PORT
+var _last_web: bool = false
+# how long to wait before trying to get back into the room
+const RECONNECT_WAIT := 3.0
+var _reconnect_timer: float = 0.0
+# true while the client is trying to get back into the room
+var _reconnecting: bool = false
 
 
 func _ready() -> void:
@@ -68,7 +79,7 @@ func _ready() -> void:
 # The api of the tree is used on purpose: the Net node is an autoload and has
 # already grabbed the api of the tree when it was added, so swapping the api
 # would leave the rpcs pointing at an api nobody polls.
-func _new_api(peer: ENetMultiplayerPeer) -> void:
+func _new_api(peer: MultiplayerPeer) -> void:
 	_api = get_tree().get_multiplayer()
 	_api.multiplayer_peer = peer
 	_api.peer_connected.connect(_on_peer_connected)
@@ -113,6 +124,21 @@ func is_network_available() -> bool:
 	return not OS.has_feature("web")
 
 
+# A browser cannot listen on a port, so a room always needs a desktop host.
+func can_host() -> bool:
+	return not OS.has_feature("web")
+
+
+# A browser can still be a player, it just needs a room that speaks websocket.
+func can_join() -> bool:
+	return true
+
+
+# True when the room uses websocket instead of the faster enet.
+func is_web_mode() -> bool:
+	return _web_mode
+
+
 func my_id() -> int:
 	# the peer is the only thing that knows our number
 	if _peer != null:
@@ -122,19 +148,37 @@ func my_id() -> int:
 
 # --- hosting / joining ------------------------------------------------------
 # Creates a room. The caller becomes the host and owns the world.
-func host_room(name: String, port: int = DEFAULT_PORT) -> bool:
-	if not is_network_available():
-		session_failed.emit("multiplayer needs the desktop version")
+#
+# The room speaks enet by default, that is the fast one. A room that speaks
+# websocket can be joined from a browser, because a browser cannot open a
+# udp port.
+func host_room(name: String, port: int = DEFAULT_PORT, web_mode: bool = false) -> bool:
+	if not can_host():
+		session_failed.emit("a browser cannot host a room")
 		return false
 	_reset_session()
-	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_server(port, MAX_PLAYERS)
-	if err != OK:
-		session_failed.emit("could not open port %d" % port)
-		return false
+	var peer: MultiplayerPeer = null
+	if web_mode:
+		var ws := WebSocketMultiplayerPeer.new()
+		# the default of three seconds is too tight for a slow network
+		ws.set_handshake_timeout(30.0)
+		var werr := ws.create_server(port, "0.0.0.0", null)
+		if werr != OK:
+			session_failed.emit("could not open port %d" % port)
+			return false
+		peer = ws
+	else:
+		var enet := ENetMultiplayerPeer.new()
+		var eerr := enet.create_server(port, MAX_PLAYERS)
+		if eerr != OK:
+			session_failed.emit("could not open port %d" % port)
+			return false
+		peer = enet
 	_peer = peer
-	_new_api(peer)
+	_web_mode = web_mode
+	# the flag is set before the api, so nothing thinks it is a client
 	_hosting = true
+	_new_api(peer)
 	room_name = name
 	players = [{"id": my_id(), "name": _my_name(), "color": _color_for(0)}]
 	_start_discovery(true)
@@ -146,27 +190,86 @@ func host_room(name: String, port: int = DEFAULT_PORT) -> bool:
 
 
 # Joins a room on the given address.
-func join_room(address: String, port: int = DEFAULT_PORT) -> bool:
-	if not is_network_available():
-		session_failed.emit("multiplayer needs the desktop version")
+func join_room(address: String, port: int = DEFAULT_PORT, web_mode: bool = false) -> bool:
+	if not can_join():
+		session_failed.emit("multiplayer is not available here")
 		return false
 	_reset_session()
-	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_client(address, port)
-	if err != OK:
-		session_failed.emit("cannot reach %s:%d" % [address, port])
-		return false
+	# the address is remembered, so the game can come back after a drop
+	_last_address = address
+	_last_port = port
+	_last_web = web_mode
+	var peer: MultiplayerPeer = null
+	if web_mode:
+		var ws := WebSocketMultiplayerPeer.new()
+		ws.set_handshake_timeout(30.0)
+		var werr := ws.create_client(_ws_url(address, port), null)
+		if werr != OK:
+			session_failed.emit("cannot reach %s" % address)
+			return false
+		peer = ws
+	else:
+		var enet := ENetMultiplayerPeer.new()
+		var eerr := enet.create_client(address, port)
+		if eerr != OK:
+			session_failed.emit("cannot reach %s:%d" % [address, port])
+			return false
+		peer = enet
 	_peer = peer
-	_new_api(peer)
+	_web_mode = web_mode
+	# the flag is set before the api, so nothing thinks it is a host
 	_hosting = false
+	_new_api(peer)
 	room_name = ""
 	players = []
 	_start_discovery(false)
 	return true
 
 
+# The address of a websocket room, the scheme is added when it is missing.
+func _ws_url(address: String, port: int) -> String:
+	if address.begins_with("ws://") or address.begins_with("wss://"):
+		return address
+	return "ws://%s:%d" % [address, port]
+
+
+# Tries to get back into the room after the connection broke.
+func _reconnect() -> void:
+	if _last_address == "" or _hosting:
+		return
+	var address := _last_address
+	var port := _last_port
+	var web := _last_web
+	_reset_session()
+	_last_address = address
+	_last_port = port
+	_last_web = web
+	# the flag is set before the api, so nothing thinks it is a host
+	_hosting = false
+	var peer: MultiplayerPeer = null
+	if web:
+		var ws := WebSocketMultiplayerPeer.new()
+		ws.set_handshake_timeout(30.0)
+		if ws.create_client(_ws_url(address, port), null) != OK:
+			return
+		peer = ws
+	else:
+		var enet := ENetMultiplayerPeer.new()
+		if enet.create_client(address, port) != OK:
+			return
+		peer = enet
+	_peer = peer
+	_web_mode = web
+	_new_api(peer)
+	_wait_for_hello = true
+	_hello_timer = 0.0
+	_start_discovery(false)
+
+
 # Leaves the room the player asked to leave.
 func leave() -> void:
+	_reconnecting = false
+	_last_address = ""
 	_reset_session()
 	rooms.clear()
 	rooms_changed.emit()
@@ -188,6 +291,7 @@ func _reset_session() -> void:
 	# the old api goes away with it, its signals cannot disturb anything
 	_drop_api()
 	_hosting = false
+	_web_mode = false
 	room_name = ""
 	players = []
 	if _discovery != null:
@@ -232,6 +336,12 @@ func _process(delta: float) -> void:
 		if _hello_timer <= 0.0:
 			_hello_timer = 1.0
 			_send_hello()
+	# a dropped room is looked for again
+	if _reconnecting:
+		_reconnect_timer -= delta
+		if _reconnect_timer <= 0.0:
+			_reconnect_timer = RECONNECT_WAIT
+			_reconnect()
 	if _discovery == null:
 		return
 	_disc_timer -= delta
@@ -270,7 +380,9 @@ func _process(delta: float) -> void:
 
 
 func _room_packet() -> String:
-	return "MTROOM:%s:%d:%d" % [room_name, DEFAULT_PORT, players.size()]
+	# the last part says how the room talks, so the players know what to use
+	return "MTROOM:%s:%d:%d:%d" % [room_name, DEFAULT_PORT, players.size(),
+		1 if _web_mode else 0]
 
 
 # The host keeps its own room in the list too, so it can see it before joining.
@@ -281,6 +393,7 @@ func _add_own_room() -> void:
 	for r in rooms:
 		if str(r["address"]) == ip and int(r["port"]) == DEFAULT_PORT:
 			r["count"] = players.size()
+			r["web"] = _web_mode
 			r["seen"] = Time.get_ticks_msec() / 1000.0
 			rooms_changed.emit()
 			return
@@ -289,6 +402,7 @@ func _add_own_room() -> void:
 		"address": ip,
 		"port": DEFAULT_PORT,
 		"count": players.size(),
+		"web": _web_mode,
 		"seen": Time.get_ticks_msec() / 1000.0,
 	})
 	rooms_changed.emit()
@@ -301,9 +415,12 @@ func _add_room(ip: String, port: int, text: String) -> void:
 	var name := parts[1]
 	var game_port := int(parts[2])
 	var count := int(parts[3])
+	# the room tells how it talks, a browser can only join a websocket room
+	var web := parts.size() >= 5 and int(parts[4]) == 1
 	for r in rooms:
 		if str(r["address"]) == ip and int(r["port"]) == game_port:
 			r["count"] = count
+			r["web"] = web
 			r["seen"] = Time.get_ticks_msec() / 1000.0
 			rooms_changed.emit()
 			return
@@ -312,6 +429,7 @@ func _add_room(ip: String, port: int, text: String) -> void:
 		"address": ip,
 		"port": game_port,
 		"count": count,
+		"web": web,
 		"seen": Time.get_ticks_msec() / 1000.0,
 	})
 	rooms_changed.emit()
@@ -340,6 +458,8 @@ func _on_peer_disconnected(id: int) -> void:
 
 
 func _on_connected_to_server() -> void:
+	# the room is back
+	_reconnecting = false
 	# tell the host who we are, and keep saying it until the host answers:
 	# the very first message can still be too early for the rpc channels
 	_hello_timer = 0.0
@@ -370,6 +490,13 @@ func _on_connection_failed() -> void:
 
 func _on_server_disconnected() -> void:
 	if _closing:
+		return
+	# a client that loses the room tries to get back into it
+	if not _hosting and _last_address != "":
+		_reconnecting = true
+		_reconnect_timer = RECONNECT_WAIT
+		players.clear()
+		players_changed.emit()
 		return
 	leave()
 
