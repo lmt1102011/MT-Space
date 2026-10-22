@@ -68,14 +68,26 @@ text = "BACK"
 [node name="CreateRoomButton" type="Button" parent="UI"]
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -196.0
+offset_left = -320.0
+offset_top = 40.0
+offset_right = -196.0
+offset_bottom = 82.0
+grow_horizontal = 0
+grow_vertical = 2
+theme_override_font_sizes/font_size = 17
+text = "+ NEW ROOM"
+
+[node name="JoinRoomButton" type="Button" parent="UI"]
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -176.0
 offset_top = 40.0
 offset_right = -40.0
 offset_bottom = 82.0
 grow_horizontal = 0
 grow_vertical = 2
 theme_override_font_sizes/font_size = 17
-text = "+ NEW ROOM"
+text = "JOIN ROOM"
 
 [node name="RoomsList" type="VBoxContainer" parent="UI"]
 anchor_left = 0.5

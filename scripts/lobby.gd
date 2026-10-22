@@ -16,6 +16,7 @@ const ROOM_NAMES := [
 @onready var _rooms_list: VBoxContainer = $UI/RoomsList
 @onready var _empty_label: Label = $UI/EmptyLabel
 @onready var _create_btn: Button = $UI/CreateRoomButton
+@onready var _join_btn: Button = $UI/JoinRoomButton
 @onready var _back_btn: Button = $UI/BackButton
 @onready var _header: Label = $UI/Header
 @onready var _sub_header: Label = $UI/SubHeader
@@ -47,6 +48,7 @@ var _web_mode: bool = false
 
 func _ready() -> void:
 	_create_btn.pressed.connect(_on_create)
+	_join_btn.pressed.connect(_on_join_pressed)
 	_back_btn.pressed.connect(_on_back)
 	_leave_btn.pressed.connect(_on_leave)
 	_add_btn.pressed.connect(_on_add_player)
@@ -212,6 +214,14 @@ func _on_toggle_web_mode() -> void:
 
 # The player typed the address of a host, that is the only way to find a room
 # from a browser.
+func _on_join_pressed() -> void:
+	Game.sfx("click", -10.0, 0.95, 1.05)
+	# a small panel to type the address of the host
+	_address_panel.visible = not _address_panel.visible
+	if _address_panel.visible and _address_edit:
+		_address_edit.grab_focus()
+
+
 func _on_join_address() -> void:
 	Game.sfx("click", -10.0, 0.95, 1.05)
 	var text := _address_edit.text.strip_edges()
@@ -233,6 +243,7 @@ func _on_join_address() -> void:
 	if not Net.join_room(address, port, web):
 		return
 	_in_room = true
+	_address_panel.visible = false
 	_refresh()
 
 
