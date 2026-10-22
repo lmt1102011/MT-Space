@@ -6,6 +6,9 @@ extends Node
 # window manager. In a browser the page itself has to go fullscreen, which
 # only the page can do, so the request goes through the javascript bridge.
 
+# a new version is up there, the player can update
+signal update_available(version: String)
+
 # the file on the server that says which version is up there
 const REMOTE_VERSION := "version.txt"
 # the file inside the build that says which version this build is
@@ -119,8 +122,18 @@ func _check_version(remote: String) -> void:
 			return
 	if remote == mine:
 		return
-	print("[web] a new version is up there: ", remote, " - reloading")
-	_reload_page()
+	# a new version is up there: the button shows up, the player decides
+	print("[web] a new version is up there: ", remote)
+	update_available.emit(remote)
+	_show_update_button(remote)
+
+
+# Shows the button that updates the game.
+func _show_update_button(version: String) -> void:
+	if not ClassDB.class_exists("JavaScriptBridge"):
+		return
+	var js := "(function(){ if (window.showUpdateButton) { window.showUpdateButton('%s'); } })();" % version
+	JavaScriptBridge.eval(js, true)
 
 
 func _process(delta: float) -> void:
@@ -177,10 +190,11 @@ func _store_version(version: String) -> void:
 	JavaScriptBridge.eval(js, true)
 
 
-func _reload_page() -> void:
+# Throws the old files away and starts the page again, so the new build is
+# used. The player presses the button, so nothing changes while they play.
+func apply_update() -> void:
 	if not ClassDB.class_exists("JavaScriptBridge"):
 		return
-	# the old files have to go, otherwise the page starts the old build again
 	var js := """
 	(async function() {
 		try {
@@ -194,7 +208,7 @@ func _reload_page() -> void:
 			}
 			try { window.localStorage.removeItem('mt_space_version'); } catch (e) { }
 		} catch (e) { }
-		window.location.reload(true);
+		window.location.replace(window.location.pathname + '?v=' + Date.now());
 	})();
 	"""
 	JavaScriptBridge.eval(js, true)

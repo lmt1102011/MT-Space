@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
+		<title>MT SPACE - survive the swarm</title>
+		<meta name="description" content="MT Space is a survive the swarm arcade game. Play it in the browser, download it for your computer or for your phone.">
+		<style>
+			:root {
+				--bg: #070b0c;
+				--bg2: #0d1416;
+				--line: rgba(120, 190, 220, 0.16);
+				--text: #e8f1f4;
+				--dim: #8ea3ab;
+				--cyan: #6fd8ff;
+				--orange: #ff9a4d;
+			}
+
+			* { box-sizing: border-box; }
+
+			html, body {
+				margin: 0;
+				padding: 0;
+				background: var(--bg);
+				color: var(--text);
+				overflow-x: hidden;
+			}
+
+			body {
+				font-family: 'Segoe UI', 'Noto Sans', system-ui, -apple-system, sans-serif;
+				line-height: 1.6;
+				-webkit-font-smoothing: antialiased;
+			}
+
+			/* the background slowly breathes */
+			.bg-grid {
+				position: fixed;
+				inset: 0;
+				background-image:
+					linear-gradient(rgba(111, 216, 255, 0.05) 1px, transparent 1px),
+					linear-gradient(90deg, rgba(111, 216, 255, 0.05) 1px, transparent 1px);
+				background-size: 46px 46px;
+				animation: drift 22s linear infinite;
+				pointer-events: none;
+				z-index: 0;
+			}
+
+			.bg-glow {
+				position: fixed;
+				inset: 0;
+				background:
+					radial-gradient(680px 420px at 18% -8%, rgba(111, 216, 255, 0.13), transparent 65%),
+					radial-gradient(560px 380px at 88% 8%, rgba(255, 154, 77, 0.10), transparent 62%);
+				pointer-events: none;
+				z-index: 0;
+			}
+
+			@keyframes drift {
+				from { background-position: 0 0, 0 0; }
+				to { background-position: 46px 46px, 46px 46px; }
+			}
+
+			.wrap {
+				position: relative;
+				z-index: 1;
+				max-width: 1080px;
+				margin: 0 auto;
+				padding: 0 22px 80px;
+			}
+
+			header {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				padding: 26px 0 10px;
+			}
+
+			.logo {
+				font-size: 21px;
+				font-weight: 800;
+				letter-spacing: 0.30em;
+			}
+
+			.logo span { color: var(--cyan); }
+
+			.tag {
+				font-size: 12px;
+				letter-spacing: 0.18em;
+				color: var(--dim);
+				text-transform: uppercase;
+			}
+
+			.hero {
+				padding: 54px 0 30px;
+				text-align: center;
+			}
+
+			.hero h1 {
+				margin: 0 0 14px;
+				font-size: clamp(42px, 9vw, 86px);
+				line-height: 1.02;
+				letter-spacing: 0.06em;
+				font-weight: 900;
+				background: linear-gradient(180deg, #ffffff 30%, #7fd4f5 100%);
+				-webkit-background-clip: text;
+				background-clip: text;
+				color: transparent;
+			}
+
+			.hero p {
+				margin: 0 auto;
+				max-width: 620px;
+				color: var(--dim);
+				font-size: 18px;
+			}
+
+			.hero p b { color: var(--text); font-weight: 600; }
+
+			/* the two download buttons */
+			.downloads {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 16px;
+				justify-content: center;
+				margin: 34px 0 10px;
+			}
+
+			.btn {
+				display: flex;
+				align-items: center;
+				gap: 14px;
+				padding: 15px 26px;
+				border-radius: 12px;
+				border: 1px solid var(--line);
+				background: rgba(16, 26, 30, 0.82);
+				color: var(--text);
+				text-decoration: none;
+				font-weight: 700;
+				font-size: 17px;
+				transition: transform .18s ease, border-color .18s ease, background .18s ease;
+				backdrop-filter: blur(6px);
+			}
+
+			.btn:hover {
+				transform: translateY(-3px);
+				border-color: rgba(111, 216, 255, 0.55);
+				background: rgba(22, 38, 44, 0.92);
+			}
+
+			.btn .ico {
+				width: 30px;
+				height: 30px;
+				flex: 0 0 30px;
+			}
+
+			.btn small {
+				display: block;
+				font-weight: 500;
+				font-size: 12px;
+				color: var(--dim);
+				letter-spacing: 0.06em;
+			}
+
+			.btn.main {
+				border-color: rgba(111, 216, 255, 0.45);
+				background: linear-gradient(180deg, rgba(30, 74, 92, 0.85), rgba(16, 34, 42, 0.85));
+			}
+
+			/* the moving pictures */
+			.shots {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+				gap: 18px;
+				margin: 46px 0 10px;
+			}
+
+			.shot {
+				position: relative;
+				border-radius: 14px;
+				overflow: hidden;
+				border: 1px solid var(--line);
+				background: #05090a;
+				box-shadow: 0 22px 48px rgba(0, 0, 0, 0.45);
+				transition: transform .2s ease, border-color .2s ease;
+			}
+
+			.shot:hover {
+				transform: translateY(-5px) scale(1.012);
+				border-color: rgba(111, 216, 255, 0.45);
+			}
+
+			.shot img {
+				display: block;
+				width: 100%;
+				height: auto;
+			}
+
+			.shot figcaption {
+				position: absolute;
+				left: 0;
+				right: 0;
+				bottom: 0;
+				padding: 26px 16px 12px;
+				font-size: 13px;
+				letter-spacing: 0.14em;
+				text-transform: uppercase;
+				background: linear-gradient(180deg, transparent, rgba(4, 8, 9, 0.92));
+				color: #d5e6ec;
+			}
+
+			/* the moving picture gets a slow zoom, that makes it feel alive */
+			.shot img {
+				animation: zoom 16s ease-in-out infinite alternate;
+			}
+
+			@keyframes zoom {
+				from { transform: scale(1.0); }
+				to { transform: scale(1.06); }
+			}
+
+			@media (prefers-reduced-motion: reduce) {
+				.shot img, .bg-grid { animation: none; }
+			}
+
+			.features {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+				gap: 16px;
+				margin: 54px 0 0;
+			}
+
+			.feature {
+				padding: 20px 22px;
+				border-radius: 12px;
+				border: 1px solid var(--line);
+				background: rgba(12, 19, 21, 0.7);
+			}
+
+			.feature h3 {
+				margin: 0 0 6px;
+				font-size: 15px;
+				letter-spacing: 0.1em;
+				text-transform: uppercase;
+				color: var(--cyan);
+			}
+
+			.feature p {
+				margin: 0;
+				font-size: 14.5px;
+				color: var(--dim);
+			}
+
+			footer {
+				margin-top: 64px;
+				padding-top: 22px;
+				border-top: 1px solid var(--line);
+				display: flex;
+				flex-wrap: wrap;
+				gap: 12px;
+				justify-content: space-between;
+				font-size: 13px;
+				color: var(--dim);
+			}
+
+			footer a { color: var(--dim); text-decoration: none; }
+			footer a:hover { color: var(--cyan); }
+
+			#update-note {
+				display: none;
+				position: fixed;
+				left: 50%;
+				bottom: 18px;
+				transform: translateX(-50%);
+				z-index: 20;
+				padding: 9px 16px;
+				border-radius: 8px;
+				background: rgba(8, 14, 16, 0.9);
+				border: 1px solid rgba(111, 216, 255, 0.4);
+				color: #bfe6ff;
+				font-size: 13px;
+			}
+
+			/* the button that updates the game, it shows up when there is a
+			   new version on the server */
+			#update-button {
+				display: none;
+				position: fixed;
+				left: 50%;
+				bottom: 26px;
+				transform: translateX(-50%) translateY(30px);
+				z-index: 30;
+				padding: 14px 30px;
+				border: 0;
+				border-radius: 999px;
+				background: linear-gradient(180deg, #35d0ff, #1f8fd6);
+				color: #041016;
+				font: inherit;
+				font-size: 15px;
+				font-weight: 800;
+				letter-spacing: 0.08em;
+				text-transform: uppercase;
+				cursor: pointer;
+				box-shadow: 0 14px 34px rgba(31, 143, 214, 0.45);
+				opacity: 0;
+				transition: transform .35s cubic-bezier(.2, .9, .25, 1.2), opacity .35s ease;
+			}
+
+			#update-button.show {
+				display: block;
+				transform: translateX(-50%) translateY(0);
+				opacity: 1;
+			}
+
+			#update-button:active { transform: translateX(-50%) translateY(2px) scale(0.98); }
+
+			#update-button .spin {
+				display: inline-block;
+				margin-right: 8px;
+			}
+
+			#update-button.busy .spin { animation: spin 1s linear infinite; }
+
+			@keyframes spin { to { transform: rotate(360deg); } }
+		</style>
+	</head>
+	<body>
+		<div class="bg-grid"></div>
+		<div class="bg-glow"></div>
+
+		<div class="wrap">
+			<header>
+				<div class="logo">MT<span>SPACE</span></div>
+				<div class="tag">survive the swarm</div>
+			</header>
+
+			<section class="hero">
+				<h1>MT SPACE</h1>
+				<p>Your little ship against an endless swarm. <b>Survive the waves</b>, grab the cards and see how far you get.</p>
+
+				<div class="downloads">
+					<a class="btn main" href="downloads/mt-space-windows.zip" download>
+						<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="#6fd8ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+							<rect x="2" y="3" width="20" height="14" rx="2"></rect>
+							<path d="M8 21h8M12 17v4"></path>
+						</svg>
+						<span>DOWNLOAD FOR PC<small>Windows - 64 bit</small></span>
+					</a>
+					<a class="btn" href="downloads/mt-space-android.apk" download>
+						<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="#ff9a4d" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+							<rect x="6" y="2" width="12" height="20" rx="2.5"></rect>
+							<path d="M11 18.5h2"></path>
+						</svg>
+						<span>DOWNLOAD FOR PHONE<small>Android - apk</small></span>
+					</a>
+					<a class="btn" href="game/index.html">
+						<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="#9be7a0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+							<circle cx="12" cy="12" r="9"></circle>
+							<path d="M10 9.5l5 2.5-5 2.5z" fill="#9be7a0" stroke="none"></path>
+						</svg>
+						<span>PLAY IN BROWSER<small>no download needed</small></span>
+					</a>
+				</div>
+			</section>
+
+			<section class="shots">
+				<figure class="shot">
+					<img src="thumbs/game.webp" alt="The game being played: the ship fights a swarm of enemies" width="640" height="360" loading="lazy">
+					<figcaption>the swarm arrives</figcaption>
+				</figure>
+				<figure class="shot">
+					<img src="thumbs/menu.webp" alt="The main menu of MT Space" width="640" height="360" loading="lazy">
+					<figcaption>the main menu</figcaption>
+				</figure>
+			</section>
+
+			<section class="features">
+				<div class="feature">
+					<h3>Endless waves</h3>
+					<p>Every wave brings something new, from simple shapes to shooters and chargers.</p>
+				</div>
+				<div class="feature">
+					<h3>Cards</h3>
+					<p>Level up and pick a card. The game never stops while you decide.</p>
+				</div>
+				<div class="feature">
+					<h3>Play together</h3>
+					<p>One player makes the room and the others join from the same network.</p>
+				</div>
+				<div class="feature">
+					<h3>Phone ready</h3>
+					<p>Two sticks on the screen: the left one moves, the right one aims and shoots.</p>
+				</div>
+			</section>
+
+			<footer>
+				<span>MT Space - built with Godot</span>
+				<span><a href="game/index.html">Play in the browser</a> &nbsp;·&nbsp; <a href="#top">Back to the top</a></span>
+			</footer>
+		</div>
+
+		<div id="update-note">a new version is being downloaded...</div>
+
+		<button id="update-button" type="button">
+			<span class="spin">&#8635;</span><span id="update-label">NEW VERSION - UPDATE</span>
+		</button>
+
+		<script>
+			// The page asks the server which version is up there. When it is
+			// newer than the one this page remembers, a button shows up. The
+			// player presses it and the old files are thrown away, so the
+			// next time the game starts it is the new one.
+			const STORAGE_KEY = 'mt_space_version';
+
+			async function dropOldCaches() {
+				try {
+					if (navigator.serviceWorker) {
+						const registrations = await navigator.serviceWorker.getRegistrations();
+						for (const reg of registrations) { await reg.unregister(); }
+					}
+					if (window.caches) {
+						const keys = await caches.keys();
+						for (const key of keys) { await caches.delete(key); }
+					}
+				} catch (e) { }
+			}
+
+			function showUpdateButton(version) {
+				const button = document.getElementById('update-button');
+				if (!button) return;
+				button.classList.add('show');
+				button.onclick = async () => {
+					button.classList.add('busy');
+					document.getElementById('update-label').textContent = 'UPDATING';
+					document.getElementById('update-note').style.display = 'block';
+					try { window.localStorage.removeItem(STORAGE_KEY); } catch (e) { }
+					await dropOldCaches();
+					// the query makes the browser forget the old files
+					window.location.replace(window.location.pathname + '?v=' + Date.now());
+				};
+			}
+
+			async function checkForNewVersion() {
+				try {
+					const response = await fetch('version.txt?t=' + Date.now(), { cache: 'no-store' });
+					if (!response.ok) return;
+					const remote = (await response.text()).trim();
+					if (!remote) return;
+					let stored = '';
+					try { stored = window.localStorage.getItem(STORAGE_KEY) || ''; } catch (e) { stored = ''; }
+					if (!stored) {
+						try { window.localStorage.setItem(STORAGE_KEY, remote); } catch (e) { }
+						return;
+					}
+					if (stored === remote) return;
+					showUpdateButton(remote);
+				} catch (e) {
+					// no connection, the page just keeps working
+				}
+			}
+
+			checkForNewVersion();
+		</script>
+	</body>
+</html>

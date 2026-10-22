@@ -1,6 +1,11 @@
-name: Build web
+name: Build the site and the downloads
 
-# Builds the game for the browser and puts it on GitHub Pages.
+# Builds the website and the downloads, then puts everything on GitHub Pages.
+#
+# The website is a small page that shows the game and the pictures of it.
+# The game itself lives in the game folder, so it can be played in the
+# browser. The downloads are the windows build and the android one.
+#
 # Every run writes the commit into version.txt, so a running game can see
 # that there is a new version and reload itself.
 
@@ -32,19 +37,64 @@ jobs:
           use-dotnet: false
           include-templates: true
 
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up the Android tools
+        uses: android-actions/setup-android@v3
+
+      - name: Point Godot at the Android tools
+        run: |
+          mkdir -p ~/.config/godot
+          cat > ~/.config/godot/editor_settings-4.7.tres <<'EOF'
+          [gd_resource type="EditorSettings" format=3]
+          [resource]
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/java_sdk_path = "$JAVA_HOME"
+          export/android/debug_keystore = "$HOME/.android/debug.keystore"
+          export/android/debug_keystore_user = "androiddebugkey"
+          export/android/debug_keystore_pass = "android"
+          EOF
+          # the debug key is needed to sign the android build
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair -v -keystore "$HOME/.android/debug.keystore" \
+              -storepass android -alias androiddebugkey -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US" 2>/dev/null || true
+          fi
+          ls -la ~/.android/ || true
+
       - name: Import the project
         run: godot --headless --editor --quit --path .
 
       - name: Write the version into the build
         run: echo "${GITHUB_SHA}" > version_embedded.txt
 
-      - name: Export for the web
+      - name: Build the game for the browser
         run: |
-          mkdir -p build/web
-          godot --headless --path . --export-release "Web" build/web/index.html
+          mkdir -p build/web/game
+          godot --headless --path . --export-release "Web" build/web/game/index.html
 
-      - name: Write the version file
+      - name: Build the game for Windows
         run: |
+          mkdir -p build/downloads
+          godot --headless --path . --export-release "Windows" build/downloads/mt-space.exe
+          cd build/downloads
+          zip -r mt-space-windows.zip mt-space.exe mt-space.pck
+          rm -f mt-space.exe mt-space.pck
+
+      - name: Build the game for Android
+        run: |
+          mkdir -p build/downloads
+          godot --headless --path . --export-debug "Android" build/downloads/mt-space.apk || \
+            echo "the android build did not work, the site goes out without it"
+
+      - name: Put the website together
+        run: |
+          cp -r site/. build/web/
           echo "${GITHUB_SHA}" > build/web/version.txt
 
       - name: Upload the pages artifact

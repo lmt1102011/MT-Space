@@ -122,7 +122,15 @@ func is_mobile_mode() -> bool:
 
 func set_control_mode(mode: int) -> void:
 	control_mode = CONTROL_MOBILE if mode == CONTROL_MOBILE else CONTROL_PC
-	_save_settings()
+
+
+# The controls are picked by the device the game runs on: a phone gets the
+# two sticks, a computer the keyboard.
+func _detect_control_mode() -> void:
+	if DisplayServer.is_touchscreen_available():
+		control_mode = CONTROL_MOBILE
+	else:
+		control_mode = CONTROL_PC
 
 
 # The settings are kept, so the player does not have to do it again.
@@ -132,17 +140,15 @@ const SETTINGS_PATH := "user://settings.cfg"
 func _load_settings() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(SETTINGS_PATH) != OK:
+		_detect_control_mode()
 		return
 	SfxLib.master_volume = clampf(float(cfg.get_value("audio", "volume", 1.0)), 0.0, 1.0)
-	control_mode = int(cfg.get_value("game", "control_mode", CONTROL_PC))
-	if control_mode != CONTROL_MOBILE:
-		control_mode = CONTROL_PC
+	_detect_control_mode()
 
 
 func _save_settings() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("audio", "volume", SfxLib.master_volume)
-	cfg.set_value("game", "control_mode", control_mode)
 	cfg.save(SETTINGS_PATH)
 
 

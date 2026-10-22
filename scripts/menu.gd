@@ -5,28 +5,27 @@ const PROMPT_SCENE := preload("res://scenes/name_prompt.tscn")
 @onready var _ui: Control = $UI
 @onready var _play_btn: Button = $UI/PlayButton
 @onready var _quit_btn: Button = $UI/QuitButton
-@onready var _full_btn: Button = $UI/FullscreenButton
 @onready var _title: Label = $UI/Title
 @onready var _subtitle: Label = $UI/Subtitle
 @onready var _settings_btn: Button = $UI/SettingsButton
 @onready var _settings_panel: Control = $UI/SettingsPanel
 @onready var _volume_slider: HSlider = $UI/SettingsPanel/VolumeSlider
 @onready var _volume_value: Label = $UI/SettingsPanel/VolumeValue
-@onready var _mode_btn: Button = $UI/SettingsPanel/ModeButton
 @onready var _settings_close: Button = $UI/SettingsPanel/CloseButton
 
 
 func _ready() -> void:
 	_play_btn.pressed.connect(_on_play)
 	_quit_btn.pressed.connect(_on_quit)
-	_full_btn.pressed.connect(_on_fullscreen)
 	_settings_btn.pressed.connect(_on_settings_pressed)
 	_settings_close.pressed.connect(_on_settings_close)
-	_mode_btn.pressed.connect(_on_toggle_mode)
 	_volume_slider.value = Game.get_master_volume()
 	_volume_slider.value_changed.connect(_on_volume_changed)
 	_on_volume_changed(_volume_slider.value)
-	_refresh_mode_text()
+	# a link can ask for the game right away, that is handy for the website
+	if _wants_to_play_now():
+		_start_game()
+		return
 	# gentle fade in (fade the Control, a CanvasLayer has no modulate)
 	_ui.modulate.a = 0.0
 	var tw := create_tween()
@@ -44,6 +43,22 @@ func _on_play() -> void:
 	prompt.name_chosen.connect(_on_named)
 
 
+# True when the address of the page asks for the game right away.
+func _wants_to_play_now() -> bool:
+	if not Web.is_web():
+		return false
+	if not ClassDB.class_exists("JavaScriptBridge"):
+		return false
+	var js := "new URLSearchParams(window.location.search).get('play')"
+	return str(JavaScriptBridge.eval(js, true)) == "1"
+
+
+# Straight into the game, without asking for a name.
+func _start_game() -> void:
+	Net.player_name = "PLAYER"
+	get_tree().change_scene_to_file("res://scenes/main.tscn")
+
+
 func _on_named(_name: String) -> void:
 	get_tree().change_scene_to_file("res://scenes/lobby.tscn")
 
@@ -51,16 +66,6 @@ func _on_named(_name: String) -> void:
 func _on_quit() -> void:
 	Game.sfx("click", -10.0, 0.95, 1.05)
 	get_tree().quit()
-
-
-func _on_fullscreen() -> void:
-	Game.sfx("click", -10.0, 0.95, 1.05)
-	Web.toggle_fullscreen()
-	_refresh_fullscreen_text()
-
-
-func _refresh_fullscreen_text() -> void:
-	_full_btn.text = "WINDOW" if Web.is_fullscreen() else "FULLSCREEN"
 
 
 # --- the settings ----------------------------------------------------------
@@ -79,25 +84,11 @@ func _on_volume_changed(value: float) -> void:
 	_volume_value.text = "%d%%" % int(round(value * 100.0))
 
 
-# The player picks between the keyboard and the two sticks of a phone.
-func _on_toggle_mode() -> void:
-	Game.sfx("click", -10.0, 0.95, 1.05)
-	if Game.is_mobile_mode():
-		Game.set_control_mode(Game.CONTROL_PC)
-	else:
-		Game.set_control_mode(Game.CONTROL_MOBILE)
-	_refresh_mode_text()
-
-
-func _refresh_mode_text() -> void:
-	_mode_btn.text = "CONTROLS: TWO STICKS (PHONE)" if Game.is_mobile_mode() \
-		else "CONTROLS: KEYBOARD AND MOUSE"
-
-
 func _unhandled_input(event: InputEvent) -> void:
 	# F11 is the usual key for fullscreen
 	if event is InputEventKey and event.pressed and not event.echo:
 		var key := event as InputEventKey
 		if key.physical_keycode == KEY_F11:
-			_on_fullscreen()
+			Game.sfx("click", -10.0, 0.95, 1.05)
+			Web.toggle_fullscreen()
 			get_viewport().set_input_as_handled()

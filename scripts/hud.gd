@@ -15,6 +15,7 @@ const CardScript := preload("res://scripts/card.gd")
 @onready var _settings_close: Button = $SettingsPanel/CloseButton
 @onready var _settings_quit: Button = $SettingsPanel/QuitButton
 @onready var _spectate_label: Label = $SpectateLabel
+@onready var _update_btn: Button = $UpdateButton
 
 var _countdown: int = 0
 
@@ -31,6 +32,9 @@ func _ready() -> void:
 	Game.game_over.connect(_on_game_over)
 	Game.card_collected.connect(show_card_reward)
 	Game.spectate_changed.connect(_on_spectate_changed)
+	Web.update_available.connect(_on_update_available)
+	if _update_btn:
+		_update_btn.pressed.connect(_on_update_pressed)
 	var spawner := get_node_or_null("../Spawner")
 	if spawner:
 		spawner.wave_cleared_text.connect(_on_wave_cleared)
@@ -89,6 +93,18 @@ func _on_spectate_changed(_target_id: int) -> void:
 	var who := Game.spectate_name()
 	_spectate_label.text = "SPECTATING %s" % who if who != "" else "SPECTATING"
 	_spectate_label.visible = true
+
+
+# A new version is up there, the button shows up.
+func _on_update_available(_version: String) -> void:
+	if _update_btn:
+		_update_btn.visible = true
+
+
+func _on_update_pressed() -> void:
+	Game.sfx("click", -12.0, 0.95, 1.05)
+	# the old files are thrown away and the page starts again with the new ones
+	Web.apply_update()
 
 
 func _unhandled_input(event: InputEvent) -> void:
