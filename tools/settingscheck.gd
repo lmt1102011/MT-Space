@@ -35,8 +35,8 @@ func _run() -> void:
 	_check(btn != null, "the menu has a settings button")
 	_check(panel != null, "the menu has a settings panel")
 	_check(slider != null, "the settings have a volume slider")
-	_check(mode_btn != null, "the settings have a control mode button")
-	if btn == null or slider == null or mode_btn == null:
+	_check(mode_btn == null, "the settings have no control mode button any more")
+	if btn == null or slider == null:
 		print("=== done: %d failure(s) ===" % _failed)
 		get_tree().quit(1)
 		return
@@ -55,17 +55,6 @@ func _run() -> void:
 	_check(is_equal_approx(Game.get_master_volume(), 0.35), "the volume is the new one")
 	slider.value = before
 	await get_tree().process_frame
-
-	# the mode button switches between the keyboard and the sticks
-	var was_mobile := Game.is_mobile_mode()
-	mode_btn.pressed.emit()
-	await get_tree().process_frame
-	_check(Game.is_mobile_mode() != was_mobile, "the mode button switches the controls")
-	_check(mode_btn.text.find("STICKS") >= 0 or mode_btn.text.find("KEYBOARD") >= 0,
-		"the mode button shows the mode")
-	mode_btn.pressed.emit()
-	await get_tree().process_frame
-	_check(Game.is_mobile_mode() == was_mobile, "the mode button switches back")
 
 	# the wave label sits in the middle of the top
 	var main := load("res://scenes/main.tscn").instantiate() as Node
