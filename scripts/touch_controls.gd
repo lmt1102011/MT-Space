@@ -46,23 +46,14 @@ func _resize_home() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	# on a computer the keyboard and the mouse do the job, the sticks are only
+	# for a device with a touchscreen
+	if not Game.is_mobile_mode():
+		return
 	if event is InputEventScreenTouch:
 		_on_touch(event as InputEventScreenTouch)
 	elif event is InputEventScreenDrag:
 		_on_drag(event as InputEventScreenDrag)
-	elif event is InputEventMouseButton:
-		# a mouse works as a finger too, that is handy on a desktop browser
-		var mb := event as InputEventMouseButton
-		if mb.button_index == MOUSE_BUTTON_LEFT:
-			_on_touch(_touch_from_mouse(mb.pressed, mb.position, 0))
-
-
-func _touch_from_mouse(pressed: bool, pos: Vector2, index: int) -> InputEventScreenTouch:
-	var t := InputEventScreenTouch.new()
-	t.pressed = pressed
-	t.position = pos
-	t.index = index
-	return t
 
 
 func _on_touch(t: InputEventScreenTouch) -> void:

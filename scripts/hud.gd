@@ -74,7 +74,15 @@ func _on_settings_close() -> void:
 
 func _on_settings_quit() -> void:
 	Game.sfx("click", -12.0, 0.95, 1.05)
-	get_tree().quit()
+	_leave_to_lobby()
+
+
+# Leaving a match goes back to the lobby, it does not close the whole game.
+func _leave_to_lobby() -> void:
+	Game.set_fire(false)
+	Game.reset_run()
+	Net.leave()
+	get_tree().change_scene_to_file("res://scenes/lobby.tscn")
 
 
 func _on_volume_changed(value: float) -> void:

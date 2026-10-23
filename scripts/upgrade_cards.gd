@@ -17,6 +17,7 @@ var _pending: bool = false
 var _hint: Control = null
 var _hint_holder: Control = null
 var _quit_btn: Button = null
+var _minimap: Control = null
 
 const CARD_W := 200.0
 const CARD_H := 280.0
@@ -35,6 +36,9 @@ func _ready() -> void:
 	_build_ui()
 	_build_hint()
 	visible = false
+	var parent := get_parent()
+	if parent:
+		_minimap = parent.get_node_or_null("HUD/Minimap") as Control
 	Game.request_upgrade_choice.connect(_on_request)
 
 
@@ -58,8 +62,8 @@ func _build_ui() -> void:
 	_title.anchor_bottom = 0.5
 	_title.offset_left = -400.0
 	_title.offset_right = 400.0
-	_title.offset_top = -250.0
-	_title.offset_bottom = -200.0
+	_title.offset_top = -260.0
+	_title.offset_bottom = -210.0
 	_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_title.add_theme_font_size_override("font_size", 34)
 	_title.add_theme_color_override("font_color", Color(0.9, 0.95, 1.0))
@@ -76,16 +80,17 @@ func _build_ui() -> void:
 	add_child(_holder)
 
 	_quit_btn = Button.new()
-	_quit_btn.text = "QUIT"
+	_quit_btn.text = "TO LOBBY"
 	_quit_btn.anchor_left = 1.0
 	_quit_btn.anchor_right = 1.0
 	_quit_btn.anchor_top = 0.0
 	_quit_btn.anchor_bottom = 0.0
 	_quit_btn.offset_left = -140.0
 	_quit_btn.offset_right = -40.0
-	_quit_btn.offset_top = 16.0
-	_quit_btn.offset_bottom = 56.0
-	_quit_btn.add_theme_font_size_override("font_size", 17)
+	# below the minimap, so the two never sit on top of each other
+	_quit_btn.offset_top = 158.0
+	_quit_btn.offset_bottom = 198.0
+	_quit_btn.add_theme_font_size_override("font_size", 15)
 	_quit_btn.pressed.connect(_on_quit)
 	_quit_btn.visible = false
 	add_child(_quit_btn)
@@ -183,6 +188,10 @@ func _show() -> void:
 		_cards.append(c)
 
 	visible = true
+	# the modal covers the HUD; hiding the minimap keeps the title clear on
+	# narrow screens where it would otherwise sit under the minimap
+	if is_instance_valid(_minimap):
+		_minimap.visible = false
 	# the waiting card steps aside, the real choice takes over
 	_hint.visible = false
 	_dim.visible = true
@@ -263,6 +272,8 @@ func _close() -> void:
 		tw.parallel().tween_property(c, "modulate:a", 0.0, 0.2)
 	tw.tween_callback(func():
 		visible = false
+		if is_instance_valid(_minimap):
+			_minimap.visible = true
 		for c in _cards:
 			c.queue_free()
 		_cards.clear())
@@ -270,4 +281,8 @@ func _close() -> void:
 
 func _on_quit() -> void:
 	Game.sfx("click", -12.0, 0.95, 1.05)
-	get_tree().quit()
+	# leaving a match goes back to the lobby, it does not close the game
+	Game.set_fire(false)
+	Game.reset_run()
+	Net.leave()
+	get_tree().change_scene_to_file("res://scenes/lobby.tscn")

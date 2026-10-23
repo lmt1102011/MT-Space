@@ -42,6 +42,8 @@ const ROOM_NAMES := [
 var _my_room: int = -1          # index into Net.rooms
 var _creating: bool = false
 var _in_room: bool = false
+# the address box is only open after the join by host button was pressed
+var _address_open: bool = false
 # a room that speaks websocket can be joined from a browser
 var _web_mode: bool = false
 
@@ -69,10 +71,8 @@ func _ready() -> void:
 	# a browser cannot host, and it cannot look for rooms either
 	if not Net.can_host():
 		_create_btn.disabled = true
-		_create_btn.text = "HOSTING IS NOT POSSIBLE HERE"
-		_sub_header.text = "a browser can only join a room - type the address of the host below"
-	elif OS.has_feature("web"):
-		_sub_header.text = "a browser cannot find rooms by itself, so type the address of the host"
+		_create_btn.text = "CANNOT HOST HERE"
+		_sub_header.text = "a browser can only join a desktop host - use JOIN BY HOST"
 
 
 # --- views ----------------------------------------------------------------
@@ -86,11 +86,11 @@ func _refresh() -> void:
 	_sub_header.visible = not _in_room
 	_rooms_list.visible = not _in_room
 	_create_btn.visible = not _in_room
+	_join_btn.visible = not _in_room
 	_empty_label.visible = not _in_room
 	_back_btn.visible = not _in_room
-	# the box to type an address is only useful when there are no rooms to
-	# pick, that is the case in a browser
-	_address_panel.visible = not _in_room
+	# the address box only shows after the join by host button was pressed
+	_address_panel.visible = _address_open and not _in_room
 	if _in_room:
 		_refresh_room()
 	else:
@@ -107,7 +107,8 @@ func _refresh_room_list() -> void:
 		c.queue_free()
 	_empty_label.visible = Net.rooms.is_empty()
 	if Net.rooms.is_empty():
-		_sub_header.text = "looking for rooms on this network..."
+		_empty_label.text = "no rooms yet - create one" if Net.can_host() \
+			else "a browser cannot find rooms - use JOIN BY HOST"
 	for i in Net.rooms.size():
 		var room: Dictionary = Net.rooms[i]
 		var count := int(room["count"])
@@ -168,8 +169,11 @@ func _show_create_view() -> void:
 	_rooms_list.visible = false
 	_empty_label.visible = false
 	_create_btn.visible = false
+	_join_btn.visible = false
 	_back_btn.visible = false
 	_room_panel.visible = false
+	_address_open = false
+	_address_panel.visible = false
 	_create_panel.visible = true
 	_name_edit.grab_focus()
 
@@ -216,9 +220,10 @@ func _on_toggle_web_mode() -> void:
 # from a browser.
 func _on_join_pressed() -> void:
 	Game.sfx("click", -10.0, 0.95, 1.05)
-	# a small panel to type the address of the host
-	_address_panel.visible = not _address_panel.visible
-	if _address_panel.visible and _address_edit:
+	# the address box opens right under the buttons, not in the middle
+	_address_open = not _address_open
+	_address_panel.visible = _address_open
+	if _address_open and _address_edit:
 		_address_edit.grab_focus()
 
 
@@ -229,22 +234,64 @@ func _on_join_address() -> void:
 		return
 	var address := text
 	var port := Net.DEFAULT_PORT
-	# an address may come with the port on it
-	if text.contains(":"):
-		var bits := text.rsplit(":", true, 1)
-		address = bits[0]
-		if bits[1].is_valid_int():
-			port = int(bits[1])
-	Net.player_name = _player_name()
-	# a websocket room is the only kind a browser can reach
-	var web := true
-	if address.begins_with("ws://") or address.begins_with("wss://"):
+	# a browser can only reach a websocket room, a desktop can use either
+	var web := OS.has_feature("web")
+	if text.begins_with("ws://") or text.begins_with("wss://"):
 		web = true
+		address = text
+		port = _url_port(text)
+		if port <= 0:
+			port = 443 if text.begins_with("wss://") else 80
+	else:
+		# an address may come with the port on it
+		if text.contains(":"):
+			var bits := text.rsplit(":", true, 1)
+			address = bits[0]
+			if bits[1].is_valid_int():
+				port = int(bits[1])
+	# an https page is not allowed to open a plain ws:// connection
+	var probe := address if address.begins_with("ws://") else "ws://" + address
+	if web and Web.page_is_secure() and not address.begins_with("wss://") \
+			and not _is_local_address(probe):
+		_sub_header.text = "this page is https - type a secure wss:// host address"
+		return
+	Net.player_name = _player_name()
 	if not Net.join_room(address, port, web):
 		return
 	_in_room = true
+	_address_open = false
 	_address_panel.visible = false
 	_refresh()
+
+
+# The port written in a full websocket address, -1 when there is none.
+func _url_port(url: String) -> int:
+	var scheme_end := url.find("://")
+	if scheme_end < 0:
+		return -1
+	var rest := url.substr(scheme_end + 3)
+	var slash := rest.find("/")
+	if slash >= 0:
+		rest = rest.substr(0, slash)
+	var colon := rest.rfind(":")
+	if colon >= 0 and rest.substr(colon + 1).is_valid_int():
+		return int(rest.substr(colon + 1))
+	return -1
+
+
+# A browser may open ws:// on localhost even from a secure page.
+func _is_local_address(url: String) -> bool:
+	var scheme_end := url.find("://")
+	var rest := url.substr(scheme_end + 3)
+	var slash := rest.find("/")
+	if slash >= 0:
+		rest = rest.substr(0, slash)
+	var colon := rest.rfind(":")
+	if colon >= 0:
+		rest = rest.substr(0, colon)
+	rest = rest.to_lower()
+	return rest == "localhost" or rest == "127.0.0.1" \
+		or rest == "::1" or rest == "[::1]"
 
 
 func _on_join(index: int) -> void:
@@ -258,6 +305,8 @@ func _on_join(index: int) -> void:
 	if not Net.join_room(str(room["address"]), int(room["port"]), web):
 		return
 	_in_room = true
+	_address_open = false
+	_address_panel.visible = false
 	_refresh()
 
 
@@ -265,6 +314,7 @@ func _on_leave() -> void:
 	Game.sfx("click", -10.0, 0.95, 1.05)
 	Net.leave()
 	_in_room = false
+	_address_open = false
 	_refresh()
 
 
@@ -298,6 +348,8 @@ func _on_back() -> void:
 # --- net callbacks --------------------------------------------------------
 func _on_room_joined() -> void:
 	_in_room = true
+	_address_open = false
+	_address_panel.visible = false
 	_refresh()
 
 

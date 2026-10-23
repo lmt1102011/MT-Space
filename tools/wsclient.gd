@@ -16,8 +16,6 @@ func _ready() -> void:
 		Net._discovery.close()
 		Net._discovery = null
 		print("client: discovery turned off")
-	Net.debug_no_ping = true
-	print("client: ping turned off")
 
 
 func _process(_delta: float) -> void:

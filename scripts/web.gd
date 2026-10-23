@@ -31,6 +31,16 @@ func is_web() -> bool:
 	return OS.has_feature("web")
 
 
+# True when the page was loaded over https. A secure page is not allowed to
+# open a plain ws:// connection, only a wss:// one.
+func page_is_secure() -> bool:
+	if not is_web():
+		return false
+	if not ClassDB.class_exists("JavaScriptBridge"):
+		return false
+	return str(JavaScriptBridge.eval("window.location.protocol", true)) == "https:"
+
+
 # Puts the game in fullscreen, or brings it back out of it.
 func toggle_fullscreen() -> void:
 	if is_web():

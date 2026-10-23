@@ -125,12 +125,27 @@ func set_control_mode(mode: int) -> void:
 
 
 # The controls are picked by the device the game runs on: a phone gets the
-# two sticks, a computer the keyboard.
+# two sticks, a computer the keyboard. A touchscreen laptop is still a
+# computer, only a real phone build or a phone browser gets the sticks.
 func _detect_control_mode() -> void:
-	if DisplayServer.is_touchscreen_available():
-		control_mode = CONTROL_MOBILE
+	var mobile := false
+	if OS.has_feature("web"):
+		mobile = _web_is_phone()
 	else:
-		control_mode = CONTROL_PC
+		mobile = OS.has_feature("mobile")
+	control_mode = CONTROL_MOBILE if mobile else CONTROL_PC
+
+
+func _web_is_phone() -> bool:
+	if not ClassDB.class_exists("JavaScriptBridge"):
+		return DisplayServer.is_touchscreen_available()
+	var js := """
+	(function() {
+		try { return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent); }
+		catch (e) { return false; }
+	})();
+	"""
+	return bool(JavaScriptBridge.eval(js, true))
 
 
 # The settings are kept, so the player does not have to do it again.
