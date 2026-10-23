@@ -132,6 +132,12 @@ jobs:
           cp -r site/. build/web/
           echo "${GITHUB_SHA}" > build/web/version.txt
 
+      - name: Check the build folder
+        run: |
+          ls -la build/web > build/web/files.txt
+          ls -la build/web/downloads >> build/web/files.txt 2>&1
+          find build/web -maxdepth 2 -type f -printf '%p %s\n' >> build/web/files.txt
+
       - name: Upload the pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
