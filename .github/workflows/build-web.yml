@@ -15,45 +15,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  windows-build:
-    name: Build Windows
-    runs-on: windows-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Godot
-        uses: chickensoft-games/setup-godot@v2
-        with:
-          version: 4.7.2
-          include-templates: true
-
-      - name: Write version
-        run: echo "${GITHUB_SHA}" > version_embedded.txt
-
-      - name: Export Windows
-        shell: pwsh
-        run: |
-          mkdir -p build/web/downloads
-          godot --headless --path . --export-release "Windows" build/web/downloads/mt-space.exe --verbose
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Zip Windows build
-        shell: pwsh
-        run: |
-          cd build/web/downloads
-          Compress-Archive -Path mt-space.exe, mt-space.pck -DestinationPath mt-space-windows.zip -Force
-
-      - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-game
-          path: build/web/downloads/mt-space-windows.zip
-
   build:
-    name: Build Web & Android
+    name: Build Web, Windows & Android
     runs-on: ubuntu-latest
-    needs: windows-build
     steps:
       - name: Get the code
         uses: actions/checkout@v4
@@ -124,6 +88,17 @@ jobs:
           mkdir -p build/web/game
           godot --headless --path . --export-release "Web" build/web/game/index.html
 
+      - name: Build the game for Windows
+        run: |
+          mkdir -p build/web/downloads
+          godot --headless --path . --export-release "Windows" build/web/downloads/mt-space.exe --verbose
+          ls -la build/web/downloads/
+
+      - name: Zip Windows build
+        run: |
+          cd build/web/downloads
+          zip -r mt-space-windows.zip mt-space.exe mt-space.pck
+
       - name: Build the game for Android
         if: steps.android_tools.outcome == 'success'
         continue-on-error: true
@@ -136,12 +111,6 @@ jobs:
 
       - name: Make sure the phone download is there
         run: test -s build/web/downloads/mt-space-android.apk
-
-      - name: Download Windows build
-        uses: actions/download-artifact@v4
-        with:
-          name: windows-game
-          path: build/web/downloads
 
       - name: Put the website together
         run: |
