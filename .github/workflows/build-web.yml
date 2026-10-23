@@ -1,14 +1,5 @@
 name: Build the site and the downloads
 
-# Builds the website and the downloads, then puts everything on GitHub Pages.
-#
-# The website is a small page that shows the game and the pictures of it.
-# The game itself lives in the game folder, so it can be played in the
-# browser. The downloads are the windows build and the android one.
-#
-# Every run writes the commit into version.txt, so a running game can see
-# that there is a new version and reload itself.
-
 on:
   push:
     branches: [main]
@@ -24,8 +15,43 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  windows-build:
+    name: Build Windows (single EXE)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Godot
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.7.2
+          include-templates: true
+      - name: Write version
+        run: echo "${GITHUB_SHA}" > version_embedded.txt
+      - name: Export Windows
+        run: |
+          mkdir -p build/web/downloads
+          godot --headless --path . --export-release "Windows" build/web/downloads/mt-space.exe
+      - name: Embed PCK into EXE (single file)
+        run: |
+          cd build/web/downloads
+          # rcedit is available on windows-latest
+          rcedit mt-space.exe --add-resource mt-space.pck:23:MTSPACE_PCK
+          dir mt-space.exe
+      - name: Zip single EXE
+        run: |
+          cd build/web/downloads
+          7z a mt-space-windows.zip mt-space.exe
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-game
+          path: build/web/downloads/mt-space-windows.zip
+
   build:
+    name: Build Web & Android
     runs-on: ubuntu-latest
+    needs: windows-build
     steps:
       - name: Get the code
         uses: actions/checkout@v4
@@ -49,8 +75,6 @@ jobs:
         env:
           ANDROID_HOME: ${{ runner.temp }}/android-sdk
         run: |
-          # the command line tools are enough, godot only needs the
-          # platform-tools and the build-tools
           mkdir -p "$ANDROID_HOME/cmdline-tools"
           cd "$ANDROID_HOME/cmdline-tools"
           curl -sSLo tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
@@ -58,7 +82,6 @@ jobs:
           mv cmdline-tools latest
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
           yes | sdkmanager --licenses
-          # Godot 4.7 needs the build tools and the platform 35, not 34
           sdkmanager --sdk_root="$ANDROID_HOME" "platform-tools" "build-tools;35.0.1" "platforms;android-35"
           ls "$ANDROID_HOME"
 
@@ -75,10 +98,9 @@ jobs:
           export/android/android_sdk_path = "$ANDROID_HOME"
           export/android/java_sdk_path = "$JAVA_HOME"
           export/android/debug_keystore = "$HOME/.android/debug.keystore"
-          export/android/debug_keystore_user = "androiddebugkey"
+          export/android/debug_keystake_user = "androiddebugkey"
           export/android/debug_keystore_pass = "android"
           EOF
-          # the debug key is needed to sign the android build
           if [ ! -f "$HOME/.android/debug.keystore" ]; then
             keytool -genkeypair -v -keystore "$HOME/.android/debug.keystore" \
               -storepass android -alias androiddebugkey -keypass android \
@@ -89,7 +111,6 @@ jobs:
 
       - name: Import the project
         run: |
-          # the build folder is not part of the game, godot must not import it
           touch build/.gdignore
           godot --headless --editor --quit --path .
 
@@ -101,14 +122,6 @@ jobs:
           mkdir -p build/web/game
           godot --headless --path . --export-release "Web" build/web/game/index.html
 
-      - name: Build the game for Windows
-        run: |
-          mkdir -p build/web/downloads
-          godot --headless --path . --export-release "Windows" build/web/downloads/mt-space.exe
-          cd build/web/downloads
-          zip -r mt-space-windows.zip mt-space.exe mt-space.pck
-          rm -f mt-space.exe mt-space.pck
-
       - name: Build the game for Android
         if: steps.android_tools.outcome == 'success'
         continue-on-error: true
@@ -116,13 +129,17 @@ jobs:
           ANDROID_HOME: ${{ runner.temp }}/android-sdk
         run: |
           mkdir -p build/web/downloads
-          # the site links to downloads/mt-space-android.apk
           godot --headless --path . --export-debug "Android" build/web/downloads/mt-space-android.apk
-          # the signature file is only needed while signing, not by the phone
           rm -f build/web/downloads/mt-space-android.apk.idsig
 
       - name: Make sure the phone download is there
         run: test -s build/web/downloads/mt-space-android.apk
+
+      - name: Download Windows build
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-game
+          path: build/web/downloads
 
       - name: Put the website together
         run: |
