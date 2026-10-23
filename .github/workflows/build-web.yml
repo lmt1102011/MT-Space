@@ -16,8 +16,8 @@ concurrency:
 
 jobs:
   windows-build:
-    name: Build Windows (single EXE)
-    runs-on: ubuntu-latest
+    name: Build Windows
+    runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,41 +31,16 @@ jobs:
       - name: Export Windows
         run: |
           mkdir -p build/web/downloads
-          Write-Host "Current directory: $(Get-Location)"
-          Write-Host "Godot version: $(godot --version)"
           Write-Host "Exporting Windows build..."
-          $result = godot --headless --path . --export-release "Windows" build/web/downloads/mt-space.exe --verbose 2>&1
-          Write-Host "Export exit code: $LASTEXITCODE"
-          Write-Host "Export output: $result"
+          godot --headless --path . --export-release "Windows" build/web/downloads/mt-space.exe --verbose 2>&1
           if ($LASTEXITCODE -ne 0) {
             Write-Error "Export failed with exit code $LASTEXITCODE"
             exit $LASTEXITCODE
           }
-      - name: Verify Windows export
-        run: |
-          Write-Host "Current directory: $(Get-Location)"
-          Write-Host "Listing build/web/downloads/"
-          Get-ChildItem build/web/downloads/ -Force
-          if (-not (Test-Path "build/web/downloads/mt-space.exe")) {
-            Write-Error "mt-space.exe not found!"
-            exit 1
-          }
-          if (-not (Test-Path "build/web/downloads/mt-space.pck")) {
-            Write-Error "mt-space.pck not found!"
-            exit 1
-          }
-      - name: Embed PCK into EXE (single file)
+      - name: Zip Windows build
         run: |
           cd build/web/downloads
-          # install rcedit via chocolatey
-          choco install rcedit -y --no-progress
-          refreshenv
-          rcedit mt-space.exe --add-resource mt-space.pck:23:MTSPACE_PCK
-          Get-ChildItem mt-space.exe
-      - name: Zip single EXE
-        run: |
-          cd build/web/downloads
-          7z a mt-space-windows.zip mt-space.exe
+          Compress-Archive -Path mt-space.exe, mt-space.pck -DestinationPath mt-space-windows.zip
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
