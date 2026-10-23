@@ -35,7 +35,9 @@ jobs:
       - name: Embed PCK into EXE (single file)
         run: |
           cd build/web/downloads
-          # rcedit is available on windows-latest
+          # install rcedit via chocolatey
+          choco install rcedit -y --no-progress
+          refreshenv
           rcedit mt-space.exe --add-resource mt-space.pck:23:MTSPACE_PCK
           dir mt-space.exe
       - name: Zip single EXE
