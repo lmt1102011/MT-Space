@@ -34,9 +34,9 @@ jobs:
           godot --headless --path . --export-release "Windows" build/web/downloads/mt-space.exe
       - name: Verify Windows export
         run: |
-          ls -la build/web/downloads/
-          test -f build/web/downloads/mt-space.exe
-          test -f build/web/downloads/mt-space.pck
+          Get-ChildItem build/web/downloads/
+          Test-Path build/web/downloads/mt-space.exe
+          Test-Path build/web/downloads/mt-space.pck
       - name: Embed PCK into EXE (single file)
         run: |
           cd build/web/downloads
@@ -44,7 +44,7 @@ jobs:
           choco install rcedit -y --no-progress
           refreshenv
           rcedit mt-space.exe --add-resource mt-space.pck:23:MTSPACE_PCK
-          dir mt-space.exe
+          Get-ChildItem mt-space.exe
       - name: Zip single EXE
         run: |
           cd build/web/downloads
