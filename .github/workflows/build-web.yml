@@ -31,6 +31,14 @@ jobs:
       - name: Export Windows
         run: |
           mkdir -p build/web/downloads
+          Write-Host "Godot version: $(godot --version)"
+          Write-Host "Checking export templates..."
+          $templatePath = "$env:APPDATA\Godot\export_templates\4.7.2.stable\windows_release.exe"
+          Write-Host "Checking template: $templatePath"
+          if (-not (Test-Path $templatePath)) {
+            Write-Error "Windows export template not found at $templatePath"
+            Get-ChildItem "$env:APPDATA\Godot\export_templates\" -Recurse -Force -ErrorAction SilentlyContinue
+          }
           Write-Host "Exporting Windows build..."
           godot --headless --path . --export-release "Windows" build/web/downloads/mt-space.exe --verbose 2>&1
           if ($LASTEXITCODE -ne 0) {
