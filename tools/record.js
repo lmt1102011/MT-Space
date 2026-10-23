@@ -35,7 +35,7 @@ async function waitFor(fn, tries = 180, delay = 500) {
 // the little movies that are recorded
 const SHOTS = [
 	{ name: 'menu', query: '', frames: 30, delay: 120, keys: ['d', 'w'] },
-	{ name: 'game', query: '?play=1', frames: 40, delay: 160, keys: ['d', 's', 'a', 'w'] },
+	{ name: 'game', query: '?play=1', frames: 60, delay: 120, keys: ['d', 's', 'a', 'w'], shoot: true },
 ];
 
 async function main() {
@@ -93,17 +93,62 @@ async function main() {
 		if (!booted) { console.log('FAIL: the game did not start for ' + shot.name); continue; }
 
 		await new Promise((r) => setTimeout(r, 2500));
+
+		// The game shoots while the left mouse button is held, so the little
+		// movie has to hold it down and aim around instead of only walking.
+		let aimX = width * 0.72;
+		let aimY = height * 0.42;
+		if (shot.shoot) {
+			await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: aimX, y: aimY });
+			await send('Input.dispatchMouseEvent', {
+				type: 'mousePressed', x: aimX, y: aimY, button: 'left', buttons: 1, clickCount: 1,
+			});
+		}
+
+		// hold the keys so the ship keeps moving, a tap now and then is not
+		// enough to dodge the swarm while the mouse is busy shooting
+		const walk = [['d'], ['d', 'w'], ['s', 'w'], ['s'], ['s', 'a'], ['a'], ['a', 'w'], ['w']];
+		let held = [];
+
 		for (let i = 0; i < shot.frames; i++) {
-			const key = shot.keys[i % shot.keys.length];
-			await evaluate("window.dispatchEvent(new KeyboardEvent('keydown', {key:'" + key + "'}))");
-			await new Promise((r) => setTimeout(r, shot.delay * 0.6));
-			await evaluate("window.dispatchEvent(new KeyboardEvent('keyup', {key:'" + key + "'}))");
+			let want;
+			if (shot.shoot) {
+				want = walk[Math.floor(i / 8) % walk.length];
+			} else {
+				want = [shot.keys[i % shot.keys.length]];
+			}
+			for (const key of held) {
+				if (!want.includes(key)) {
+					await evaluate("window.dispatchEvent(new KeyboardEvent('keyup', {key:'" + key + "'}))");
+				}
+			}
+			for (const key of want) {
+				if (!held.includes(key)) {
+					await evaluate("window.dispatchEvent(new KeyboardEvent('keydown', {key:'" + key + "'}))");
+				}
+			}
+			held = want;
+			if (shot.shoot) {
+				aimX = width * (0.62 + 0.20 * Math.sin(i * 0.55));
+				aimY = height * (0.42 + 0.18 * Math.cos(i * 0.42));
+				await send('Input.dispatchMouseEvent', {
+					type: 'mouseMoved', x: aimX, y: aimY, button: 'left', buttons: 1,
+				});
+			}
+			await new Promise((r) => setTimeout(r, shot.delay));
 			const pic = await send('Page.captureScreenshot', { format: 'png' });
 			if (pic && pic.data) {
 				fs.writeFileSync(path.join(folder, 'frame_' + String(i).padStart(4, '0') + '.png'),
 					Buffer.from(pic.data, 'base64'));
 			}
-			await new Promise((r) => setTimeout(r, shot.delay));
+		}
+		for (const key of held) {
+			await evaluate("window.dispatchEvent(new KeyboardEvent('keyup', {key:'" + key + "'}))");
+		}
+		if (shot.shoot) {
+			await send('Input.dispatchMouseEvent', {
+				type: 'mouseReleased', x: aimX, y: aimY, button: 'left', buttons: 0, clickCount: 1,
+			});
 		}
 		console.log('recorded ' + shot.name + ' (' + shot.frames + ' frames)');
 	}
