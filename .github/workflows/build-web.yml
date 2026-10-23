@@ -21,26 +21,29 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Set up Godot
         uses: chickensoft-games/setup-godot@v2
         with:
           version: 4.7.2
           include-templates: true
+
       - name: Write version
         run: echo "${GITHUB_SHA}" > version_embedded.txt
+
       - name: Export Windows
+        shell: pwsh
         run: |
           mkdir -p build/web/downloads
-          Write-Host "Exporting Windows build..."
-          godot --headless --path . --export-release "Windows" build/web/downloads/mt-space.exe --verbose 2>&1
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "Export failed with exit code $LASTEXITCODE"
-            exit $LASTEXITCODE
-          }
+          godot --headless --path . --export-release "Windows" build/web/downloads/mt-space.exe --verbose
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Zip Windows build
+        shell: pwsh
         run: |
           cd build/web/downloads
-          Compress-Archive -Path mt-space.exe, mt-space.pck -DestinationPath mt-space-windows.zip
+          Compress-Archive -Path mt-space.exe, mt-space.pck -DestinationPath mt-space-windows.zip -Force
+
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
