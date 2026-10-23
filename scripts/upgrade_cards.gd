@@ -13,11 +13,15 @@ var _title: Label
 var _holder: Control
 var _cards: Array = []
 var _pending: bool = false
+# queue of pending upgrade levels
+var _upgrade_queue: Array = []
 # the little card that waits on the right hand side
 var _hint: Control = null
 var _hint_holder: Control = null
+var _hint_badge: Label = null
 var _quit_btn: Button = null
 var _minimap: Control = null
+var _current_upgrade_level: int = 0
 
 const CARD_W := 200.0
 const CARD_H := 280.0
@@ -80,7 +84,7 @@ func _build_ui() -> void:
 	add_child(_holder)
 
 	_quit_btn = Button.new()
-	_quit_btn.text = "TO LOBBY"
+	_quit_btn.text = "THOÁT"
 	_quit_btn.anchor_left = 1.0
 	_quit_btn.anchor_right = 1.0
 	_quit_btn.anchor_top = 0.0
@@ -91,7 +95,7 @@ func _build_ui() -> void:
 	_quit_btn.offset_top = 158.0
 	_quit_btn.offset_bottom = 198.0
 	_quit_btn.add_theme_font_size_override("font_size", 15)
-	_quit_btn.pressed.connect(_on_quit)
+	_quit_btn.pressed.connect(_close)
 	_quit_btn.visible = false
 	add_child(_quit_btn)
 
@@ -117,6 +121,26 @@ func _build_hint() -> void:
 	# clicking the waiting card opens the card choice
 	_hint.chosen.connect(_on_hint_chosen)
 
+	# badge label showing number of pending upgrades
+	_hint_badge = Label.new()
+	_hint_badge.anchor_left = 1.0
+	_hint_badge.anchor_right = 1.0
+	_hint_badge.anchor_top = 0.0
+	_hint_badge.anchor_bottom = 0.0
+	_hint_badge.offset_left = -30.0
+	_hint_badge.offset_right = -6.0
+	_hint_badge.offset_top = -12.0
+	_hint_badge.offset_bottom = 12.0
+	_hint_badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_hint_badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_hint_badge.add_theme_font_size_override("font_size", 18)
+	_hint_badge.add_theme_color_override("font_color", Color(1, 1, 1))
+	_hint_badge.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	_hint_badge.add_theme_constant_override("font_outline_size", 2)
+	_hint_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hint.add_child(_hint_badge)
+	_hint_badge.visible = false
+
 
 func _place_hint() -> void:
 	var vp := get_viewport().get_visible_rect().size
@@ -130,20 +154,26 @@ func _place_hint() -> void:
 
 func _on_request(_level: int) -> void:
 	if _pending:
+		# queue this upgrade for later
+		_upgrade_queue.append(_level)
+		_update_hint_badge()
 		return
 	_pending = true
-	_show_hint()
+	_show_hint(_level)
 
 
-# Shows the small waiting card with the first offer on it.
-func _show_hint() -> void:
-	var picks := _pick_cards()
+# Shows the waiting card with the offer for the given level.
+func _show_hint(_level: int) -> void:
+	_current_upgrade_level = _level
+	var picks := _pick_cards_for_level(_level)
 	if picks.is_empty():
 		_pending = false
+		_show_next_queued()
 		return
 	_hint.call("setup", picks[0], 0)
 	_place_hint()
 	_hint.visible = true
+	_update_hint_badge()
 	Game.sfx("card", -15.0, 0.95, 1.08)
 	# a small pulse so the eye notices it
 	var tw := create_tween()
@@ -152,6 +182,33 @@ func _show_hint() -> void:
 		.set_trans(Tween.TRANS_SINE)
 	tw.tween_property(_hint, "scale", Vector2(HINT_SCALE, HINT_SCALE), 0.7)\
 		.set_trans(Tween.TRANS_SINE)
+
+
+func _pick_cards_for_level(_level: int) -> Array:
+	# LV5 and no weapon yet: offer every weapon archetype at once
+	if _level >= 5 and not Game.weapon_chosen:
+		return CardDB.weapon_cards()
+
+	var pool: Array = CardDB.passives().filter(func(card):
+		var taken: int = int(Game.upg_stacks.get(card.id, 0))
+		return taken < int(card.max))
+	pool.shuffle()
+	var out: Array = []
+	for i in mini(3, pool.size()):
+		out.append(pool[i])
+	if out.is_empty():
+		var any_pool: Array = CardDB.passives()
+		any_pool.shuffle()
+		out = any_pool.slice(0, 3)
+	return out
+
+
+func _show_next_queued() -> void:
+	if _upgrade_queue.is_empty():
+		_update_hint_badge()
+		return
+	var next_level = _upgrade_queue.pop_front()
+	_show_hint(next_level)
 
 
 # The waiting card was clicked: open the real card choice.
@@ -166,7 +223,7 @@ func _show() -> void:
 		c.queue_free()
 	_cards.clear()
 
-	var picks := _pick_cards()
+	var picks := _pick_cards_for_level(_current_upgrade_level)
 	if picks.size() > 0 and picks[0].get("cat", 0) == CardDB.Category.WEAPON:
 		_title.text = "LEVEL 5 — CHOOSE YOUR WEAPON"
 	else:
@@ -255,10 +312,10 @@ func _on_card_chosen(card: Dictionary, _source: Control) -> void:
 	_pending = false
 	Game.sfx("click", -14.0, 0.95, 1.1)
 	Game.grant_card(card)
-	_close()
+	_close(_show_next_queued.bind())
 
 
-func _close() -> void:
+func _close(callback: Callable = null) -> void:
 	# stop accepting input immediately
 	for c in _cards:
 		c.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -276,13 +333,9 @@ func _close() -> void:
 			_minimap.visible = true
 		for c in _cards:
 			c.queue_free()
-		_cards.clear())
+		_cards.clear()
+		if callback:
+			callback.call())
 
 
-func _on_quit() -> void:
-	Game.sfx("click", -12.0, 0.95, 1.05)
-	# leaving a match goes back to the lobby, it does not close the game
-	Game.set_fire(false)
-	Game.reset_run()
-	Net.leave()
-	get_tree().change_scene_to_file("res://scenes/lobby.tscn")
+

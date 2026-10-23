@@ -51,15 +51,23 @@ func _ready() -> void:
 # The little panel with the volume and the quit button.
 func _setup_settings() -> void:
 	if _settings_btn:
+		_settings_btn.text = "⚙"  # icon only
 		_settings_btn.pressed.connect(_on_settings_pressed)
-	if _settings_close:
-		_settings_close.pressed.connect(_on_settings_close)
-	if _settings_quit:
-		_settings_quit.pressed.connect(_on_settings_quit)
-	if _volume_slider:
-		_volume_slider.value = Game.get_master_volume()
-		_volume_slider.value_changed.connect(_on_volume_changed)
-		_on_volume_changed(_volume_slider.value)
+	if _settings_panel:
+		# hide everything except the quit button
+		var title = _settings_panel.get_node_or_null("Title")
+		if title: title.visible = false
+		var vol_label = _settings_panel.get_node_or_null("VolumeLabel")
+		if vol_label: vol_label.visible = false
+		var vol_slider = _settings_panel.get_node_or_null("VolumeSlider")
+		if vol_slider: vol_slider.visible = false
+		var vol_value = _settings_panel.get_node_or_null("VolumeValue")
+		if vol_value: vol_value.visible = false
+		var close_btn = _settings_panel.get_node_or_null("CloseButton")
+		if close_btn: close_btn.visible = false
+		if _settings_quit:
+			_settings_quit.text = "THOÁT"
+			_settings_quit.pressed.connect(_on_settings_quit)
 
 
 func _on_settings_pressed() -> void:
@@ -259,10 +267,10 @@ func _on_game_over() -> void:
 
 func _on_play_again() -> void:
 	Game.sfx("click", -14.0, 0.95, 1.05)
-	# when the game was played in a room, the player goes back to the room
+	# when the game was played in a room, restart the match (stay in the room)
 	if Game.in_a_room():
 		Game.reset_run()
-		get_tree().change_scene_to_file("res://scenes/lobby.tscn")
+		get_tree().change_scene_to_file("res://scenes/main.tscn")
 		return
 	Game.reset_run()
 	get_tree().reload_current_scene()

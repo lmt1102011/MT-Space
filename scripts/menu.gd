@@ -66,6 +66,11 @@ func _start_game() -> void:
 
 
 func _on_named(_name: String) -> void:
+	# defer the scene change so the prompt can be freed cleanly
+	call_deferred("_change_to_lobby")
+
+
+func _change_to_lobby() -> void:
 	get_tree().change_scene_to_file("res://scenes/lobby.tscn")
 
 
