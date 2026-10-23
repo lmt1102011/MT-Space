@@ -106,9 +106,7 @@ jobs:
           mkdir -p build/web/downloads
           godot --headless --path . --export-release "Windows" build/web/downloads/mt-space.exe
           cd build/web/downloads
-          # embed .pck into .exe so only one file is needed
-          godot --headless --path . --embed-pck mt-space.exe mt-space.pck
-          zip -r mt-space-windows.zip mt-space.exe
+          zip -r mt-space-windows.zip mt-space.exe mt-space.pck
           rm -f mt-space.exe mt-space.pck
 
       - name: Build the game for Android
