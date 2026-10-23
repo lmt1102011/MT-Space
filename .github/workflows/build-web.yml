@@ -17,7 +17,7 @@ concurrency:
 jobs:
   windows-build:
     name: Build Windows (single EXE)
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,6 +32,7 @@ jobs:
         run: |
           mkdir -p build/web/downloads
           Write-Host "Current directory: $(Get-Location)"
+          Write-Host "Godot version: $(godot --version)"
           Write-Host "Exporting Windows build..."
           $result = godot --headless --path . --export-release "Windows" build/web/downloads/mt-space.exe --verbose 2>&1
           Write-Host "Export exit code: $LASTEXITCODE"
@@ -39,6 +40,19 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             Write-Error "Export failed with exit code $LASTEXITCODE"
             exit $LASTEXITCODE
+          }
+      - name: Verify Windows export
+        run: |
+          Write-Host "Current directory: $(Get-Location)"
+          Write-Host "Listing build/web/downloads/"
+          Get-ChildItem build/web/downloads/ -Force
+          if (-not (Test-Path "build/web/downloads/mt-space.exe")) {
+            Write-Error "mt-space.exe not found!"
+            exit 1
+          }
+          if (-not (Test-Path "build/web/downloads/mt-space.pck")) {
+            Write-Error "mt-space.pck not found!"
+            exit 1
           }
       - name: Embed PCK into EXE (single file)
         run: |
