@@ -116,27 +116,18 @@ jobs:
           ANDROID_HOME: ${{ runner.temp }}/android-sdk
         run: |
           mkdir -p build/web/downloads
-          set +e
-          godot --headless --path . --export-debug "Android" build/web/downloads/mt-space.apk > build/web/downloads/android-build.log 2>&1
-          code=$?
-          echo "android export exit code: $code" > build/web/downloads/android-status.txt
-          ls -la build/web/downloads >> build/web/downloads/android-status.txt
-          if [ "$code" -ne 0 ] || [ ! -s build/web/downloads/mt-space.apk ]; then
-            echo "the android build did not work, the site goes out without it" | tee -a build/web/downloads/android-status.txt
-            exit 1
-          fi
-          echo "the android apk is ready" | tee -a build/web/downloads/android-status.txt
+          # the site links to downloads/mt-space-android.apk
+          godot --headless --path . --export-debug "Android" build/web/downloads/mt-space-android.apk
+          # the signature file is only needed while signing, not by the phone
+          rm -f build/web/downloads/mt-space-android.apk.idsig
+
+      - name: Make sure the phone download is there
+        run: test -s build/web/downloads/mt-space-android.apk
 
       - name: Put the website together
         run: |
           cp -r site/. build/web/
           echo "${GITHUB_SHA}" > build/web/version.txt
-
-      - name: Check the build folder
-        run: |
-          ls -la build/web > build/web/files.txt
-          ls -la build/web/downloads >> build/web/files.txt 2>&1
-          find build/web -maxdepth 2 -type f -printf '%p %s\n' >> build/web/files.txt
 
       - name: Upload the pages artifact
         uses: actions/upload-pages-artifact@v3
