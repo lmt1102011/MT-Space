@@ -49,6 +49,8 @@ var _web_mode: bool = false
 
 
 func _ready() -> void:
+	if Web.has_update():
+		Web.show_web_update_button()
 	_create_btn.pressed.connect(_on_create)
 	_join_btn.pressed.connect(_on_join_pressed)
 	_back_btn.pressed.connect(_on_back)

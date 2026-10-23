@@ -330,12 +330,22 @@ const engine = new Engine(GODOT_CONFIG);
 		};
 	}
 
+	function hideUpdateButton() {
+		const button = document.getElementById('update-button');
+		if (!button) {
+			return;
+		}
+		button.classList.remove('show');
+	}
+
 	// the game can ask for the button too, when it notices a new version
 	window.showUpdateButton = showUpdateButton;
+	window.hideUpdateButton = hideUpdateButton;
 
 	async function checkForNewVersion() {
 		try {
-			const response = await fetch('version.txt?t=' + Date.now(), { cache: 'no-store' });
+			// the version file sits at the site root, above the game folder
+			const response = await fetch('../version.txt?t=' + Date.now(), { cache: 'no-store' });
 			if (!response.ok) {
 				return;
 			}

@@ -17,6 +17,8 @@ const LOCAL_VERSION := "res://version_embedded.txt"
 var _last_check: float = 0.0
 # how many times the server was asked already
 var _checks: int = 0
+# the version that was found on the server, empty when there is no update
+var available_version: String = ""
 # how often the game asks the server whether there is a new version
 const CHECK_EVERY := 60.0
 # the version is checked a little after the game starts
@@ -87,10 +89,10 @@ func _web_is_fullscreen() -> bool:
 func check_for_new_version() -> void:
 	if not is_web():
 		return
-	var base := _page_url()
-	if base == "":
+	var version_url := _version_url()
+	if version_url == "":
 		return
-	var url := base + REMOTE_VERSION + "?t=" + str(Time.get_unix_time_from_system())
+	var url := version_url + "?t=" + str(Time.get_unix_time_from_system())
 	var http := HTTPRequest.new()
 	add_child(http)
 	http.timeout = 8.0
@@ -106,14 +108,15 @@ func check_for_new_version() -> void:
 	http.request(url)
 
 
-# The address of the page, so the version file can be asked for. The web
-# needs the whole address, a relative one is not understood.
-func _page_url() -> String:
+# The version file sits one folder above the game page (the game lives in
+# /game/, the file is at the site root). The browser resolves it, so the
+# address also works when the site is hosted in a sub folder.
+func _version_url() -> String:
 	if not ClassDB.class_exists("JavaScriptBridge"):
 		return ""
 	var js := """
 	(function() {
-		try { return window.location.origin + window.location.pathname; }
+		try { return new URL('../version.txt', window.location.href).href; }
 		catch (e) { return ''; }
 	})();
 	"""
@@ -132,10 +135,18 @@ func _check_version(remote: String) -> void:
 			return
 	if remote == mine:
 		return
+	if available_version == remote:
+		return
 	# a new version is up there: the button shows up, the player decides
+	available_version = remote
 	print("[web] a new version is up there: ", remote)
-	update_available.emit(remote)
 	_show_update_button(remote)
+	update_available.emit(remote)
+
+
+# True when the check found a version that is not the one running.
+func has_update() -> bool:
+	return available_version != ""
 
 
 # Shows the button that updates the game.
@@ -144,6 +155,20 @@ func _show_update_button(version: String) -> void:
 		return
 	var js := "(function(){ if (window.showUpdateButton) { window.showUpdateButton('%s'); } })();" % version
 	JavaScriptBridge.eval(js, true)
+
+
+# The lobby has no button of its own, so it uses the one on the page.
+func show_web_update_button() -> void:
+	if available_version != "":
+		_show_update_button(available_version)
+
+
+# A scene with its own update button hides the one on the page, so the same
+# update is not offered twice.
+func hide_web_update_button() -> void:
+	if not ClassDB.class_exists("JavaScriptBridge"):
+		return
+	JavaScriptBridge.eval("(function(){ if (window.hideUpdateButton) { window.hideUpdateButton(); } })();", true)
 
 
 func _process(delta: float) -> void:

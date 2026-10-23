@@ -35,6 +35,8 @@ func _ready() -> void:
 	Web.update_available.connect(_on_update_available)
 	if _update_btn:
 		_update_btn.pressed.connect(_on_update_pressed)
+	if Web.has_update():
+		_on_update_available(Web.available_version)
 	var spawner := get_node_or_null("../Spawner")
 	if spawner:
 		spawner.wave_cleared_text.connect(_on_wave_cleared)
@@ -107,6 +109,7 @@ func _on_spectate_changed(_target_id: int) -> void:
 func _on_update_available(_version: String) -> void:
 	if _update_btn:
 		_update_btn.visible = true
+	Web.hide_web_update_button()
 
 
 func _on_update_pressed() -> void:

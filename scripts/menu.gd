@@ -12,6 +12,7 @@ const PROMPT_SCENE := preload("res://scenes/name_prompt.tscn")
 @onready var _volume_slider: HSlider = $UI/SettingsPanel/VolumeSlider
 @onready var _volume_value: Label = $UI/SettingsPanel/VolumeValue
 @onready var _settings_close: Button = $UI/SettingsPanel/CloseButton
+@onready var _update_btn: Button = $UI/UpdateButton
 
 
 func _ready() -> void:
@@ -19,6 +20,11 @@ func _ready() -> void:
 	_quit_btn.pressed.connect(_on_quit)
 	_settings_btn.pressed.connect(_on_settings_pressed)
 	_settings_close.pressed.connect(_on_settings_close)
+	_update_btn.visible = false
+	_update_btn.pressed.connect(_on_update_pressed)
+	Web.update_available.connect(_on_update_available)
+	if Web.has_update():
+		_on_update_available(Web.available_version)
 	_volume_slider.value = Game.get_master_volume()
 	_volume_slider.value_changed.connect(_on_volume_changed)
 	_on_volume_changed(_volume_slider.value)
@@ -66,6 +72,18 @@ func _on_named(_name: String) -> void:
 func _on_quit() -> void:
 	Game.sfx("click", -10.0, 0.95, 1.05)
 	get_tree().quit()
+
+
+# --- the update ------------------------------------------------------------
+func _on_update_available(_version: String) -> void:
+	_update_btn.visible = true
+	# the scene has its own button now, the page one would be a duplicate
+	Web.hide_web_update_button()
+
+
+func _on_update_pressed() -> void:
+	Game.sfx("click", -10.0, 0.95, 1.05)
+	Web.apply_update()
 
 
 # --- the settings ----------------------------------------------------------
