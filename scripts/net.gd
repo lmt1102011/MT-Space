@@ -308,18 +308,54 @@ func _start_discovery(hosting: bool) -> void:
 	if _discovery != null:
 		_discovery.close()
 	_discovery = PacketPeerUDP.new()
+	var err := OK
 	if hosting:
 		# the host listens on the well known port and answers the clients
-		var err := _discovery.bind(DISCOVERY_PORT)
-		if err != OK:
-			_discovery = null
-			return
-		_discovery.set_broadcast_enabled(true)
+		err = _discovery.bind(DISCOVERY_PORT)
 	else:
 		# a client listens on any free port and asks around
-		_discovery.bind(0)
-	_discovery.set_dest_address("255.255.255.255", DISCOVERY_PORT)
+		err = _discovery.bind(0)
+	if err != OK:
+		_discovery = null
+		return
+	# a socket may not send to a broadcast address unless it is allowed to
+	_discovery.set_broadcast_enabled(true)
 	_disc_timer = 0.0
+
+
+# Every address a discovery packet should go to. The global broadcast works on
+# most networks, the subnet ones get around routers that drop it.
+func _broadcast_targets() -> Array:
+	var out: Array = ["255.255.255.255"]
+	for ip in IP.get_local_addresses():
+		if ip.contains(":") or ip.begins_with("127.") or ip.begins_with("169.254."):
+			continue
+		var parts := ip.split(".")
+		if parts.size() != 4:
+			continue
+		var base := "%s.%s.%s" % [parts[0], parts[1], parts[2]]
+		var subnet := base + ".255"
+		if not out.has(subnet):
+			out.append(subnet)
+		# a /16 network uses this one, it does no harm on a /24
+		var wide := "%s.%s.255.255" % [parts[0], parts[1]]
+		if not out.has(wide):
+			out.append(wide)
+	return out
+
+
+# The ip the other devices on the local network can use to reach this one.
+func local_lan_ip() -> String:
+	for ip in IP.get_local_addresses():
+		if ip.contains(":") or ip.begins_with("127.") or ip.begins_with("169.254."):
+			continue
+		if ip.begins_with("10.") or ip.begins_with("192.168."):
+			return ip
+	for ip in IP.get_local_addresses():
+		if not ip.contains(":") and not ip.begins_with("127.") \
+				and not ip.begins_with("169.254."):
+			return ip
+	return "127.0.0.1"
 
 
 func _process(delta: float) -> void:
@@ -358,9 +394,11 @@ func _process(delta: float) -> void:
 					_discovery.put_packet(_room_packet().to_utf8_buffer())
 			_discovery.set_dest_address("255.255.255.255", DISCOVERY_PORT)
 		else:
-			# ask the network for rooms
-			_discovery.set_dest_address("255.255.255.255", DISCOVERY_PORT)
-			_discovery.put_packet("MTDISC?".to_utf8_buffer())
+			# ask the network for rooms. The global broadcast is not always
+			# passed by a router, so the subnet addresses are tried too.
+			for target in _broadcast_targets():
+				_discovery.set_dest_address(target, DISCOVERY_PORT)
+				_discovery.put_packet("MTDISC?".to_utf8_buffer())
 	# read the answers
 	while _discovery.get_available_packet_count() > 0:
 		var ip := _discovery.get_packet_ip()

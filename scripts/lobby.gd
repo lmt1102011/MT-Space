@@ -109,8 +109,11 @@ func _refresh_room_list() -> void:
 		c.queue_free()
 	_empty_label.visible = Net.rooms.is_empty()
 	if Net.rooms.is_empty():
-		_empty_label.text = "no rooms yet - create one" if Net.can_host() \
-			else "a browser cannot find rooms - use JOIN BY HOST"
+		if Net.can_host():
+			_empty_label.text = "no rooms found - create one, or use JOIN BY HOST\n" \
+				+ "if a room is open, check the firewall and that both are on the same wifi"
+		else:
+			_empty_label.text = "a browser cannot find rooms - use JOIN BY HOST"
 	for i in Net.rooms.size():
 		var room: Dictionary = Net.rooms[i]
 		var count := int(room["count"])
