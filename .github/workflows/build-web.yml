@@ -32,6 +32,11 @@ jobs:
         run: |
           mkdir -p build/web/downloads
           godot --headless --path . --export-release "Windows" build/web/downloads/mt-space.exe
+      - name: Verify Windows export
+        run: |
+          ls -la build/web/downloads/
+          test -f build/web/downloads/mt-space.exe
+          test -f build/web/downloads/mt-space.pck
       - name: Embed PCK into EXE (single file)
         run: |
           cd build/web/downloads
