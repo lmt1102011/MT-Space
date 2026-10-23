@@ -23,7 +23,7 @@ func _ready() -> void:
 	_settings_close.pressed.connect(_on_settings_close)
 	_update_btn.visible = false
 	_update_btn.pressed.connect(_on_update_pressed)
-	_version_label.text = "v%0.1f  -  %s" % [float(ProjectSettings.get_setting("application/config/version/name")), Web.get_embedded_version()]
+	_version_label.text = "v%s" % ProjectSettings.get_setting("application/config/version/name")
 	Web.update_available.connect(_on_update_available)
 	if Web.has_update():
 		_on_update_available(Web.available_version)
