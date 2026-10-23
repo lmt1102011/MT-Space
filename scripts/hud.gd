@@ -52,21 +52,24 @@ func _ready() -> void:
 func _setup_settings() -> void:
 	if _settings_btn:
 		_settings_btn.text = "⚙"  # icon only
+		_settings_btn.add_theme_constant_override("corner_radius", 16)
 		_settings_btn.pressed.connect(_on_settings_pressed)
 	if _settings_panel:
-		# hide everything except the quit button
 		var title = _settings_panel.get_node_or_null("Title")
 		if title: title.visible = false
 		var vol_label = _settings_panel.get_node_or_null("VolumeLabel")
-		if vol_label: vol_label.visible = false
+		if vol_label: vol_label.visible = true
 		var vol_slider = _settings_panel.get_node_or_null("VolumeSlider")
-		if vol_slider: vol_slider.visible = false
+		if vol_slider:
+			vol_slider.visible = true
+			vol_slider.value = Game.get_master_volume()
+			vol_slider.value_changed.connect(_on_volume_changed)
 		var vol_value = _settings_panel.get_node_or_null("VolumeValue")
-		if vol_value: vol_value.visible = false
+		if vol_value: vol_value.visible = true
 		var close_btn = _settings_panel.get_node_or_null("CloseButton")
 		if close_btn: close_btn.visible = false
 		if _settings_quit:
-			_settings_quit.text = "THOÁT"
+			_settings_quit.text = "TO LOBBY"
 			_settings_quit.pressed.connect(_on_settings_quit)
 
 
