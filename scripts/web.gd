@@ -200,6 +200,11 @@ func _embedded_version() -> String:
 	return ""
 
 
+# Public getter so UI can display the embedded version.
+func get_embedded_version() -> String:
+	return _embedded_version()
+
+
 # The version that was seen the last time, kept in the browser storage.
 func _stored_version() -> String:
 	if not ClassDB.class_exists("JavaScriptBridge"):

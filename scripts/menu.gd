@@ -13,6 +13,7 @@ const PROMPT_SCENE := preload("res://scenes/name_prompt.tscn")
 @onready var _volume_value: Label = $UI/SettingsPanel/VolumeValue
 @onready var _settings_close: Button = $UI/SettingsPanel/CloseButton
 @onready var _update_btn: Button = $UI/UpdateButton
+@onready var _version_label: Label = $UI/Version
 
 
 func _ready() -> void:
@@ -22,6 +23,7 @@ func _ready() -> void:
 	_settings_close.pressed.connect(_on_settings_close)
 	_update_btn.visible = false
 	_update_btn.pressed.connect(_on_update_pressed)
+	_version_label.text = "v%0.1f  -  %s" % [float(ProjectSettings.get_setting("application/config/version/name")), Web.get_embedded_version()]
 	Web.update_available.connect(_on_update_available)
 	if Web.has_update():
 		_on_update_available(Web.available_version)
