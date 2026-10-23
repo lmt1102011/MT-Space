@@ -31,12 +31,20 @@ jobs:
       - name: Export Windows
         run: |
           mkdir -p build/web/downloads
-          godot --headless --path . --export-release "Windows" build/web/downloads/mt-space.exe
+          godot --headless --path . --export-release "Windows" build/web/downloads/mt-space.exe --verbose
       - name: Verify Windows export
         run: |
-          Get-ChildItem build/web/downloads/
-          Test-Path build/web/downloads/mt-space.exe
-          Test-Path build/web/downloads/mt-space.pck
+          Write-Host "Current directory: $(Get-Location)"
+          Write-Host "Listing build/web/downloads/"
+          Get-ChildItem build/web/downloads/ -Force
+          if (-not (Test-Path "build/web/downloads/mt-space.exe")) {
+            Write-Error "mt-space.exe not found!"
+            exit 1
+          }
+          if (-not (Test-Path "build/web/downloads/mt-space.pck")) {
+            Write-Error "mt-space.pck not found!"
+            exit 1
+          }
       - name: Embed PCK into EXE (single file)
         run: |
           cd build/web/downloads
