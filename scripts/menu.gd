@@ -45,6 +45,10 @@ func _ready() -> void:
 
 func _on_play() -> void:
 	Game.sfx("click", -10.0, 0.95, 1.05)
+	# if name already set, go directly to lobby
+	if Net.player_name != "":
+		_change_to_lobby()
+		return
 	# ask for the name first, then go to the lobby
 	var prompt := PROMPT_SCENE.instantiate() as Control
 	add_child(prompt)

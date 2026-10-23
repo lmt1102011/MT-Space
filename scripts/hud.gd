@@ -267,10 +267,11 @@ func _on_game_over() -> void:
 
 func _on_play_again() -> void:
 	Game.sfx("click", -14.0, 0.95, 1.05)
-	# when the game was played in a room, restart the match (stay in the room)
+	# when the game was played in a room, go back to lobby
 	if Game.in_a_room():
 		Game.reset_run()
-		get_tree().change_scene_to_file("res://scenes/main.tscn")
+		Net.leave()
+		get_tree().change_scene_to_file("res://scenes/lobby.tscn")
 		return
 	Game.reset_run()
 	get_tree().reload_current_scene()
