@@ -117,13 +117,15 @@ jobs:
         run: |
           mkdir -p build/web/downloads
           set +e
-          godot --headless --path . --export-debug "Android" build/web/downloads/mt-space.apk 2>&1 | tee build/web/downloads/android-build.log
-          code=${PIPESTATUS[0]}
+          godot --headless --path . --export-debug "Android" build/web/downloads/mt-space.apk > build/web/downloads/android-build.log 2>&1
+          code=$?
+          echo "android export exit code: $code" > build/web/downloads/android-status.txt
+          ls -la build/web/downloads >> build/web/downloads/android-status.txt
           if [ "$code" -ne 0 ] || [ ! -s build/web/downloads/mt-space.apk ]; then
-            echo "the android build did not work, the site goes out without it"
+            echo "the android build did not work, the site goes out without it" | tee -a build/web/downloads/android-status.txt
             exit 1
           fi
-          rm -f build/web/downloads/android-build.log
+          echo "the android apk is ready" | tee -a build/web/downloads/android-status.txt
 
       - name: Put the website together
         run: |
