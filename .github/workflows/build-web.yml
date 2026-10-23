@@ -106,8 +106,9 @@ jobs:
           mkdir -p build/web/downloads
           godot --headless --path . --export-release "Windows" build/web/downloads/mt-space.exe
           cd build/web/downloads
-          zip -r mt-space-windows.zip mt-space.exe mt-space.pck
-          rm -f mt-space.exe mt-space.pck
+          # embed_pck=true -> only .exe exists
+          zip -r mt-space-windows.zip mt-space.exe
+          rm -f mt-space.exe
 
       - name: Build the game for Android
         if: steps.android_tools.outcome == 'success'
