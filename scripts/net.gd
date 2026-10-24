@@ -16,6 +16,10 @@ const MAX_PLAYERS := 4
 const XP_DROP := preload("res://scripts/xp_pickup.gd")
 # a room that stopped answering is dropped after this many seconds
 const ROOM_TTL := 15.0
+# A refresh sends a few quick discovery bursts so a host that misses one UDP
+# packet still appears almost immediately.
+const DISCOVERY_BURST_COUNT := 4
+const DISCOVERY_BURST_INTERVAL := 0.25
 # how often the local player sends its position
 const NET_TICK := 1.0 / 20.0
 # how often the host sends the enemy positions
@@ -53,6 +57,8 @@ var _room_port: int = DEFAULT_PORT
 var _web_mode: bool = false
 var _discovery: PacketPeerUDP = null
 var _disc_timer: float = 0.0
+var _discovery_burst_left: int = 0
+var _discovery_burst_timer: float = 0.0
 var _unicast_scan_timer: float = 0.0
 var _unicast_scan_targets: Array[String] = []
 var _unicast_scan_index: int = 0
@@ -146,14 +152,17 @@ func browse_rooms() -> void:
 		return
 	if _discovery == null:
 		_start_discovery(false)
+	_request_discovery_burst()
 
 
 func refresh_rooms() -> void:
 	if is_online() or OS.has_feature("web"):
 		return
-	rooms.clear()
-	rooms_changed.emit()
-	_start_discovery(false)
+	# Keep the current list visible while the new answers arrive. This avoids
+	# the empty-list flicker that made refresh look unreliable.
+	if _discovery == null:
+		_start_discovery(false)
+	_request_discovery_burst()
 
 
 # True when the room uses websocket instead of the faster enet.
@@ -346,9 +355,29 @@ func _start_discovery(hosting: bool) -> void:
 	# a socket may not send to a broadcast address unless it is allowed to
 	_discovery.set_broadcast_enabled(true)
 	_disc_timer = 0.0
+	_discovery_burst_left = 0
+	_discovery_burst_timer = 0.0
 	_unicast_scan_timer = 0.0
 	_unicast_scan_index = 0
 	_unicast_scan_targets = _local_subnet_targets() if not hosting else []
+	if not hosting:
+		_send_discovery_queries()
+
+
+func _request_discovery_burst() -> void:
+	if _discovery == null or _hosting:
+		return
+	_discovery_burst_left = DISCOVERY_BURST_COUNT
+	_discovery_burst_timer = 0.0
+	_send_discovery_queries()
+
+
+func _send_discovery_queries() -> void:
+	if _discovery == null or _hosting:
+		return
+	for target in _broadcast_targets():
+		_discovery.set_dest_address(target, DISCOVERY_PORT)
+		_discovery.put_packet("MTDISC?".to_utf8_buffer())
 
 
 func _local_subnet_targets() -> Array[String]:
@@ -424,6 +453,12 @@ func _process(delta: float) -> void:
 			_reconnect()
 	if _discovery == null:
 		return
+	if not _hosting and _discovery_burst_left > 0:
+		_discovery_burst_timer -= delta
+		if _discovery_burst_timer <= 0.0:
+			_send_discovery_queries()
+			_discovery_burst_left -= 1
+			_discovery_burst_timer = DISCOVERY_BURST_INTERVAL
 	_disc_timer -= delta
 	if _disc_timer <= 0.0:
 		_disc_timer = 0.5
@@ -440,9 +475,7 @@ func _process(delta: float) -> void:
 		else:
 			# ask the network for rooms. The global broadcast is not always
 			# passed by a router, so the subnet addresses are tried too.
-			for target in _broadcast_targets():
-				_discovery.set_dest_address(target, DISCOVERY_PORT)
-				_discovery.put_packet("MTDISC?".to_utf8_buffer())
+			_send_discovery_queries()
 	if not _hosting and not _unicast_scan_targets.is_empty():
 		_unicast_scan_timer -= delta
 		if _unicast_scan_timer <= 0.0:
@@ -510,10 +543,13 @@ func _add_room(ip: String, port: int, text: String) -> void:
 	var web := parts.size() >= 5 and int(parts[4]) == 1
 	for r in rooms:
 		if str(r["address"]) == ip and int(r["port"]) == game_port:
+			var changed := str(r["name"]) != name or int(r["count"]) != count \
+				or bool(r["web"]) != web
 			r["count"] = count
 			r["web"] = web
 			r["seen"] = Time.get_ticks_msec() / 1000.0
-			rooms_changed.emit()
+			if changed:
+				rooms_changed.emit()
 			return
 	rooms.append({
 		"name": name,
