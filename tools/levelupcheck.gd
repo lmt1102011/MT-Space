@@ -86,7 +86,9 @@ func _run() -> void:
 	_check(quit_btn != null and quit_btn.visible, "the exit button is visible")
 	if quit_btn != null:
 		quit_btn.pressed.emit()
-		await _wait_frames(20)
+		# Wait for the 0.20s close tween instead of assuming a fixed number
+		# of rendered frames (headless CI can advance frames unusually fast).
+		await get_tree().create_timer(0.30).timeout
 	_check(not _cards.visible, "the exit button closes the choice screen")
 	_check(hint.visible, "closing choices returns to the compact hint card")
 	_check(badge.text == "3", "closing choices does not lose pending upgrades")
