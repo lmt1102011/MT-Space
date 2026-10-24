@@ -13,6 +13,9 @@ signal update_available(version: String)
 const REMOTE_VERSION := "version.txt"
 # the file inside the build that says which version this build is
 const LOCAL_VERSION := "res://version_embedded.txt"
+const SITE_URL := "https://lmt1102011.github.io/MT-Space/"
+const WINDOWS_DOWNLOAD := "downloads/mt-space-windows.zip"
+const ANDROID_DOWNLOAD := "downloads/mt-space-android.apk"
 
 var _last_check: float = 0.0
 # how many times the server was asked already
@@ -87,8 +90,6 @@ func _web_is_fullscreen() -> bool:
 # Asks the server which version is up there. When it is newer than the one
 # that is running, the page reloads itself and the new one takes over.
 func check_for_new_version() -> void:
-	if not is_web():
-		return
 	var version_url := _version_url()
 	if version_url == "":
 		return
@@ -112,6 +113,8 @@ func check_for_new_version() -> void:
 # /game/, the file is at the site root). The browser resolves it, so the
 # address also works when the site is hosted in a sub folder.
 func _version_url() -> String:
+	if not is_web():
+		return SITE_URL + REMOTE_VERSION
 	if not ClassDB.class_exists("JavaScriptBridge"):
 		return ""
 	var js := """
@@ -233,6 +236,10 @@ func _store_version(version: String) -> void:
 # Throws the old files away and starts the page again, so the new build is
 # used. The player presses the button, so nothing changes while they play.
 func apply_update() -> void:
+	if not is_web():
+		var download := ANDROID_DOWNLOAD if OS.has_feature("mobile") else WINDOWS_DOWNLOAD
+		OS.shell_open(SITE_URL + download)
+		return
 	if not ClassDB.class_exists("JavaScriptBridge"):
 		return
 	var js := """
