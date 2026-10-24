@@ -30,6 +30,14 @@ func _wait_frames(count: int = 20) -> void:
 		await get_tree().process_frame
 
 
+func _choice_screen_visible() -> bool:
+	# UpgradeCards is a CanvasLayer that must remain visible to render the
+	# compact hint. Detect the full-screen choice UI using its actual controls.
+	var dim: ColorRect = _cards.get("_dim") as ColorRect
+	var quit_btn: Button = _cards.get("_quit_btn") as Button
+	return dim != null and dim.visible and quit_btn != null and quit_btn.visible
+
+
 func _total_upgrade_stacks() -> int:
 	var total: int = 0
 	for value in Game.upg_stacks.values():
@@ -65,7 +73,7 @@ func _run() -> void:
 	await _wait_frames(2)
 
 	_check(not get_tree().paused, "the game keeps running after a level up")
-	_check(not _cards.visible, "the full choice screen stays closed until the hint is clicked")
+	_check(not _choice_screen_visible() and (_cards.get("_cards") as Array).is_empty(), "the full choice screen stays closed until the hint is clicked")
 	var hint: Control = _cards.get("_hint") as Control
 	var badge: Label = _cards.get("_hint_badge") as Label
 	_check(hint != null and hint.visible, "the compact hint card is visible")
@@ -80,7 +88,7 @@ func _run() -> void:
 	# Clicking the hint opens the choices; closing them should preserve the queue.
 	hint.emit_signal("chosen", {})
 	await _wait_frames(3)
-	_check(_cards.visible, "clicking the hint opens the upgrade choices")
+	_check(_choice_screen_visible(), "clicking the hint opens the upgrade choices")
 	_check(not get_tree().paused, "the game continues while choices are open")
 	var quit_btn: Button = _cards.get("_quit_btn") as Button
 	_check(quit_btn != null and quit_btn.visible, "the exit button is visible")
@@ -89,7 +97,7 @@ func _run() -> void:
 		# Wait for the 0.20s close tween instead of assuming a fixed number
 		# of rendered frames (headless CI can advance frames unusually fast).
 		await get_tree().create_timer(0.30).timeout
-	_check(not _cards.visible, "the exit button closes the choice screen")
+	_check(not _choice_screen_visible(), "the exit button closes the choice screen")
 	_check(hint.visible, "closing choices returns to the compact hint card")
 	_check(badge.text == "3", "closing choices does not lose pending upgrades")
 
@@ -97,15 +105,15 @@ func _run() -> void:
 	hint.emit_signal("chosen", {})
 	await _wait_frames(3)
 	await _choose_first_card()
-	_check(_cards.visible, "the next upgrade choice opens automatically")
+	_check(_choice_screen_visible(), "the next upgrade choice opens automatically")
 	_check(badge.text == "2", "the badge count drops after the first choice")
 
 	await _choose_first_card()
-	_check(_cards.visible, "the third upgrade choice opens automatically")
+	_check(_choice_screen_visible(), "the third upgrade choice opens automatically")
 	_check(badge.text == "1", "one pending choice remains")
 
 	await _choose_first_card()
-	_check(not _cards.visible, "the choice screen closes after the final upgrade")
+	_check(not _choice_screen_visible() and (_cards.get("_cards") as Array).is_empty(), "the choice screen closes after the final upgrade")
 	_check(not hint.visible and not badge.visible,
 		"the compact hint and counter disappear when all choices are complete")
 	_check(not get_tree().paused, "the game was never paused by the level-up flow")
