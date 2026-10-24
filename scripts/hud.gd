@@ -151,8 +151,7 @@ func _on_update_available(_version: String) -> void:
 
 func _on_update_pressed() -> void:
 	Game.sfx("click", -12.0, 0.95, 1.05)
-	# the old files are thrown away and the page starts again with the new ones
-	Web.apply_update()
+	Web.request_update()
 
 
 func _unhandled_input(event: InputEvent) -> void:

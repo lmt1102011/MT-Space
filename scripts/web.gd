@@ -17,15 +17,9 @@ const SITE_URL := "https://lmt1102011.github.io/MT-Space/"
 const WINDOWS_DOWNLOAD := "downloads/mt-space-windows.zip"
 const ANDROID_DOWNLOAD := "downloads/mt-space-android.apk"
 
-var _last_check: float = 0.0
-# how many times the server was asked already
-var _checks: int = 0
 # the version that was found on the server, empty when there is no update
 var available_version: String = ""
-# how often the game asks the server whether there is a new version
-const CHECK_EVERY := 60.0
-# the version is checked a little after the game starts
-const FIRST_CHECK := 1.0
+var _manual_update_requested: bool = false
 
 
 func _ready() -> void:
@@ -100,13 +94,30 @@ func check_for_new_version() -> void:
 	http.request_completed.connect(func(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray):
 		http.queue_free()
 		if result != HTTPRequest.RESULT_SUCCESS or code != 200:
+			_manual_update_requested = false
 			return
 		var remote := body.get_string_from_utf8().strip_edges()
 		if remote == "":
+			_manual_update_requested = false
 			return
 		_check_version(remote)
+		if _manual_update_requested:
+			_manual_update_requested = false
+			if has_update():
+				apply_update()
 	)
 	http.request(url)
+
+
+# Called only after the player presses the Update button. There is no
+# background update check and discovering a new version never installs it by
+# itself.
+func request_update() -> void:
+	if available_version != "":
+		apply_update()
+		return
+	_manual_update_requested = true
+	check_for_new_version()
 
 
 # The version file sits one folder above the game page (the game lives in
@@ -172,18 +183,6 @@ func hide_web_update_button() -> void:
 	if not ClassDB.class_exists("JavaScriptBridge"):
 		return
 	JavaScriptBridge.eval("(function(){ if (window.hideUpdateButton) { window.hideUpdateButton(); } })();", true)
-
-
-func _process(delta: float) -> void:
-	_last_check += delta
-	# the first check comes a little after the start, the next ones every
-	# CHECK_EVERY seconds
-	var limit := FIRST_CHECK if _checks == 0 else CHECK_EVERY
-	if _last_check < limit:
-		return
-	_last_check = 0.0
-	_checks += 1
-	check_for_new_version()
 
 
 # The version of the build that is running, written into the build itself.
