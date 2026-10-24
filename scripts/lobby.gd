@@ -16,6 +16,7 @@ const ROOM_NAMES := [
 @onready var _rooms_list: VBoxContainer = $UI/RoomsList
 @onready var _empty_label: Label = $UI/EmptyLabel
 @onready var _create_btn: Button = $UI/CreateRoomButton
+@onready var _solo_btn: Button = $UI/PlaySoloButton
 @onready var _join_btn: Button = $UI/JoinRoomButton
 @onready var _back_btn: Button = $UI/BackButton
 @onready var _header: Label = $UI/Header
@@ -70,6 +71,8 @@ func _ready() -> void:
 	Net.session_failed.connect(_on_session_failed)
 	_refresh()
 	_refresh_web_mode()
+	_solo_btn.pressed.connect(_on_play_solo)
+	_solo_btn.visible = OS.has_feature("web")
 	# a browser cannot host, and it cannot look for rooms either
 	if not Net.can_host():
 		_create_btn.disabled = true
@@ -91,6 +94,7 @@ func _refresh() -> void:
 	_join_btn.visible = not _in_room
 	_empty_label.visible = not _in_room
 	_back_btn.visible = not _in_room
+	_solo_btn.visible = OS.has_feature("web") and not _in_room
 	# the address box only shows after the join by host button was pressed
 	_address_panel.visible = _address_open and not _in_room
 	if _in_room:
@@ -333,6 +337,14 @@ func _on_kick(id: int) -> void:
 func _on_add_player() -> void:
 	# there are no fake players any more, the room fills up with real ones
 	pass
+
+
+func _on_play_solo() -> void:
+	Game.sfx("click", -10.0, 0.95, 1.05)
+	Net.leave()
+	Game.reset_run()
+	Net.player_name = _player_name()
+	get_tree().change_scene_to_file(GAME_SCENE)
 
 
 func _on_start() -> void:
