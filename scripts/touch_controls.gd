@@ -12,6 +12,8 @@ extends Control
 const STICK_RADIUS := 68.0
 # how far the finger may go from the middle of the stick
 const MAX_OFFSET := 66.0
+# a small dead zone keeps tiny finger movements from turning into movement
+const DEAD_ZONE := 16.0
 # how far from the edge of the screen the sticks sit
 const EDGE := 140.0
 
@@ -59,6 +61,10 @@ func _input(event: InputEvent) -> void:
 
 func _on_touch(t: InputEventScreenTouch) -> void:
 	if t.pressed:
+		# Touches on the HUD belong to the button/panel, never to a stick.
+		# Without this, the left half of the screen also captures Settings.
+		if _is_ui_touch(t.position):
+			return
 		_touched = true
 		visible = true
 		# the left half moves, the right half aims and shoots
@@ -126,8 +132,19 @@ func always_visible() -> bool:
 	return Game.is_mobile_mode()
 
 
+func _is_ui_touch(position: Vector2) -> bool:
+	var hud := get_tree().current_scene.get_node_or_null("HUD")
+	if hud == null:
+		return false
+	var settings := hud.get_node_or_null("SettingsButton") as Control
+	if settings != null and settings.get_global_rect().has_point(position):
+		return true
+	var panel := hud.get_node_or_null("SettingsPanel") as Control
+	return panel != null and panel.visible and panel.get_global_rect().has_point(position)
+
+
 func _stick_vector(offset: Vector2) -> Vector2:
-	if offset.length() < 10.0:
+	if offset.length() < DEAD_ZONE:
 		return Vector2.ZERO
 	if offset.length() > MAX_OFFSET:
 		offset = offset.normalized() * MAX_OFFSET

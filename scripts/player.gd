@@ -74,6 +74,11 @@ func _setup_touch() -> void:
 
 # True while the player wants to shoot, either with the key or with the finger.
 func _shoot_held() -> bool:
+	# On a phone, shooting is exclusively controlled by the right stick.
+	# Do not read the mouse action here: Android/touch emulation can report a
+	# left-click for the same finger that is being used to move.
+	if Game.is_mobile_mode():
+		return _touch != null and _touch.is_shooting()
 	if _touch != null and _touch.is_shooting():
 		return true
 	return Input.is_action_pressed("shoot")
