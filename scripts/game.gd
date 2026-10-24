@@ -294,20 +294,23 @@ func xp_needed() -> int:
 func add_xp(amount: int) -> void:
 	var gained := int(round(float(amount) * (1.0 + 0.2 * float(upg_xp_greed))))
 	xp += gained
-	var leveled := false
+	var levels_gained: Array[int] = []
 	while xp >= xp_needed():
 		xp -= xp_needed()
 		level += 1
 		level_changed.emit(level)
-		leveled = true
+		levels_gained.append(level)
 		if upg_level_heal > 0:
 			var pl := get_tree().get_first_node_in_group("player")
 			if pl and pl.has_method("heal"):
 				pl.heal(upg_level_heal)
 	xp_changed.emit(xp, xp_needed())
-	if leveled:
+	if not levels_gained.is_empty():
 		SfxLib.play("chime", -11.0, 0.96, 1.05)
-		request_upgrade_choice.emit(level)
+		# Grant one upgrade choice per level, even when one XP pickup crosses
+		# several thresholds at once.
+		for gained_level: int in levels_gained:
+			request_upgrade_choice.emit(gained_level)
 
 
 # Called by enemies when they die - Bloodthirst may heal the player.
