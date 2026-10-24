@@ -53,7 +53,9 @@ func _choose_first_card() -> void:
 	var chosen_card: Dictionary = picked[0].get("card")
 	var before := _total_upgrade_stacks()
 	_cards.call("_on_card_chosen", chosen_card, picked[0])
-	await _wait_frames(20)
+	# Wait for the 0.20s close tween using wall-clock time; headless CI frame
+	# counts can advance much faster than real time.
+	await get_tree().create_timer(0.30).timeout
 	_check(_total_upgrade_stacks() > before, "the selected card applied an upgrade")
 
 
