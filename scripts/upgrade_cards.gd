@@ -35,7 +35,6 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_build_ui()
 	_build_hint()
-	visible = false
 
 	var parent := get_parent()
 	if parent:
@@ -367,6 +366,7 @@ func _return_to_hint() -> void:
 		_update_hint_badge()
 		return
 
+	visible = true
 	_hint.visible = true
 	_place_hint()
 	_update_hint_badge()
