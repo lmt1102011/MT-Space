@@ -25,7 +25,7 @@ var available_version: String = ""
 # how often the game asks the server whether there is a new version
 const CHECK_EVERY := 60.0
 # the version is checked a little after the game starts
-const FIRST_CHECK := 8.0
+const FIRST_CHECK := 1.0
 
 
 func _ready() -> void:
@@ -237,8 +237,13 @@ func _store_version(version: String) -> void:
 # used. The player presses the button, so nothing changes while they play.
 func apply_update() -> void:
 	if not is_web():
-		var download := ANDROID_DOWNLOAD if OS.has_feature("mobile") else WINDOWS_DOWNLOAD
-		OS.shell_open(SITE_URL + download)
+		if OS.has_feature("mobile"):
+			# Android will always ask the user to confirm an APK installation.
+			# Opening the APK URL lets Android/the browser hand that flow to the
+			# package installer instead of opening the website homepage.
+			OS.shell_open(SITE_URL + ANDROID_DOWNLOAD)
+		else:
+			_start_windows_update()
 		return
 	if not ClassDB.class_exists("JavaScriptBridge"):
 		return
@@ -259,3 +264,50 @@ func apply_update() -> void:
 	})();
 	"""
 	JavaScriptBridge.eval(js, true)
+
+
+# Downloads the new Windows archive after this process exits, replaces the
+# executable and PCK, then starts the updated game again. A running Windows
+# executable cannot overwrite itself, so a short PowerShell helper performs
+# the replacement after the game has closed.
+func _start_windows_update() -> void:
+	var executable := OS.get_executable_path()
+	var install_dir := executable.get_base_dir()
+	var script_path := OS.get_user_data_dir().path_join("mt_space_updater.ps1")
+	var zip_path := OS.get_user_data_dir().path_join("mt_space_update.zip")
+	var stage_dir := OS.get_user_data_dir().path_join("mt_space_update_stage")
+	var q := func(value: String) -> String:
+		return "'" + value.replace("'", "''") + "'"
+	var script := """
+$ErrorActionPreference = 'Stop'
+$root = %s
+$zip = %s
+$stage = %s
+$exe = %s
+$url = %s
+Start-Sleep -Milliseconds 500
+while (Get-Process -Id %d -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 250 }
+try {
+    Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
+    Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+    Expand-Archive -LiteralPath $zip -DestinationPath $stage -Force
+    Copy-Item -LiteralPath (Join-Path $stage 'mt-space.exe') -Destination (Join-Path $root 'mt-space.exe') -Force
+    Copy-Item -LiteralPath (Join-Path $stage 'mt-space.pck') -Destination (Join-Path $root 'mt-space.pck') -Force
+    Start-Process -FilePath (Join-Path $root 'mt-space.exe')
+} catch {
+    Start-Process -FilePath (Join-Path $root 'mt-space.exe')
+}
+Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
+""" % [q.call(install_dir), q.call(zip_path), q.call(stage_dir),
+		q.call(executable), q.call(SITE_URL + WINDOWS_DOWNLOAD), OS.get_process_id()]
+	var file := FileAccess.open(script_path, FileAccess.WRITE)
+	if file == null:
+		OS.shell_open(SITE_URL + WINDOWS_DOWNLOAD)
+		return
+	file.store_string(script)
+	file.close()
+	OS.create_process("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", script_path])
+	get_tree().quit()

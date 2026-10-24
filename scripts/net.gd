@@ -254,7 +254,6 @@ func join_room(address: String, port: int = DEFAULT_PORT, web_mode: bool = false
 	_new_api(peer)
 	room_name = ""
 	players = []
-	_start_discovery(false)
 	return true
 
 
@@ -295,7 +294,6 @@ func _reconnect() -> void:
 	_new_api(peer)
 	_wait_for_hello = true
 	_hello_timer = 0.0
-	_start_discovery(false)
 
 
 # Leaves the room the player asked to leave.
@@ -359,7 +357,10 @@ func _start_discovery(hosting: bool) -> void:
 	_discovery_burst_timer = 0.0
 	_unicast_scan_timer = 0.0
 	_unicast_scan_index = 0
-	_unicast_scan_targets = _local_subnet_targets() if not hosting else []
+	# Broadcast/subnet discovery is enough for a normal LAN and avoids flooding
+	# every address on every network adapter. Manual host address entry remains
+	# available for networks that block broadcast packets.
+	_unicast_scan_targets = []
 	if not hosting:
 		_send_discovery_queries()
 
@@ -476,15 +477,6 @@ func _process(delta: float) -> void:
 			# ask the network for rooms. The global broadcast is not always
 			# passed by a router, so the subnet addresses are tried too.
 			_send_discovery_queries()
-	if not _hosting and not _unicast_scan_targets.is_empty():
-		_unicast_scan_timer -= delta
-		if _unicast_scan_timer <= 0.0:
-			_unicast_scan_timer = 0.025
-			_discovery.set_dest_address(_unicast_scan_targets[_unicast_scan_index], DISCOVERY_PORT)
-			_discovery.put_packet("MTDISC?".to_utf8_buffer())
-			_unicast_scan_index += 1
-			if _unicast_scan_index >= _unicast_scan_targets.size():
-				_unicast_scan_index = 0
 	# read the answers
 	while _discovery.get_available_packet_count() > 0:
 		var ip := _discovery.get_packet_ip()
@@ -513,7 +505,7 @@ func _room_packet() -> String:
 func _add_own_room() -> void:
 	if not _hosting:
 		return
-	var ip := "127.0.0.1"
+	var ip := local_lan_ip()
 	for r in rooms:
 		if str(r["address"]) == ip and int(r["port"]) == _room_port:
 			r["count"] = players.size()
@@ -542,9 +534,15 @@ func _add_room(ip: String, port: int, text: String) -> void:
 	# the room tells how it talks, a browser can only join a websocket room
 	var web := parts.size() >= 5 and int(parts[4]) == 1
 	for r in rooms:
-		if str(r["address"]) == ip and int(r["port"]) == game_port:
+		# The host can receive its own broadcast through both 127.0.0.1 and
+		# its LAN address. Treat those as one room.
+		var own_alias := _hosting and str(r["name"]) == name \
+			and int(r["port"]) == game_port \
+			and (ip == "127.0.0.1" or ip == local_lan_ip())
+		if (str(r["address"]) == ip and int(r["port"]) == game_port) or own_alias:
 			var changed := str(r["name"]) != name or int(r["count"]) != count \
-				or bool(r["web"]) != web
+				or bool(r["web"]) != web or str(r["address"]) != ip
+			r["address"] = ip if not own_alias else local_lan_ip()
 			r["count"] = count
 			r["web"] = web
 			r["seen"] = Time.get_ticks_msec() / 1000.0
@@ -630,6 +628,10 @@ func _my_name() -> String:
 
 
 func _on_connection_failed() -> void:
+	_reconnecting = false
+	_last_address = ""
+	_reset_session()
+	browse_rooms()
 	session_failed.emit("the host did not answer")
 
 
@@ -859,7 +861,7 @@ func push_host_player() -> void:
 		rpc_id(pid, "_cli_player_state", pos, rot, 1.0, true)
 
 
-@rpc("authority", "call_remote", "reliable", 0)
+@rpc("authority", "call_remote", "unreliable_ordered", 1)
 func _cli_enemies(data: Dictionary) -> void:
 	if world != null and world.has_method("enemies_synced"):
 		world.call("enemies_synced", data)
@@ -868,7 +870,7 @@ func _cli_enemies(data: Dictionary) -> void:
 # --- player movement --------------------------------------------------------
 # The local player sends where it is, everybody else moves it smoothly.
 func send_player_state(pos: Vector2, rot: float, hp: float, alive: bool) -> void:
-	if not is_online():
+	if not is_online() or _peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
 		return
 	# the host tells the clients about itself in push_host_player
 	if _hosting:
@@ -881,7 +883,7 @@ func send_player_state(pos: Vector2, rot: float, hp: float, alive: bool) -> void
 	rpc_id(1, "_cli_player_state", pos, rot, hp, alive)
 
 
-@rpc("any_peer", "call_remote", "reliable", 0)
+@rpc("any_peer", "call_remote", "unreliable_ordered", 1)
 func _cli_player_state(pos: Vector2, rot: float, hp: float, alive: bool) -> void:
 	var sender := _api.get_remote_sender_id()
 	# the host passes it on to the other players, they do not see each other
