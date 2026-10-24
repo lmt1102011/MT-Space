@@ -13,6 +13,12 @@ signal name_chosen(name: String)
 const MAX_NAME := 14
 
 
+func show_name_taken() -> void:
+	_title.text = "NAME ALREADY IN USE"
+	_hint.text = "choose a different name to join this room"
+	_play_btn.text = "CHANGE NAME"
+
+
 func _ready() -> void:
 	_play_btn.pressed.connect(_on_play)
 	_edit.text_submitted.connect(func(_t): _on_play())

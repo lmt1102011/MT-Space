@@ -20,6 +20,7 @@ func _check(cond: bool, what: String) -> void:
 
 
 func _ready() -> void:
+	Game.reset_run()
 	Net.player_name = "HOST"
 	_world = Node2D.new()
 	_world.set_script(load("res://scripts/net_world.gd"))
@@ -60,12 +61,16 @@ func _run() -> void:
 
 	# the host enemy takes damage and really dies
 	var hp_before := int(e.get("hp"))
+	var orb_count_before := get_tree().get_nodes_in_group("xp_orb").size()
 	_check(hp_before > 0, "the enemy has hp")
 	e.call("take_damage", 1000.0, "normal")
 	await get_tree().process_frame
 	await get_tree().process_frame
 	_check(not is_instance_valid(e), "the enemy died")
-	_check(get_tree().get_nodes_in_group("xp_orb").size() > 0, "the enemy dropped xp")
+	var orbs := get_tree().get_nodes_in_group("xp_orb")
+	_check(orbs.size() - orb_count_before == 3, "a shooter drops three 5 XP orbs")
+	for orb in orbs:
+		_check(int(orb.get("xp_value")) == 5, "every XP orb has a fixed value of 5")
 
 	# the host never sends a hit report to itself
 	Net.report_hit(1, 5.0, "normal")

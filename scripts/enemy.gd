@@ -24,11 +24,13 @@ var _hull: Sprite2D = null
 var _hull_rim: Sprite2D = null
 var _tint_burn: bool = false
 var _tint_slow: bool = false
+var _status_visual: Node2D
 
 const DAMAGE_NUMBER := preload("res://scenes/damage_number.tscn")
 const NetEnemy := preload("res://scripts/net_enemy.gd")
 const XP_DROP := preload("res://scripts/xp_pickup.gd")
 const SHAPES := preload("res://scripts/enemy_shapes.gd")
+const STATUS_VISUAL := preload("res://scripts/status_effect_visual.gd")
 
 # --- network ---------------------------------------------------------------
 # On the host this enemy thinks for itself. On a client it is only a copy:
@@ -53,6 +55,10 @@ func _ready() -> void:
 	collision_layer = 8
 	collision_mask = 13   # player(1) + obstacle(4) + enemy(8)
 	hp = max_hp
+	_status_visual = STATUS_VISUAL.new()
+	_status_visual.set("radius", radius)
+	_status_visual.z_index = 2
+	add_child(_status_visual)
 	queue_redraw()
 	_update_bar()
 
@@ -117,6 +123,7 @@ func _physics_process(delta: float) -> void:
 	if NetEnemy.is_remote(self):
 		# a copy of a host enemy just walks to where the host says it is
 		NetEnemy.follow(self, delta)
+		_tick_status(delta, false)
 		_bar.global_position = global_position + Vector2(0, 30.0)
 		_bar.global_rotation = 0.0
 		return
@@ -189,19 +196,18 @@ func apply_status(burn_stacks: int, freeze_stacks: int) -> void:
 		Game.sfx("frost", -23.0, 0.92, 1.12)
 
 
-func _tick_status(delta: float) -> void:
+func _tick_status(delta: float, apply_burn_damage: bool = true) -> void:
 	if _burn > 0.0:
 		_burn -= delta
 		_burn_tick -= delta
 		if _burn_tick <= 0.0:
 			_burn_tick = 0.4
-			take_damage(_burn_dmg, "burn")
+			if apply_burn_damage:
+				take_damage(_burn_dmg, "burn")
 	if _slow > 0.0:
 		_slow -= delta
 	_update_hull_tint()
-	if _burn > 0.0 or _slow > 0.0:
-		if _on_screen:
-			queue_redraw()
+	_status_visual.call("set_status", _burn > 0.0, _slow > 0.0)
 
 
 func touch_player() -> void:
@@ -252,7 +258,7 @@ func _die() -> void:
 	if NetEnemy.is_remote(self):
 		queue_free()
 		return
-	var xp := 1 + maxi(sides - 3, 0)
+	var xp := (1 + maxi(sides - 3, 0)) * 5
 	var drop := NetEnemy.died(self, xp)
 	var boom := preload("res://scenes/explosion.tscn").instantiate() as Explosion
 	boom.global_position = global_position
@@ -274,13 +280,3 @@ func _on_kill() -> void:
 
 func drop_xp(amount: int) -> void:
 	XP_DROP.drop(get_tree(), global_position, amount)
-
-
-func _draw() -> void:
-	# the hull itself is a Polygon2D child, so only the status auras are drawn
-	# here - and only while a status is active.
-	if _burn > 0.0:
-		var f := 0.15 + 0.1 * sin(_anim_t * 18.0)
-		draw_circle(Vector2.ZERO, radius + 4.0, Color(1.0, 0.45, 0.1, f))
-	if _slow > 0.0:
-		draw_circle(Vector2.ZERO, radius + 4.0, Color(0.4, 0.8, 1.0, 0.16))

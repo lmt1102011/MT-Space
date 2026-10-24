@@ -1,6 +1,7 @@
 extends CanvasLayer
 
 const CardScript := preload("res://scripts/card.gd")
+const NAME_PROMPT := preload("res://scenes/name_prompt.tscn")
 
 @onready var _wave_label: Label = $WaveLabel
 @onready var _clear_label: Label = $WaveClear
@@ -22,6 +23,7 @@ var _countdown: int = 0
 var _game_over_layer: Control
 var _play_again_btn: Button
 var _menu_btn: Button
+var _name_prompt: Control
 
 
 func _ready() -> void:
@@ -32,6 +34,9 @@ func _ready() -> void:
 	Game.game_over.connect(_on_game_over)
 	Game.card_collected.connect(show_card_reward)
 	Game.spectate_changed.connect(_on_spectate_changed)
+	Net.player_name_taken.connect(_on_player_name_taken)
+	if Net.name_change_required:
+		_on_player_name_taken()
 	Web.update_available.connect(_on_update_available)
 	if _update_btn:
 		_update_btn.pressed.connect(_on_update_pressed)
@@ -46,6 +51,20 @@ func _ready() -> void:
 	_clear_label.visible = false
 	_countdown_label.visible = false
 	_setup_settings()
+
+
+func _on_player_name_taken() -> void:
+	if is_instance_valid(_name_prompt):
+		return
+	_name_prompt = NAME_PROMPT.instantiate() as Control
+	add_child(_name_prompt)
+	_name_prompt.call("show_name_taken")
+	_name_prompt.name_chosen.connect(_on_replacement_name_chosen)
+
+
+func _on_replacement_name_chosen(_name: String) -> void:
+	_name_prompt = null
+	Net.retry_hello()
 
 
 # The little panel with the volume and the quit button.
@@ -270,11 +289,10 @@ func _on_game_over() -> void:
 
 func _on_play_again() -> void:
 	Game.sfx("click", -14.0, 0.95, 1.05)
-	# when the game was played in a room, go back to lobby
+	# Keep the multiplayer session alive and restart the match in the same room.
+	# Clients ask the host to restart so every player enters the new run together.
 	if Game.in_a_room():
-		Game.reset_run()
-		Net.leave()
-		get_tree().change_scene_to_file("res://scenes/lobby.tscn")
+		Net.restart_room_game()
 		return
 	Game.reset_run()
 	get_tree().reload_current_scene()

@@ -35,7 +35,6 @@ var _elite_crit: float = 0.0
 var _elite_regen: int = 0
 var _elite_regen_acc: float = 0.0
 var _on_screen: bool = true
-var _redraw_acc: float = 0.0
 var _ai_acc: float = 0.0
 var _goal: Vector2 = Vector2.ZERO
 var _cull_acc: float = 0.0
@@ -45,6 +44,7 @@ var _ship: Sprite2D = null
 var _elite_ship: Sprite2D = null
 var _tell_ring: Sprite2D = null
 var _tell_line: Sprite2D = null
+var _status_visual: Node2D
 
 const SHAPES := preload("res://scripts/enemy_shapes.gd")
 const NetEnemy := preload("res://scripts/net_enemy.gd")
@@ -58,6 +58,7 @@ const AIM_LINE_TEX := preload("res://assets/aim_line.svg")
 const UPGRADE_DROP := preload("res://scenes/upgrade_drop.tscn")
 const DAMAGE_NUMBER := preload("res://scenes/damage_number.tscn")
 const XP_DROP := preload("res://scripts/xp_pickup.gd")
+const STATUS_VISUAL := preload("res://scripts/status_effect_visual.gd")
 
 # --- network ---------------------------------------------------------------
 # On the host this enemy thinks for itself. On a client it is only a copy:
@@ -83,7 +84,10 @@ func _ready() -> void:
 	hp = max_hp
 	_cooldown = randf_range(0.8, fire_cooldown)
 	_build_hull()
-	queue_redraw()
+	_status_visual = STATUS_VISUAL.new()
+	_status_visual.set("radius", 35.0)
+	_status_visual.z_index = 2
+	add_child(_status_visual)
 	_update_bar()
 
 
@@ -163,6 +167,7 @@ func _physics_process(delta: float) -> void:
 	if NetEnemy.is_remote(self):
 		# a copy of a host enemy just walks to where the host says it is
 		NetEnemy.follow(self, delta)
+		_tick_status(delta, false)
 		_bar.global_position = global_position + Vector2(0, 30.0)
 		_bar.global_rotation = 0.0
 		return
@@ -187,12 +192,6 @@ func _physics_process(delta: float) -> void:
 	if _on_screen:
 		# the charge tell is a sprite, it is updated and hidden every frame
 		_update_tell()
-		# only redraw while something is actually animating
-		var need := _burn > 0.0 or _slow > 0.0
-		if need:
-			_redraw_throttled(delta)
-		else:
-			_redraw_acc = 0.0
 		_bar.global_position = global_position + Vector2(0, 36.0)
 		_bar.global_rotation = 0.0
 
@@ -312,15 +311,6 @@ func _cull(delta: float) -> void:
 		return
 	_on_screen = on
 	visible = on
-	if on:
-		queue_redraw()
-
-
-func _redraw_throttled(delta: float) -> void:
-	_redraw_acc -= delta
-	if _redraw_acc <= 0.0:
-		_redraw_acc = 1.0 / 20.0
-		queue_redraw()
 
 
 func apply_push(impulse: Vector2) -> void:
@@ -338,15 +328,17 @@ func apply_status(burn_stacks: int, freeze_stacks: int) -> void:
 		Game.sfx("frost", -23.0, 0.92, 1.12)
 
 
-func _tick_status(delta: float) -> void:
+func _tick_status(delta: float, apply_burn_damage: bool = true) -> void:
 	if _burn > 0.0:
 		_burn -= delta
 		_burn_tick -= delta
 		if _burn_tick <= 0.0:
 			_burn_tick = 0.4
-			take_damage(_burn_dmg, "burn")
+			if apply_burn_damage:
+				take_damage(_burn_dmg, "burn")
 	if _slow > 0.0:
 		_slow -= delta
+	_status_visual.call("set_status", _burn > 0.0, _slow > 0.0)
 
 
 func _spawn_damage_number(amount: float, kind: String) -> void:
@@ -429,7 +421,8 @@ func _die() -> void:
 	if NetEnemy.is_remote(self):
 		queue_free()
 		return
-	var drop := NetEnemy.died(self, 3)
+	var xp := 15
+	var drop := NetEnemy.died(self, xp)
 	var boom := preload("res://scenes/explosion.tscn").instantiate() as Explosion
 	boom.global_position = global_position
 	get_tree().current_scene.add_child(boom)
@@ -441,23 +434,10 @@ func _die() -> void:
 	if elite:
 		drop_elite_card()
 	if drop:
-		drop_xp(3)
+		drop_xp(xp)
 	queue_free()
 
 
 func drop_xp(amount: int) -> void:
 	XP_DROP.drop(get_tree(), global_position, amount)
-
-
-# -------------------------------------------------------------------------
-func _draw() -> void:
-	# the hull is a sprite, so only the status auras are drawn here - and
-	# only while a status is active. The charge tell is a sprite too, so it
-	# can be hidden the moment the shot is fired.
-
-	# --- status auras ---
-	if _burn > 0.0:
-		draw_circle(Vector2.ZERO, 34.0, Color(1.0, 0.45, 0.1, 0.18 + 0.08 * sin(_flame_time * 18.0)))
-	if _slow > 0.0:
-		draw_circle(Vector2.ZERO, 34.0, Color(0.4, 0.8, 1.0, 0.18))
 

@@ -28,7 +28,6 @@ var _dash_cd: float = 0.0
 var _dash_dir: Vector2 = Vector2.RIGHT
 var _push: Vector2 = Vector2.ZERO
 var _player: Node2D = null
-var _flame_time: float = 0.0
 var _burn: float = 0.0
 var _burn_tick: float = 0.0
 var _burn_dmg: float = 0.0
@@ -41,14 +40,15 @@ var _elite_crit: float = 0.0
 var _elite_regen: int = 0
 var _elite_regen_acc: float = 0.0
 var _on_screen: bool = true
-var _redraw_acc: float = 0.0
 var _cull_acc: float = 0.0
+var _dash_visual_time: float = 0.0
 var _brain := EnemyBrain.new()
 var _hulls: Array = []
 var _ship: Sprite2D = null
 var _elite_ship: Sprite2D = null
-var _drew_effects: bool = false
-var _tint_winded: bool = false
+var _charge_effects: Array[Sprite2D] = []
+var _dash_effect: Sprite2D
+var _status_visual: Node2D
 
 const SHAPES := preload("res://scripts/enemy_shapes.gd")
 const NetEnemy := preload("res://scripts/net_enemy.gd")
@@ -60,6 +60,9 @@ const MUZZLE := Vector2(SHAPES.CHARGER_NOSE, 0.0)
 const UPGRADE_DROP := preload("res://scenes/upgrade_drop.tscn")
 const DAMAGE_NUMBER := preload("res://scenes/damage_number.tscn")
 const XP_DROP := preload("res://scripts/xp_pickup.gd")
+const STATUS_VISUAL := preload("res://scripts/status_effect_visual.gd")
+const CHARGE_TEXTURE := preload("res://assets/charger_charge.png")
+const DASH_TEXTURE := preload("res://assets/charger_dash.png")
 
 # --- network ---------------------------------------------------------------
 # On the host this enemy thinks for itself. On a client it is only a copy:
@@ -84,7 +87,10 @@ func _ready() -> void:
 	collision_mask = 13
 	hp = max_hp
 	_build_hull()
-	queue_redraw()
+	_status_visual = STATUS_VISUAL.new()
+	_status_visual.set("radius", 34.0)
+	_status_visual.z_index = 2
+	add_child(_status_visual)
 	_update_bar()
 
 
@@ -104,6 +110,19 @@ func _build_hull() -> void:
 	_elite_ship.visible = false
 	add_child(_elite_ship)
 	_hulls.append(_elite_ship)
+	for i in 3:
+		var ring := Sprite2D.new()
+		ring.texture = CHARGE_TEXTURE
+		ring.z_index = -1
+		ring.visible = false
+		add_child(ring)
+		_charge_effects.append(ring)
+	_dash_effect = Sprite2D.new()
+	_dash_effect.texture = DASH_TEXTURE
+	_dash_effect.scale = Vector2(0.48, 0.16)
+	_dash_effect.z_index = -1
+	_dash_effect.visible = false
+	add_child(_dash_effect)
 
 
 func setup(speed_mult: float = 1.0, dmg_bonus: int = 0, fire_mult: float = 1.0, hp_mult: float = 1.0) -> void:
@@ -133,10 +152,10 @@ func _physics_process(delta: float) -> void:
 	if NetEnemy.is_remote(self):
 		# a copy of a host enemy just walks to where the host says it is
 		NetEnemy.follow(self, delta)
+		_tick_status(delta, false)
 		_bar.global_position = global_position + Vector2(0, 30.0)
 		_bar.global_rotation = 0.0
 		return
-	_flame_time += delta
 	_cull(delta)
 	_tick_status(delta)
 	if _elite_regen > 0 and hp < max_hp:
@@ -156,7 +175,7 @@ func _physics_process(delta: float) -> void:
 	if Game.player_dead:
 		# the player is down: no hunting, no charging, just ambling about
 		_stroll_step(delta)
-		_redraw_if_needed(delta)
+		_update_charge_dash_visuals(delta)
 		_bar.global_position = global_position + Vector2(0, radius + 18.0)
 		_bar.global_rotation = 0.0
 		return
@@ -173,7 +192,7 @@ func _physics_process(delta: float) -> void:
 	if _state != State.DASH and not Game.player_dead:
 		_face(target, delta)
 
-	_redraw_if_needed(delta)
+	_update_charge_dash_visuals(delta)
 	_bar.global_position = global_position + Vector2(0, radius + 18.0)
 	_bar.global_rotation = 0.0
 
@@ -261,30 +280,6 @@ func _cull(delta: float) -> void:
 		return
 	_on_screen = on
 	visible = on
-	if on:
-		queue_redraw()
-
-
-func _redraw_if_needed(delta: float) -> void:
-	# only redraw while something is actually animating
-	var need := _state == State.CHARGE or _state == State.DASH \
-		or _burn > 0.0 or _slow > 0.0 or _dash_cd > 0.0
-	if need:
-		_drew_effects = true
-		_redraw_throttled(delta)
-	else:
-		_redraw_acc = 0.0
-		if _drew_effects:
-			# the last frame still showed the tell, clear it now
-			_drew_effects = false
-			queue_redraw()
-
-
-func _redraw_throttled(delta: float) -> void:
-	_redraw_acc -= delta
-	if _redraw_acc <= 0.0:
-		_redraw_acc = 1.0 / 20.0
-		queue_redraw()
 
 
 func apply_push(impulse: Vector2) -> void:
@@ -304,15 +299,17 @@ func apply_status(burn_stacks: int, freeze_stacks: int) -> void:
 		Game.sfx("frost", -23.0, 0.92, 1.12)
 
 
-func _tick_status(delta: float) -> void:
+func _tick_status(delta: float, apply_burn_damage: bool = true) -> void:
 	if _burn > 0.0:
 		_burn -= delta
 		_burn_tick -= delta
 		if _burn_tick <= 0.0:
 			_burn_tick = 0.4
-			take_damage(_burn_dmg, "burn")
+			if apply_burn_damage:
+				take_damage(_burn_dmg, "burn")
 	if _slow > 0.0:
 		_slow -= delta
+	_status_visual.call("set_status", _burn > 0.0, _slow > 0.0)
 
 
 func _spawn_damage_number(amount: float, kind: String) -> void:
@@ -396,7 +393,8 @@ func _die() -> void:
 	if NetEnemy.is_remote(self):
 		queue_free()
 		return
-	var drop := NetEnemy.died(self, 3)
+	var xp := 15
+	var drop := NetEnemy.died(self, xp)
 	var boom := preload("res://scenes/explosion.tscn").instantiate() as Explosion
 	boom.global_position = global_position
 	get_tree().current_scene.add_child(boom)
@@ -408,7 +406,7 @@ func _die() -> void:
 	if elite:
 		drop_elite_card()
 	if drop:
-		drop_xp(3)
+		drop_xp(xp)
 	queue_free()
 
 
@@ -416,68 +414,27 @@ func drop_xp(amount: int) -> void:
 	XP_DROP.drop(get_tree(), global_position, amount)
 
 
-# -------------------------------------------------------------------------
-func _set_hull_tint(winded: bool) -> void:
-	if _tint_winded == winded:
-		return
-	_tint_winded = winded
-	var col := HULL_COLOR.darkened(0.22) if winded else HULL_COLOR
-	if _ship != null:
-		_ship.modulate = col
-
-
-func _draw() -> void:
-	# the hull is a Polygon2D child (mesh cached once) so only the tells and
-	# auras are drawn here - and only while they are active.
-	if _dash_cd > 0.0:
-		_set_hull_tint(true)
+func _update_charge_dash_visuals(delta: float) -> void:
+	var charging := _state == State.CHARGE
+	var dashing := _state == State.DASH
+	_dash_effect.visible = dashing
+	if dashing:
+		_dash_visual_time += delta
+		var pulse := 0.5 + 0.5 * sin(_dash_visual_time * 34.0)
+		var slide := fposmod(_dash_visual_time * 70.0, 18.0)
+		_dash_effect.position = Vector2(-10.0 - slide, sin(_dash_visual_time * 22.0) * 2.0)
+		_dash_effect.scale = Vector2(0.46 + pulse * 0.06, 0.16)
+		_dash_effect.modulate.a = 0.58 + pulse * 0.34
 	else:
-		_set_hull_tint(false)
-
-	# --- charge tell: rings fade in while shrinking into the enemy ---
-	if _state == State.CHARGE:
-		var t := clampf(_state_t / charge_time, 0.0, 1.0)
-		for i in 3:
-			var p := clampf(t * 1.6 - float(i) * 0.28, 0.0, 1.0)
-			var r := lerpf(78.0, 10.0, p)
-			var a := lerpf(0.04, 0.5, p)
-			draw_arc(Vector2.ZERO, r, 0.0, TAU, 48, Color(HULL_COLOR.r, HULL_COLOR.g, HULL_COLOR.b, a), 3.0, true)
-
-	# --- dash: wind streaming past the body + motion blur ---
-	if _state == State.DASH:
-		# air lines: parallel to the travel direction, rushing from in front of
-		# the nose to behind the tail (this is what real speed lines look like)
-		var scroll := _flame_time * 9.0
-		for i in 9:
-			var side := 1.0 if i % 2 == 0 else -1.0
-			var lane := side * (19.0 + fmod(float(i) * 0.37, 1.0) * 24.0)
-			var seg := 22.0 + fmod(float(i) * 0.61, 1.0) * 30.0
-			var t := fmod(scroll * (0.85 + 0.04 * float(i)) + float(i) * 0.19, 1.0)
-			var x := lerpf(64.0, -80.0, t)
-			var wobble := sin(TAU * t + float(i)) * 1.6
-			draw_line(Vector2(x - seg, lane + wobble), Vector2(x, lane + wobble),
-				Color(0.88, 1.0, 0.92, 0.30 * sin(PI * t)), 2.0, true)
-		# the body itself smears backwards
-		for i in 4:
-			var off := -10.0 - float(i) * 18.0
-			var h := 13.0 - float(i) * 2.6
-			draw_colored_polygon(PackedVector2Array([
-				Vector2(off - 26.0, -h), Vector2(off, 0.0), Vector2(off - 26.0, h)
-			]), Color(HULL_COLOR.r, HULL_COLOR.g, HULL_COLOR.b, 0.34 - float(i) * 0.07))
-		# air bunching up in front of the nose
-		draw_arc(Vector2(34.0, 0.0), 19.0, -1.15, 1.15, 20,
-			Color(0.9, 1.0, 0.95, 0.2), 2.0, true)
-
-	# --- winded: panting puffs while it recovers ---
-	if _dash_cd > 0.0 and _state == State.CHASE:
-		for i in 3:
-			var ph := fmod(_flame_time * 1.6 + float(i) * 0.33, 1.0)
-			draw_circle(Vector2(-10.0 + float(i) * 12.0, -20.0 - ph * 16.0),
-				4.0 + ph * 7.0, Color(0.8, 1.0, 0.85, 0.22 * (1.0 - ph)))
-
-	# --- status auras ---
-	if _burn > 0.0:
-		draw_circle(Vector2.ZERO, 30.0, Color(1.0, 0.45, 0.1, 0.18 + 0.08 * sin(_flame_time * 18.0)))
-	if _slow > 0.0:
-		draw_circle(Vector2.ZERO, 30.0, Color(0.4, 0.8, 1.0, 0.18))
-
+		_dash_effect.position = Vector2.ZERO
+		_dash_effect.scale = Vector2(0.48, 0.16)
+		_dash_effect.modulate.a = 1.0
+	var progress := clampf(_state_t / charge_time, 0.0, 1.0)
+	for i in _charge_effects.size():
+		var ring := _charge_effects[i]
+		ring.visible = charging
+		if charging:
+			var ring_progress := clampf(progress * 1.6 - float(i) * 0.28, 0.0, 1.0)
+			var ring_radius := lerpf(78.0, 10.0, ring_progress)
+			ring.scale = Vector2.ONE * ring_radius / 174.0
+			ring.modulate.a = lerpf(0.04, 0.5, ring_progress)

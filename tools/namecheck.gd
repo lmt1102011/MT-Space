@@ -30,6 +30,10 @@ func _run() -> void:
 	_check(edit != null, "the name field exists")
 	_check(play != null, "the play button exists")
 	_check(edit.max_length > 0, "the name has a maximum length")
+	Net.players = [{"id": 1, "name": "Pilot"}]
+	_check(Net.is_player_name_taken(" pilot "), "duplicate checks ignore case and whitespace")
+	_check(not Net.is_player_name_taken("Other"), "unique player names are accepted")
+	Net.players.clear()
 
 	# an empty name is not accepted
 	Net.player_name = ""
@@ -44,6 +48,14 @@ func _run() -> void:
 	play.pressed.emit()
 	await get_tree().process_frame
 	_check(Net.player_name == "PILOT", "the name is trimmed and taken over")
+	_prompt = load("res://scenes/name_prompt.tscn").instantiate() as Control
+	add_child(_prompt)
+	_prompt.call("show_name_taken")
+	await get_tree().process_frame
+	_check((_prompt.get_node("Panel/Title") as Label).text == "NAME ALREADY IN USE",
+		"duplicate names show a rename request")
+	_check((_prompt.get_node("Panel/PlayButton") as Button).text == "CHANGE NAME",
+		"the prompt asks the player to choose another name")
 
 	print("=== done: %d failure(s) ===" % _failed)
 	get_tree().quit(0 if _failed == 0 else 1)

@@ -37,6 +37,7 @@ const UPGRADE_DROP := preload("res://scenes/upgrade_drop.tscn")
 const DAMAGE_NUMBER := preload("res://scenes/damage_number.tscn")
 const XP_DROP := preload("res://scripts/xp_pickup.gd")
 const ELITE_DROP_CHANCE := 0.5
+const STATUS_VISUAL := preload("res://scripts/status_effect_visual.gd")
 
 # --- network ---------------------------------------------------------------
 # On the host this enemy thinks for itself. On a client it is only a copy:
@@ -55,6 +56,7 @@ var _net_hitter: int = 0
 
 var _flame_out: Polygon2D = null
 var _flame_in: Polygon2D = null
+var _status_visual: Node2D
 
 
 func _make_flame(width: float) -> Polygon2D:
@@ -93,6 +95,10 @@ func _ready() -> void:
 	_cooldown = randf_range(0.6, fire_cooldown)
 	_flame_out = _make_flame(3.5)
 	_flame_in = _make_flame(1.8)
+	_status_visual = STATUS_VISUAL.new()
+	_status_visual.set("radius", radius + 3.0)
+	_status_visual.z_index = 2
+	add_child(_status_visual)
 	_update_bar()
 
 
@@ -124,6 +130,7 @@ func _physics_process(delta: float) -> void:
 	if NetEnemy.is_remote(self):
 		# a copy of a host enemy just walks to where the host says it is
 		NetEnemy.follow(self, delta)
+		_tick_status(delta, false)
 		_bar.global_position = global_position + Vector2(0, 30.0)
 		_bar.global_rotation = 0.0
 		return
@@ -247,15 +254,17 @@ func apply_status(burn_stacks: int, freeze_stacks: int) -> void:
 		Game.sfx("frost", -23.0, 0.92, 1.12)
 
 
-func _tick_status(delta: float) -> void:
+func _tick_status(delta: float, apply_burn_damage: bool = true) -> void:
 	if _burn > 0.0:
 		_burn -= delta
 		_burn_tick -= delta
 		if _burn_tick <= 0.0:
 			_burn_tick = 0.4
-			take_damage(_burn_dmg, "burn")
+			if apply_burn_damage:
+				take_damage(_burn_dmg, "burn")
 	if _slow > 0.0:
 		_slow -= delta
+	_status_visual.call("set_status", _burn > 0.0, _slow > 0.0)
 
 
 func touch_player() -> void:
@@ -346,7 +355,7 @@ func _die() -> void:
 	if NetEnemy.is_remote(self):
 		queue_free()
 		return
-	var xp := 3
+	var xp := 15
 	if elite:
 		xp *= 3
 	var drop := NetEnemy.died(self, xp)

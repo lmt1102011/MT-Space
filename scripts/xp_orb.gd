@@ -4,7 +4,7 @@ extends Node2D
 # _process, so this node never needs to be a physics body. Keeping it out of
 # the physics space removes a lot of cost once dozens of them are lying around.
 
-@export var xp_value: int = 1
+@export var xp_value: int = 5
 @export var magnet_radius: float = 220.0
 @export var magnet_speed: float = 520.0
 @export var pickup_radius: float = 18.0

@@ -286,7 +286,7 @@ func grant_card(card: Dictionary) -> bool:
 
 func xp_needed_for(level_num: int) -> int:
 	# gentler curve: steady growth that stays approachable
-	return int(round(6 + (level_num - 1) * 5 + pow(level_num - 1, 1.9) * 1.2))
+	return int(round(6 + (level_num - 1) * 5 + pow(level_num - 1, 1.9) * 1.2)) * 5
 
 func xp_needed() -> int:
 	return xp_needed_for(level)

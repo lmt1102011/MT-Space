@@ -11,7 +11,8 @@ var _cards: Array = []
 var _pending: bool = false
 var _closing_after_choice: bool = false
 var _upgrade_queue: Array = []
-var _hint: Control = null
+var _current_choices: Array = []
+var _hint: Button = null
 var _hint_holder: Control = null
 var _hint_badge: Label = null
 var _hint_badge_bg: Panel = null
@@ -23,10 +24,9 @@ var _current_upgrade_level: int = 0
 const CARD_W := 200.0
 const CARD_H := 280.0
 const SPACING := 28.0
-const CLICK_DELAY := 1.5
-const HINT_X := 0.80
-const HINT_Y := 0.50
-const HINT_SCALE := 0.56
+const CLICK_DELAY := 0.25
+const HINT_W := 76.0
+const HINT_H := 96.0
 
 
 func _ready() -> void:
@@ -35,6 +35,7 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_build_ui()
 	_build_hint()
+	visible = false
 
 	var parent := get_parent()
 	if parent:
@@ -56,6 +57,7 @@ func _build_ui() -> void:
 
 	_title = Label.new()
 	_title.text = "LEVEL UP — CHOOSE A CARD"
+	_title.visible = false
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_title.anchor_left = 0.5
 	_title.anchor_right = 0.5
@@ -106,14 +108,35 @@ func _build_hint() -> void:
 	_hint_holder.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(_hint_holder)
 
-	_hint = Control.new()
-	_hint.set_script(CardScript)
+	# Compact pending-upgrade button: deliberately not a scaled full card.
+	_hint = Button.new()
 	_hint.process_mode = Node.PROCESS_MODE_ALWAYS
 	_hint.mouse_filter = Control.MOUSE_FILTER_STOP
+	_hint.focus_mode = Control.FOCUS_NONE
+	_hint.custom_minimum_size = Vector2(HINT_W, HINT_H)
+	_hint.size = Vector2(HINT_W, HINT_H)
+	_hint.text = "✦"
+	_hint.add_theme_font_size_override("font_size", 42)
+	_hint.add_theme_color_override("font_color", Color(1.0, 0.82, 0.30))
+	_hint.add_theme_color_override("font_hover_color", Color(1.0, 0.92, 0.58))
+	_hint.add_theme_color_override("font_pressed_color", Color(1.0, 0.72, 0.18))
+	var hint_normal := StyleBoxFlat.new()
+	hint_normal.bg_color = Color(0.055, 0.075, 0.105, 0.97)
+	hint_normal.border_color = Color(1.0, 0.72, 0.24, 0.95)
+	hint_normal.set_border_width_all(2)
+	hint_normal.set_corner_radius_all(12)
+	hint_normal.shadow_color = Color(0.0, 0.0, 0.0, 0.45)
+	hint_normal.shadow_size = 10
+	hint_normal.shadow_offset = Vector2(0, 4)
+	_hint.add_theme_stylebox_override("normal", hint_normal)
+	var hint_hover := hint_normal.duplicate() as StyleBoxFlat
+	hint_hover.bg_color = Color(0.10, 0.13, 0.17, 1.0)
+	hint_hover.border_color = Color(1.0, 0.86, 0.42, 1.0)
+	_hint.add_theme_stylebox_override("hover", hint_hover)
+	_hint.add_theme_stylebox_override("pressed", hint_hover)
 	_hint_holder.add_child(_hint)
-	_hint.position = Vector2.ZERO
 	_hint.visible = false
-	_hint.chosen.connect(_on_hint_chosen)
+	_hint.pressed.connect(_on_hint_pressed)
 
 	# High-contrast counter pinned to the card's upper-right corner.
 	_hint_badge_bg = Panel.new()
@@ -121,10 +144,10 @@ func _build_hint() -> void:
 	_hint_badge_bg.anchor_right = 1.0
 	_hint_badge_bg.anchor_top = 0.0
 	_hint_badge_bg.anchor_bottom = 0.0
-	_hint_badge_bg.offset_left = -52.0
-	_hint_badge_bg.offset_right = -8.0
-	_hint_badge_bg.offset_top = 8.0
-	_hint_badge_bg.offset_bottom = 52.0
+	_hint_badge_bg.offset_left = -30.0
+	_hint_badge_bg.offset_right = -3.0
+	_hint_badge_bg.offset_top = -3.0
+	_hint_badge_bg.offset_bottom = 24.0
 	_hint_badge_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var badge_style := StyleBoxFlat.new()
 	badge_style.bg_color = Color(0.055, 0.075, 0.10, 0.98)
@@ -133,13 +156,12 @@ func _build_hint() -> void:
 	badge_style.set_corner_radius_all(12)
 	_hint_badge_bg.add_theme_stylebox_override("panel", badge_style)
 	_hint.add_child(_hint_badge_bg)
-
 	_hint_badge = Label.new()
 	_hint_badge.anchor_right = 1.0
 	_hint_badge.anchor_bottom = 1.0
 	_hint_badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hint_badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_hint_badge.add_theme_font_size_override("font_size", 22)
+	_hint_badge.add_theme_font_size_override("font_size", 15)
 	_hint_badge.add_theme_color_override("font_color", Color(1.0, 0.84, 0.46))
 	_hint_badge.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
 	_hint_badge.add_theme_constant_override("outline_size", 2)
@@ -164,13 +186,16 @@ func _update_hint_badge() -> void:
 
 func _place_hint() -> void:
 	var viewport_size := get_viewport().get_visible_rect().size
-	_hint.size = Vector2(CARD_W, CARD_H)
-	_hint.pivot_offset = Vector2(CARD_W, CARD_H) * 0.5
-	_hint.scale = Vector2(HINT_SCALE, HINT_SCALE)
+	_hint.size = Vector2(HINT_W, HINT_H)
 	_hint.position = Vector2(
-		viewport_size.x * HINT_X,
-		viewport_size.y * HINT_Y
-	) - Vector2(CARD_W, CARD_H) * 0.5
+		viewport_size.x - HINT_W - 18.0,
+		(viewport_size.y - HINT_H) * 0.5
+	)
+
+
+func _on_hint_pressed() -> void:
+	if _pending:
+		_show()
 
 
 func _on_request(level: int) -> void:
@@ -183,19 +208,24 @@ func _on_request(level: int) -> void:
 
 	_pending = true
 	_current_upgrade_level = level
+	_current_choices = _pick_cards_for_level(level)
 	_show_hint(level)
 
 
 func _show_hint(level: int) -> void:
 	_current_upgrade_level = level
-	var picks := _pick_cards_for_level(level)
-	if picks.is_empty():
+	# The CanvasLayer is hidden after a choice; re-enable it for the compact
+	# right-side pending-upgrade card without showing the full-screen overlay.
+	visible = true
+	_dim.visible = false
+	_title.visible = false
+	_quit_btn.visible = false
+	if _current_choices.is_empty():
 		_pending = false
+		_current_upgrade_level = 0
 		_update_hint_badge()
 		_hint.visible = false
 		return
-
-	_hint.call("setup", picks[0], 0)
 	_place_hint()
 	_hint.visible = true
 	_update_hint_badge()
@@ -205,16 +235,6 @@ func _show_hint(level: int) -> void:
 
 func _start_hint_pulse() -> void:
 	_stop_hint_pulse()
-	if not is_instance_valid(_hint) or not _hint.visible:
-		return
-	_hint_tween = create_tween()
-	_hint_tween.set_loops()
-	_hint_tween.tween_property(
-		_hint, "scale", Vector2(HINT_SCALE * 1.04, HINT_SCALE * 1.04), 0.8
-	).set_trans(Tween.TRANS_SINE)
-	_hint_tween.tween_property(
-		_hint, "scale", Vector2(HINT_SCALE, HINT_SCALE), 0.8
-	).set_trans(Tween.TRANS_SINE)
 
 
 func _stop_hint_pulse() -> void:
@@ -246,16 +266,11 @@ func _pick_cards_for_level(level: int) -> Array:
 	return picks
 
 
-func _on_hint_chosen(_card: Dictionary) -> void:
-	if not _pending:
-		return
-	_show()
-
-
 func _show() -> void:
+	visible = true
+	_title.visible = true
 	_stop_hint_pulse()
 	_hint.visible = false
-	_hint.scale = Vector2(HINT_SCALE, HINT_SCALE)
 	_update_hint_badge()
 
 	for card in _cards:
@@ -263,9 +278,10 @@ func _show() -> void:
 			card.queue_free()
 	_cards.clear()
 
-	var picks := _pick_cards_for_level(_current_upgrade_level)
+	var picks := _current_choices
 	if picks.is_empty():
 		_pending = false
+		_current_upgrade_level = 0
 		_update_hint_badge()
 		return
 
@@ -337,11 +353,13 @@ func _on_card_chosen(card: Dictionary, _source: Control) -> void:
 	Game.sfx("click", -14.0, 0.95, 1.1)
 	if not Game.grant_card(card):
 		# If an option became unavailable, refresh choices without consuming a level.
+		_current_choices = _pick_cards_for_level(_current_upgrade_level)
 		_close(_show.bind(), true)
 		return
 
 	if not _upgrade_queue.is_empty():
 		_current_upgrade_level = int(_upgrade_queue.pop_front())
+		_current_choices = _pick_cards_for_level(_current_upgrade_level)
 		_update_hint_badge()
 		# Keep the battle UI tucked away during the short transition.
 		_close(_show.bind(), true)
@@ -350,6 +368,7 @@ func _on_card_chosen(card: Dictionary, _source: Control) -> void:
 	_pending = false
 	_closing_after_choice = true
 	_current_upgrade_level = 0
+	_current_choices.clear()
 	_update_hint_badge()
 	_close(_after_choice_closed.bind(), true)
 
@@ -367,6 +386,9 @@ func _return_to_hint() -> void:
 		return
 
 	visible = true
+	_dim.visible = false
+	_title.visible = false
+	_quit_btn.visible = false
 	_hint.visible = true
 	_place_hint()
 	_update_hint_badge()
@@ -378,12 +400,14 @@ func _after_choice_closed() -> void:
 	if not _upgrade_queue.is_empty():
 		_pending = true
 		_current_upgrade_level = int(_upgrade_queue.pop_front())
+		_current_choices = _pick_cards_for_level(_current_upgrade_level)
 		_update_hint_badge()
 		_show()
 		return
 
 	_pending = false
 	_current_upgrade_level = 0
+	_current_choices.clear()
 	_hint.visible = false
 	_update_hint_badge()
 	if is_instance_valid(_minimap):

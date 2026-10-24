@@ -65,6 +65,6 @@ static func died(node: Node, xp: int) -> bool:
 	# the peer that hit the enemy last earns the xp
 	var hitter := int(node.get("_net_hitter"))
 	if hitter > 0 and hitter != Net.my_id() and xp > 0:
-		Net.send_xp(hitter, xp)
+		Net.send_xp_drop(hitter, node.get("global_position"), xp)
 		return false
 	return true

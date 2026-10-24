@@ -13,6 +13,7 @@ extends Node
 const DEFAULT_PORT := 27015
 const DISCOVERY_PORT := 27016
 const MAX_PLAYERS := 4
+const XP_DROP := preload("res://scripts/xp_pickup.gd")
 # a room that stopped answering is dropped after this many seconds
 const ROOM_TTL := 6.0
 # how often the local player sends its position
@@ -30,6 +31,7 @@ signal room_joined()
 signal room_left()
 signal rooms_changed()
 signal session_failed(reason: String)
+signal player_name_taken()
 
 # --- local state ------------------------------------------------------------
 # the name of the local player, empty until they are asked for it
@@ -59,6 +61,7 @@ var _hello_timer: float = 0.0
 var _closing: bool = false
 # true while the client is still waiting to be let into the room
 var _wait_for_hello: bool = false
+var name_change_required: bool = false
 # the room this client wants to be in, so it can come back after a drop
 var _last_address: String = ""
 var _last_port: int = DEFAULT_PORT
@@ -269,6 +272,7 @@ func _reconnect() -> void:
 # Leaves the room the player asked to leave.
 func leave() -> void:
 	_reconnecting = false
+	name_change_required = false
 	_last_address = ""
 	_reset_session()
 	rooms.clear()
@@ -292,6 +296,7 @@ func _reset_session() -> void:
 	_drop_api()
 	_hosting = false
 	_web_mode = false
+	name_change_required = false
 	room_name = ""
 	players = []
 	if _discovery != null:
@@ -515,6 +520,24 @@ func _send_hello() -> void:
 	rpc_id(1, "_srv_hello", _my_name())
 
 
+func retry_hello() -> void:
+	if _hosting or not is_online():
+		return
+	_wait_for_hello = true
+	_hello_timer = 0.0
+	_send_hello()
+
+
+func is_player_name_taken(candidate: String) -> bool:
+	var normalized := candidate.strip_edges().to_lower()
+	if normalized == "":
+		return false
+	for player in players:
+		if str(player.get("name", "")).strip_edges().to_lower() == normalized:
+			return true
+	return false
+
+
 # The name of the local player, with a fallback for the ones who skipped it.
 func _my_name() -> String:
 	if player_name != "":
@@ -546,10 +569,22 @@ func _srv_hello(name: String) -> void:
 	var id := _api.get_remote_sender_id()
 	if _find_player(id) >= 0:
 		return
+	if is_player_name_taken(name):
+		rpc_id(id, "_cli_name_taken")
+		return
 	players.append({"id": id, "name": name, "color": _color_for(players.size())})
 	_broadcast_players()
 	_add_own_room()
 	players_changed.emit()
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func _cli_name_taken() -> void:
+	if _hosting or _api == null or _api.get_remote_sender_id() != 1:
+		return
+	_wait_for_hello = false
+	name_change_required = true
+	player_name_taken.emit()
 
 
 func _broadcast_players() -> void:
@@ -573,6 +608,7 @@ func _cli_players(list: Array) -> void:
 	players = out
 	# the host has us in the room now, the greetings can stop
 	_wait_for_hello = false
+	name_change_required = false
 	players_changed.emit()
 
 
@@ -689,16 +725,16 @@ func _cli_wave(wave: int) -> void:
 	Game.wave_changed.emit(wave)
 
 
-# The host tells a player how much xp they earned.
-func send_xp(peer: int, amount: int) -> void:
+# The host tells the player who got the kill to create their local XP orbs.
+func send_xp_drop(peer: int, pos: Vector2, amount: int) -> void:
 	if not _hosting or peer <= 0 or amount <= 0:
 		return
-	rpc_id(peer, "_cli_add_xp", amount)
+	rpc_id(peer, "_cli_drop_xp", pos, amount)
 
 
 @rpc("authority", "call_remote", "reliable", 0)
-func _cli_add_xp(amount: int) -> void:
-	Game.add_xp(amount)
+func _cli_drop_xp(pos: Vector2, amount: int) -> void:
+	XP_DROP.drop(get_tree(), pos, amount)
 
 
 # Sends the enemy positions, the host runs the world.
@@ -781,6 +817,34 @@ func start_game() -> void:
 		return
 	for pid in _client_ids():
 		rpc_id(pid, "_cli_start")
+
+
+# Restart the current match without leaving its room. The host owns the reset
+# and tells all clients to enter the same fresh game scene.
+func restart_room_game() -> void:
+	if not is_online():
+		return
+	if _hosting:
+		_restart_room_game_as_host()
+	else:
+		rpc_id(1, "_cli_request_restart")
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func _cli_request_restart() -> void:
+	if not _hosting or _api == null:
+		return
+	var sender := _api.get_remote_sender_id()
+	# Only a player that is currently in this room may request a restart.
+	if _find_player(sender) < 0:
+		return
+	_restart_room_game_as_host()
+
+
+func _restart_room_game_as_host() -> void:
+	Game.reset_run()
+	start_game()
+	get_tree().call_deferred("change_scene_to_file", "res://scenes/main.tscn")
 
 
 @rpc("authority", "call_remote", "reliable", 0)

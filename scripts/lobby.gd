@@ -8,6 +8,7 @@ extends CanvasLayer
 
 const MAX_PLAYERS := 4
 const GAME_SCENE := "res://scenes/main.tscn"
+const NAME_PROMPT := preload("res://scenes/name_prompt.tscn")
 
 const ROOM_NAMES := [
 	"DEATH MACHINE", "NOOB ZONE", "LAST ONE STANDING", "COFFEE BREAK", "NIGHT SHIFT",
@@ -47,6 +48,7 @@ var _in_room: bool = false
 var _address_open: bool = false
 # a room that speaks websocket can be joined from a browser
 var _web_mode: bool = false
+var _name_prompt: Control
 
 
 func _ready() -> void:
@@ -69,8 +71,11 @@ func _ready() -> void:
 	Net.room_joined.connect(_on_room_joined)
 	Net.room_left.connect(_on_room_left)
 	Net.session_failed.connect(_on_session_failed)
+	Net.player_name_taken.connect(_on_player_name_taken)
 	_refresh()
 	_refresh_web_mode()
+	if Net.name_change_required:
+		_on_player_name_taken()
 	_solo_btn.pressed.connect(_on_play_solo)
 	_solo_btn.visible = OS.has_feature("web")
 	# a browser cannot host, and it cannot look for rooms either
@@ -380,6 +385,20 @@ func _on_session_failed(reason: String) -> void:
 	_creating = false
 	_sub_header.text = reason
 	_refresh()
+
+
+func _on_player_name_taken() -> void:
+	if is_instance_valid(_name_prompt):
+		return
+	_name_prompt = NAME_PROMPT.instantiate() as Control
+	add_child(_name_prompt)
+	_name_prompt.call("show_name_taken")
+	_name_prompt.name_chosen.connect(_on_replacement_name_chosen)
+
+
+func _on_replacement_name_chosen(_name: String) -> void:
+	_name_prompt = null
+	Net.retry_hello()
 
 
 # Every player gets a name of their own. The name the player typed at the

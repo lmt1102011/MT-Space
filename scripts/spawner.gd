@@ -3,7 +3,7 @@ extends Node2D
 @export var min_spawn_dist: float = 500.0
 @export var max_spawn_dist: float = 950.0
 @export var spawn_interval: float = 0.7
-@export var intermission: float = 7.0
+@export var intermission: float = 20.0
 
 # The swarm shapes are ambient: they are not part of a wave, they keep
 # trickling in on their own and only the amount alive on the map is capped.
