@@ -2,7 +2,7 @@ name: Build the site and the downloads
 
 on:
   push:
-    branches: [main]
+    branches: [main, publish/mt-space-release]
   workflow_dispatch:
 
 permissions:
@@ -64,7 +64,7 @@ jobs:
           export/android/android_sdk_path = "$ANDROID_HOME"
           export/android/java_sdk_path = "$JAVA_HOME"
           export/android/debug_keystore = "$HOME/.android/debug.keystore"
-          export/android/debug_keystake_user = "androiddebugkey"
+          export/android/debug_keystore_user = "androiddebugkey"
           export/android/debug_keystore_pass = "android"
           EOF
           if [ ! -f "$HOME/.android/debug.keystore" ]; then
@@ -117,7 +117,7 @@ jobs:
 
       - name: Put the website together
         run: |
-          cp -r site/. build/web/
+          cp -r web/site/. build/web/
           echo "${GITHUB_SHA}" > build/web/version.txt
 
       - name: Upload the pages artifact
