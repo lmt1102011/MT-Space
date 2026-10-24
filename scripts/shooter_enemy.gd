@@ -121,8 +121,9 @@ func _update_bar() -> void:
 
 
 func _get_player() -> Node2D:
-	if _player == null or not is_instance_valid(_player):
-		_player = get_tree().get_first_node_in_group("player")
+	if _player == null or not is_instance_valid(_player) or _player.get("net_alive") == false \
+		or not Net.is_host():
+		_player = Net.target_player(global_position)
 	return _player
 
 
@@ -152,7 +153,7 @@ func _physics_process(delta: float) -> void:
 		var dist := to_player.length()
 		var dir := to_player / maxf(dist, 0.001)
 
-		if Game.player_dead:
+		if not Net.any_player_alive():
 			# the player is down: stop aiming and just drift about
 			_push = _push.move_toward(Vector2.ZERO, 600.0 * delta)
 			var stroll := _brain.wander(move_speed * 0.5, delta)
@@ -236,6 +237,8 @@ func _fire(dir: Vector2) -> void:
 	if _elite_crit > 0.0 and randf() < _elite_crit:
 		b.damage = int(round(b.damage * 2.0))
 	get_tree().current_scene.add_child(b)
+	Net.broadcast_enemy_bullet(b.global_position, b.direction, b.speed, b.damage,
+		b.burn, b.freeze, b.lifetime, b.beam_length, b.beam_width)
 
 
 func apply_push(impulse: Vector2) -> void:

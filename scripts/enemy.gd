@@ -142,7 +142,7 @@ func _physics_process(delta: float) -> void:
 		_steer = EnemyAI.steer(self, _drift)
 	# blend steering into drift while keeping rough speed
 	var target_vel := _drift * slow_factor + _steer * slow_factor + _push
-	if Game.player_dead:
+	if not Net.any_player_alive():
 		# the player is down: wander about instead of drifting in a straight line
 		_wander_t -= delta
 		if _wander_t <= 0.0:
@@ -158,6 +158,8 @@ func _physics_process(delta: float) -> void:
 			var c := get_slide_collision(i)
 			var col := c.get_collider()
 			if col and col.is_in_group("player"):
+				if col.has_method("take_damage"):
+					col.take_damage(contact_damage)
 				continue
 			_drift = _drift.bounce(c.get_normal())
 			break
@@ -211,9 +213,9 @@ func _tick_status(delta: float, apply_burn_damage: bool = true) -> void:
 
 
 func touch_player() -> void:
-	if Game.player_dead:
+	if not Net.any_player_alive():
 		return
-	var target := get_tree().get_first_node_in_group("player")
+	var target := Net.target_player(global_position)
 	if target and target.has_method("take_damage"):
 		target.take_damage(contact_damage)
 

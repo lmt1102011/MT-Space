@@ -126,6 +126,8 @@ func enemies_synced(data: Dictionary) -> void:
 		n.set("_net_rot", row[2])
 		n.set("hp", int(row[3]))
 		n.set("_net_alive", row[4] == true)
+		if n.has_method("_update_bar"):
+			n.call("_update_bar")
 
 
 # A client says an enemy took a hit, the host applies it.

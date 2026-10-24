@@ -142,8 +142,9 @@ func _update_bar() -> void:
 
 
 func _get_player() -> Node2D:
-	if _player == null or not is_instance_valid(_player):
-		_player = get_tree().get_first_node_in_group("player")
+	if _player == null or not is_instance_valid(_player) or _player.get("net_alive") == false \
+		or not Net.is_host():
+		_player = Net.target_player(global_position)
 	return _player
 
 
@@ -172,7 +173,7 @@ func _physics_process(delta: float) -> void:
 		return
 
 	_state_t += delta
-	if Game.player_dead:
+	if not Net.any_player_alive():
 		# the player is down: no hunting, no charging, just ambling about
 		_stroll_step(delta)
 		_update_charge_dash_visuals(delta)
@@ -189,7 +190,7 @@ func _physics_process(delta: float) -> void:
 			_dash(delta)
 
 	# always look at the player, except while dashing (direction is locked)
-	if _state != State.DASH and not Game.player_dead:
+	if _state != State.DASH and Net.any_player_alive():
 		_face(target, delta)
 
 	_update_charge_dash_visuals(delta)
@@ -214,7 +215,7 @@ func _chase(delta: float, target: Node2D) -> void:
 	velocity = velocity.lerp(goal + _push, clampf(5.0 * delta, 0.0, 1.0))
 	move_and_slide()
 
-	if dist <= dash_range and not tired and not Game.player_dead:
+	if dist <= dash_range and not tired and Net.any_player_alive():
 		_state = State.CHARGE
 		_state_t = 0.0
 		Game.sfx("charge", -12.0, 0.95, 1.06)
@@ -243,7 +244,7 @@ func _charge(delta: float, target: Node2D) -> void:
 
 func _dash(delta: float) -> void:
 	# stop hitting a player that is already down
-	if Game.player_dead:
+	if not Net.any_player_alive():
 		_state = State.CHASE
 		_state_t = 0.0
 		velocity = Vector2.ZERO

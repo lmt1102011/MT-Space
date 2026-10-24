@@ -14,6 +14,7 @@ const DEFAULT_PORT := 27015
 const DISCOVERY_PORT := 27016
 const MAX_PLAYERS := 4
 const XP_DROP := preload("res://scripts/xp_pickup.gd")
+const ENEMY_BULLET := preload("res://scenes/enemy_bullet.tscn")
 # a room that stopped answering is dropped after this many seconds
 const ROOM_TTL := 15.0
 # A refresh sends a few quick discovery bursts so a host that misses one UDP
@@ -63,6 +64,7 @@ var _unicast_scan_timer: float = 0.0
 var _unicast_scan_targets: Array[String] = []
 var _unicast_scan_index: int = 0
 var _net_timer: float = 0.0
+var _heartbeat_timer: float = 0.0
 var _enemy_timer: float = 0.0
 var _next_enemy_id: int = 1
 # how often the client says hello again until the host knows it
@@ -435,9 +437,9 @@ func local_lan_ip() -> String:
 func _process(delta: float) -> void:
 	# a heartbeat keeps the connection alive even when nothing else is sent
 	if _peer != null and _peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED:
-		_net_timer -= delta
-		if _net_timer <= 0.0:
-			_net_timer = NET_TICK
+		_heartbeat_timer -= delta
+		if _heartbeat_timer <= 0.0:
+			_heartbeat_timer = 1.0
 			if not _hosting:
 				rpc_id(1, "_srv_ping")
 	# keep saying hello until the host has us in the room
@@ -462,7 +464,7 @@ func _process(delta: float) -> void:
 			_discovery_burst_timer = DISCOVERY_BURST_INTERVAL
 	_disc_timer -= delta
 	if _disc_timer <= 0.0:
-		_disc_timer = 0.5
+		_disc_timer = 0.05 if _hosting else 0.5
 		if _hosting:
 			# answer everyone who is looking for a room
 			while _discovery.get_available_packet_count() > 0:
@@ -737,6 +739,53 @@ func player_color_of(id: int) -> Color:
 	return players[i]["color"] if i >= 0 else Color.WHITE
 
 
+# The host chooses among the local player and the remote-player proxies. This
+# keeps enemy AI from always locking onto the host's character.
+func target_player(from_position: Vector2) -> Node2D:
+	var best: Node2D = null
+	var best_distance := INF
+	for candidate in get_tree().get_nodes_in_group("player"):
+		var node := candidate as Node2D
+		if node == null or not is_instance_valid(node):
+			continue
+		if node.get("net_alive") == false or node.get("_dead") == true:
+			continue
+		var distance := from_position.distance_squared_to(node.global_position)
+		if distance < best_distance:
+			best_distance = distance
+			best = node
+	return best
+
+
+func any_player_alive() -> bool:
+	for candidate in get_tree().get_nodes_in_group("player"):
+		var node := candidate as Node2D
+		if node == null or not is_instance_valid(node):
+			continue
+		if node.get("net_alive") == false or node.get("_dead") == true:
+			continue
+		return true
+	return false
+
+
+# Damage to a remote player is decided by the host and applied by that player's
+# own process. This works for contact damage and enemy projectiles alike.
+func damage_remote_player(id: int, amount: float, burn: int = 0, freeze: int = 0) -> void:
+	if not _hosting or id <= 1:
+		return
+	rpc_id(id, "_cli_damage_player", amount, burn, freeze)
+
+
+func broadcast_enemy_bullet(pos: Vector2, direction: Vector2, speed: float,
+		damage: int, burn: int, freeze: int, lifetime: float,
+		beam_length: float = 20.0, beam_width: float = 5.0) -> void:
+	if not _hosting:
+		return
+	for pid in _client_ids():
+		rpc_id(pid, "_cli_enemy_bullet", pos, direction, speed, damage,
+			burn, freeze, lifetime, beam_length, beam_width)
+
+
 # --- enemies (the host owns the world) ---------------------------------------
 # The host spawns an enemy and tells the clients about it.
 func spawn_enemy(kind: String, pos: Vector2, params: Dictionary) -> int:
@@ -848,7 +897,7 @@ func push_enemies() -> void:
 func push_host_player() -> void:
 	if not _hosting:
 		return
-	var pl := get_tree().get_first_node_in_group("player")
+	var pl := get_tree().current_scene.get_node_or_null("Player")
 	if pl == null or not is_instance_valid(pl):
 		return
 	var pos: Vector2 = pl.global_position
@@ -857,8 +906,12 @@ func push_host_player() -> void:
 	var spr := pl.get_node_or_null("Sprite2D") as Node2D
 	if spr != null:
 		rot = spr.rotation
+	var hp_ratio := 1.0
+	if pl.has_method("max_hp_total"):
+		hp_ratio = float(pl.get("hp")) / float(pl.call("max_hp_total"))
+	var alive := pl.get("_dead") != true
 	for pid in _client_ids():
-		rpc_id(pid, "_cli_player_state", pos, rot, 1.0, true)
+		rpc_id(pid, "_cli_player_state", 1, pos, rot, hp_ratio, alive)
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 1)
@@ -880,21 +933,50 @@ func send_player_state(pos: Vector2, rot: float, hp: float, alive: bool) -> void
 		return
 	_net_timer = NET_TICK
 	# the host is the one that needs to know where the player is
-	rpc_id(1, "_cli_player_state", pos, rot, hp, alive)
+	rpc_id(1, "_cli_player_state", my_id(), pos, rot, hp, alive)
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered", 1)
-func _cli_player_state(pos: Vector2, rot: float, hp: float, alive: bool) -> void:
+func _cli_player_state(player_id: int, pos: Vector2, rot: float,
+		hp: float, alive: bool) -> void:
 	var sender := _api.get_remote_sender_id()
 	# the host passes it on to the other players, they do not see each other
 	if _hosting:
 		for pid in _client_ids():
 			if pid != sender:
-				rpc_id(pid, "_cli_player_state", pos, rot, hp, alive)
+				rpc_id(pid, "_cli_player_state", player_id, pos, rot, hp, alive)
 	# the host tells the clients about its own player
-	var who := 1 if _hosting else sender
+	var who := player_id
 	if world != null and world.has_method("player_state"):
 		world.call("player_state", who, pos, rot, hp, alive)
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _cli_damage_player(amount: float, burn: int, freeze: int) -> void:
+	var local_player := get_tree().current_scene.get_node_or_null("Player")
+	if local_player == null or not local_player.has_method("take_damage"):
+		return
+	local_player.take_damage(amount)
+	if local_player.has_method("apply_status"):
+		local_player.apply_status(burn, freeze)
+
+
+@rpc("authority", "call_remote", "unreliable_ordered", 1)
+func _cli_enemy_bullet(pos: Vector2, direction: Vector2, speed: float,
+		damage: int, burn: int, freeze: int, lifetime: float,
+		beam_length: float, beam_width: float) -> void:
+	var bullet := ENEMY_BULLET.instantiate()
+	bullet.global_position = pos
+	bullet.direction = direction
+	bullet.speed = speed
+	bullet.damage = damage
+	bullet.burn = burn
+	bullet.freeze = freeze
+	bullet.lifetime = lifetime
+	bullet.beam_length = beam_length
+	bullet.beam_width = beam_width
+	bullet.network_visual = true
+	get_tree().current_scene.add_child(bullet)
 
 
 # --- session ----------------------------------------------------------------

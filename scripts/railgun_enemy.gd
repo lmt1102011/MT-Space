@@ -157,8 +157,9 @@ func _update_bar() -> void:
 
 
 func _get_player() -> Node2D:
-	if _player == null or not is_instance_valid(_player):
-		_player = get_tree().get_first_node_in_group("player")
+	if _player == null or not is_instance_valid(_player) or _player.get("net_alive") == false \
+		or not Net.is_host():
+		_player = Net.target_player(global_position)
 	return _player
 
 
@@ -203,7 +204,7 @@ func _fly_step(delta: float, target: Node2D) -> void:
 		move_and_slide()
 		return
 
-	if Game.player_dead:
+	if not Net.any_player_alive():
 		# the player is down: stop aiming and drift about
 		var stroll := _brain.wander(move_speed * 0.5, delta)
 		var avoid := EnemyAI.steer(self, stroll)
@@ -231,7 +232,7 @@ func _fly_step(delta: float, target: Node2D) -> void:
 		if other and other.is_in_group("player") and other.has_method("take_damage"):
 			other.take_damage(contact_damage)
 
-	if _cooldown <= 0.0 and dist < engage_range and not Game.player_dead:
+	if _cooldown <= 0.0 and dist < engage_range and Net.any_player_alive():
 		_charging = true
 		_charge_t = 0.0
 		Game.sfx("charge", -12.0, 0.95, 1.06)
@@ -239,7 +240,7 @@ func _fly_step(delta: float, target: Node2D) -> void:
 
 # --- charging: hold still, track then lock, then fire ---------------------
 func _charge_step(delta: float, target: Node2D) -> void:
-	if Game.player_dead:
+	if not Net.any_player_alive():
 		# the player is down: abandon the charge
 		_charging = false
 		_charge_t = 0.0
@@ -255,7 +256,7 @@ func _charge_step(delta: float, target: Node2D) -> void:
 	velocity = Vector2.ZERO
 	move_and_slide()
 	if _charge_t >= charge_time:
-		if not Game.player_dead:
+		if Net.any_player_alive():
 			_fire_laser()
 		_charging = false
 		_charge_t = 0.0
@@ -288,6 +289,8 @@ func _fire_laser() -> void:
 	cap.radius = maxf(laser_width * 0.5, 3.0)
 	cs.shape = cap
 	get_tree().current_scene.add_child(b)
+	Net.broadcast_enemy_bullet(b.global_position, b.direction, b.speed, b.damage,
+		b.burn, b.freeze, b.lifetime, b.beam_length, b.beam_width)
 	Game.sfx("laser", -8.0, 0.9, 1.1)
 
 

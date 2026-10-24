@@ -1,4 +1,4 @@
-extends Node2D
+extends CharacterBody2D
 
 # Another player's ship. It does not think for itself: it chases the position
 # the network told it about, which keeps the movement smooth even though the
@@ -22,6 +22,7 @@ var _name_label: Label = null
 
 
 func _ready() -> void:
+	add_to_group("player")
 	_sprite = $Ship
 	_sprite.modulate = net_color
 	_name_label = $Name
@@ -35,6 +36,10 @@ func _ready() -> void:
 func _refresh_name() -> void:
 	if _name_label != null:
 		_name_label.text = net_name
+	if _sprite != null:
+		var col := net_color
+		col.a = _sprite.modulate.a
+		_sprite.modulate = col
 
 
 func _process(delta: float) -> void:
@@ -52,3 +57,10 @@ func _process(delta: float) -> void:
 	# the ship fades out when its owner dies
 	var want := 1.0 if net_alive else 0.25
 	_sprite.modulate.a = lerpf(_sprite.modulate.a, want, 0.1)
+
+
+func take_damage(amount: float, _kind: String = "normal") -> void:
+	# This proxy only exists on the host. The real health belongs to the
+	# player's own process, so forward the hit to that peer.
+	if Net.is_host():
+		Net.damage_remote_player(net_id, amount)

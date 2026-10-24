@@ -10,6 +10,7 @@ class_name EnemyBullet
 @export var beam_width: float = 5.0
 
 var direction: Vector2 = Vector2.RIGHT
+var network_visual: bool = false
 var _beam: Sprite2D = null
 
 const EXPLOSION_SCENE := preload("res://scenes/explosion.tscn")
@@ -52,6 +53,9 @@ func _physics_process(delta: float) -> void:
 
 
 func _on_body_entered(body: Node2D) -> void:
+	if network_visual:
+		_detonate()
+		return
 	if body.is_in_group("player"):
 		if body.has_method("take_damage"):
 			body.take_damage(damage)
