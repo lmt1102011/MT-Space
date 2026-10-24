@@ -12,11 +12,13 @@ extends CharacterBody2D
 
 const BULLET_SCENE := preload("res://scenes/bullet.tscn")
 const EXPLOSION_SCENE := preload("res://scenes/explosion.tscn")
+const STATUS_VISUAL := preload("res://scripts/status_effect_visual.gd")
 const DAMAGE_NUMBER := preload("res://scenes/damage_number.tscn")
 const MAX_BULLETS := 36          # hard cap on live player bullets
 const BULLET_LIFE := 2.0
 
 var hp: int = 10
+var _orb_damage_remainder: float = 0.0
 var invuln: float = 0.0
 var _dead: bool = false
 var _shake_t: float = 0.0
@@ -24,6 +26,7 @@ var _burn: float = 0.0
 var _burn_tick: float = 0.0
 var _burn_dps: float = 0.0
 var _slow: float = 0.0
+var _orb_slow_t: float = 0.0
 var _stun_t: float = 0.0
 var _knock_vel: Vector2 = Vector2.ZERO
 var _shield_t: float = 0.0
@@ -43,20 +46,30 @@ var _regen_acc: float = 0.0
 var _touch: Control = null
 # the little ghost the player becomes while watching somebody else
 var _ghost: Node2D = null
+var _status_visual: Node2D = null
 
 @onready var _sprite: Sprite2D = $Sprite2D
 
 
 func _ready() -> void:
+	# Enemy contact is authoritative on the enemy/host side. The local player
+	# must not physically collide with interpolated remote enemies, otherwise
+	# movement jitters, while bullets still use their own mask to hit layer 8.
+	collision_mask = 4
 	_base_max_speed = max_speed
 	_base_bullet_speed = bullet_speed
 	_base_fire_cooldown = fire_cooldown
 	hp = max_hp
 	_flame_out = _make_flame(5.0)
 	_flame_in = _make_flame(2.5)
+	_status_visual = STATUS_VISUAL.new()
+	_status_visual.set("radius", 26.0)
+	_status_visual.z_index = 2
+	add_child(_status_visual)
 	_make_name_label()
 	# the name can still arrive after the ship was made
 	Net.players_changed.connect(_on_players_changed)
+	Game.level_changed.connect(_on_level_changed)
 	# the on screen stick and fire button live in the game scene, the player
 	# only asks for them
 	_setup_touch.call_deferred()
@@ -94,7 +107,7 @@ func _make_name_label() -> void:
 		return
 	var lbl := Label.new()
 	lbl.name = "NameLabel"
-	lbl.text = Net.player_name
+	lbl.text = "%s %d" % [Net.player_name, Game.level]
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.add_theme_font_size_override("font_size", 11)
 	lbl.add_theme_color_override("font_color", Color(0.75, 0.9, 1.0, 0.85))
@@ -110,11 +123,20 @@ func _refresh_name_label() -> void:
 	var lbl := get_node_or_null("NameLabel") as Label
 	if lbl == null:
 		return
-	lbl.text = Net.player_name if Net.player_name != "" else "YOU"
+	lbl.text = "%s %d" % [Net.player_name if Net.player_name != "" else "YOU", Game.level]
+
+
+func _on_level_changed(_level: int) -> void:
+	_refresh_name_label()
+	if not _dead:
+		# The new level's extra hull point is immediately usable.
+		hp = mini(hp + 1, max_hp_total())
+		queue_redraw()
 
 
 func max_hp_total() -> int:
-	return max_hp + Game.upg_bonus_hp
+	# Each level adds one hull point in addition to card bonuses.
+	return max_hp + Game.upg_bonus_hp + maxi(Game.level - 1, 0)
 
 
 func heal(amount: int) -> void:
@@ -131,6 +153,13 @@ func apply_status(burn: int, freeze: int) -> void:
 	if freeze > 0:
 		_slow = maxf(_slow, 1.5 + freeze * 0.5)
 		Game.sfx("frost", -15.0, 0.93, 1.08)
+
+
+# The orb's short, lighter slow is separate from the stronger frost effect.
+func apply_orb_slow(duration: float = 0.5) -> void:
+	if _dead:
+		return
+	_orb_slow_t = maxf(_orb_slow_t, duration)
 
 
 # Knocked back by a charger: flies away and cannot act for a moment.
@@ -161,6 +190,8 @@ func _physics_process(delta: float) -> void:
 		Game.set_fire(false)
 	if _slow > 0.0:
 		_slow -= delta
+	if _orb_slow_t > 0.0:
+		_orb_slow_t -= delta
 
 	# stunned by a knockback: no control, no shooting
 	if _stun_t > 0.0:
@@ -169,11 +200,20 @@ func _physics_process(delta: float) -> void:
 		_knock_vel = _knock_vel.move_toward(Vector2.ZERO, 1100.0 * delta)
 		_flame_time += delta
 		_update_flame()
+		if _status_visual != null:
+			_status_visual.call("set_status", _burn > 0.0, _slow > 0.0)
 		move_and_slide()
 		_push_enemies()
+		if Net.is_online():
+			Net.send_player_state(global_position, _sprite.rotation,
+				float(hp) / float(max_hp_total()), not _dead,
+				Game.spectate_target if Game.spectate_mode else 0, Game.level,
+				velocity, _thrust, _burn > 0.0, _slow > 0.0, _stun_t > 0.0)
 		return
 
 	var slow_factor := 0.55 if _slow > 0.0 else 1.0
+	if _orb_slow_t > 0.0:
+		slow_factor = minf(slow_factor, 0.75)
 	var eff_max_speed := _base_max_speed * Game.upg_move_speed * slow_factor
 	var input_dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	# the touch stick takes over when a finger is on the screen
@@ -206,6 +246,8 @@ func _physics_process(delta: float) -> void:
 	if _shield_t > 0.0:
 		_shield_t = maxf(_shield_t - delta, 0.0)
 	_update_flame()
+	if _status_visual != null:
+		_status_visual.call("set_status", _burn > 0.0, _slow > 0.0)
 	# only redraw the HUD when something actually changed
 	if hp != _hp_drawn:
 		_hp_drawn = hp
@@ -219,7 +261,9 @@ func _physics_process(delta: float) -> void:
 	# tell the others where we are, so their ships follow along smoothly
 	if Net.is_online():
 		Net.send_player_state(global_position, _sprite.rotation,
-			float(hp) / float(max_hp_total()), not _dead)
+			float(hp) / float(max_hp_total()), not _dead,
+			Game.spectate_target if Game.spectate_mode else 0, Game.level,
+			velocity, _thrust, _burn > 0.0, _slow > 0.0, _stun_t > 0.0)
 
 
 func _push_enemies() -> void:
@@ -324,6 +368,8 @@ func _spawn_bullet(dir: Vector2, spd: float, dmg: float, burn: int, freeze: int,
 	bullet.beam_color = col
 	_limit_bullets()
 	get_tree().current_scene.add_child(bullet)
+	Net.broadcast_player_bullet(bullet.global_position, bullet.direction, bullet.speed,
+		bullet.lifetime, bullet.beam_length, bullet.beam_width, bullet.beam_color)
 	Game.sfx("shoot", -14.0, 0.97, 1.04)
 
 
@@ -356,8 +402,30 @@ func _process(delta: float) -> void:
 		_update_spectate()
 
 
-func take_damage(amount: int) -> void:
+func take_damage(amount: float) -> void:
 	if invuln > 0.0 or _dead:
+		return
+	_take_whole_damage(maxi(1, int(round(amount))))
+
+
+func apply_orb_damage(amount: float) -> void:
+	if _dead:
+		return
+	# Orb hits are fractional and bypass the normal 0.6s invulnerability so
+	# 0.1 damage every 0.25s is preserved instead of rounding to one HP.
+	# Show every fractional pulse, even before the accumulated damage removes a
+	# whole hull point.
+	_spawn_damage_number(amount, Color(0.35, 1.0, 0.8), 18)
+	_orb_damage_remainder += maxf(amount, 0.0)
+	var whole := int(floor(_orb_damage_remainder))
+	if whole <= 0:
+		return
+	_orb_damage_remainder -= float(whole)
+	_take_whole_damage(whole)
+
+
+func _take_whole_damage(amount: int) -> void:
+	if _dead:
 		return
 	# Hull Plating: soften every incoming hit a little
 	amount = maxi(1, amount - Game.upg_plating)
@@ -418,6 +486,11 @@ func _die() -> void:
 	_dead = true
 	Game.player_dead = true
 	Game.set_fire(false)
+	Net.send_player_death(Game.spectate_target if Game.spectate_mode else 0, Game.level)
+	# The physics loop stops below; send the death immediately instead of
+	# leaving the remote copy looking alive until the next reconnect.
+	if Net.is_online():
+		Net.send_player_state(global_position, _sprite.rotation, 0.0, false, 0, Game.level)
 	# clear the last drawn frame (HP bar / flame) now that physics has stopped
 	queue_redraw()
 	velocity = Vector2.ZERO
@@ -435,19 +508,76 @@ func _die() -> void:
 	if name_label:
 		name_label.visible = false
 	Game.notify_player_died()
+	if Net.is_online():
+		Net.send_player_death(
+			Game.spectate_target if Game.spectate_mode else 0, Game.level)
 	# when somebody is still playing the dead player becomes a ghost and
 	# watches them
 	if Game.spectate_mode:
 		_start_spectating()
 
 
+# A new wave is a fresh round for everyone who was spectating. The host calls
+# this for itself and the network layer calls it on each client.
+func revive_for_wave() -> void:
+	if Net.is_host():
+		Net.send_host_ghost_clear()
+	# Clear every stale scene-level ghost, not just the one remembered by this
+	# Player. This also cleans a duplicate left by a death packet arriving in
+	# the same frame as local spectating.
+	for ghost in get_tree().get_nodes_in_group("spectator_ghost"):
+		if ghost != null and is_instance_valid(ghost):
+			ghost.queue_free()
+	_dead = false
+	Game.player_dead = false
+	Game.is_game_over = false
+	Game.spectate_mode = false
+	Game.spectate_target = 0
+	Game.spectate_changed.emit(0)
+	hp = max_hp_total()
+	_orb_damage_remainder = 0.0
+	_burn = 0.0
+	_burn_tick = 0.0
+	_slow = 0.0
+	_orb_slow_t = 0.0
+	_stun_t = 0.0
+	_knock_vel = Vector2.ZERO
+	velocity = Vector2.ZERO
+	_thrust = 0.0
+	invuln = 1.5
+	_sprite.visible = true
+	_sprite.modulate = Color.WHITE
+	var name_label := get_node_or_null("NameLabel") as Label
+	if name_label:
+		name_label.visible = true
+	if _ghost != null and is_instance_valid(_ghost):
+		_ghost.queue_free()
+	_ghost = null
+	if Game.spectate_changed.is_connected(_on_spectate_changed):
+		Game.spectate_changed.disconnect(_on_spectate_changed)
+	var cam := get_node_or_null("Camera2D") as Camera2D
+	if cam != null:
+		cam.position = Vector2.ZERO
+	set_physics_process(true)
+	_update_flame()
+	queue_redraw()
+
+
 # The dead player turns into a little ghost that floats around the player
 # that is being watched.
 func _start_spectating() -> void:
+	# Death can be reported twice (reliable death packet plus the final state
+	# packet). Never create two scene-level ghosts for the same local player.
+	if _ghost != null and is_instance_valid(_ghost):
+		return
 	var ghost := Node2D.new()
 	ghost.set_script(load("res://scripts/ghost.gd"))
-	ghost.set("ghost_name", Net.player_name if Net.player_name != "" else "YOU")
-	add_child(ghost)
+	ghost.set("ghost_name", "%s %d" % [Net.player_name if Net.player_name != "" else "YOU", Game.level])
+	# Keep the ghost outside the dead Player node. The Player's physics is
+	# paused on death; a scene-level ghost can continue following a remote
+	# proxy without inheriting the dead ship's transform.
+	get_tree().current_scene.add_child(ghost)
+	ghost.global_position = global_position
 	_ghost = ghost
 	Game.spectate_changed.connect(_on_spectate_changed)
 	_on_spectate_changed(Game.spectate_target)
@@ -457,6 +587,7 @@ func _start_spectating() -> void:
 func _on_spectate_changed(target_id: int) -> void:
 	if _ghost == null:
 		return
+	_ghost.call("set_target_id", target_id)
 	var target: Node2D = null
 	if Net.world != null and Net.world.has_method("peer_node"):
 		target = Net.world.call("peer_node", target_id) as Node2D
@@ -527,6 +658,9 @@ func _draw() -> void:
 		draw_circle(Vector2.ZERO, 24.0, Color(1.0, 0.45, 0.1, f))
 	if _slow > 0.0:
 		draw_circle(Vector2.ZERO, 24.0, Color(0.4, 0.8, 1.0, 0.18))
+	if _stun_t > 0.0:
+		draw_arc(Vector2.ZERO, 28.0, 0.0, TAU, 40,
+			Color(0.65, 0.35, 1.0, 0.9), 3.0)
 	# Second Chance shield flash
 	if _shield_t > 0.0:
 		var a := _shield_t / 1.2

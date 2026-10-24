@@ -21,10 +21,12 @@ func _ready() -> void:
 	_quit_btn.pressed.connect(_on_quit)
 	_settings_btn.pressed.connect(_on_settings_pressed)
 	_settings_close.pressed.connect(_on_settings_close)
-	_update_btn.visible = true
+	_update_btn.visible = false
+	_update_btn.text = "CHECK FOR UPDATE"
 	_update_btn.pressed.connect(_on_update_pressed)
 	_version_label.text = "v%s" % ProjectSettings.get_setting("application/config/version/name")
 	Web.update_available.connect(_on_update_available)
+	call_deferred("_check_for_updates")
 	if Web.has_update():
 		_on_update_available(Web.available_version)
 	_volume_slider.value = Game.get_master_volume()
@@ -43,11 +45,16 @@ func _ready() -> void:
 	tw2.tween_property(_subtitle, "modulate:a", 1.0, 0.6).from(0.0)
 
 
+func _check_for_updates() -> void:
+	if is_inside_tree():
+		Web.check_for_new_version()
+
+
 func _on_play() -> void:
 	Game.sfx("click", -10.0, 0.95, 1.05)
 	# if name already set, go directly to lobby
 	if Net.player_name != "":
-		_change_to_lobby()
+		call_deferred("_change_to_lobby")
 		return
 	# ask for the name first, then go to the lobby
 	var prompt := PROMPT_SCENE.instantiate() as Control
@@ -88,6 +95,7 @@ func _on_quit() -> void:
 # --- the update ------------------------------------------------------------
 func _on_update_available(_version: String) -> void:
 	_update_btn.visible = true
+	_update_btn.text = "NEW VERSION - UPDATE"
 	# the scene has its own button now, the page one would be a duplicate
 	Web.hide_web_update_button()
 

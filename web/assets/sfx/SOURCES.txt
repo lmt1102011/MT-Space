@@ -1,0 +1,18 @@
+Sound effects in this folder are CC0 (public domain) and were downloaded from
+https://cc0-sounds.exi.software/ which mirrors these packs:
+
+  Kenney - Sci-Fi Sounds        (sci-fi-sounds)
+  Kenney - Digital Audio        (kenney_digitalaudio)
+  Kenney - Interface Sounds     (kenney_interfacesounds)
+  Kenney - Impact Sounds        (kenney_impactsounds)
+  50 CC0 Sci-Fi SFX             (50-cc0-sci-fi-sfx)
+  75 CC0 Breaking/Falling/Hit   (75-cc0-breaking-falling-hit-sfx)
+  100 CC0 Wood & Metal          (100-CC0-wood-metal-SFX)
+
+Original authors and pages:
+  https://kenney.nl/assets/sci-fi-sounds
+  https://kenney.nl/assets/digital-audio
+  https://kenney.nl/assets/interface-sounds
+  https://kenney.nl/assets/impact-sounds
+
+CC0 1.0 Universal - no attribution required, but credit is always welcome.

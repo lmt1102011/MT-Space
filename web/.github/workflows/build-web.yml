@@ -1,0 +1,134 @@
+name: Build the site and the downloads
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Web, Windows & Android
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Set up Godot
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.7.2
+          use-dotnet: false
+          include-templates: true
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up the Android tools
+        id: android_tools
+        continue-on-error: true
+        env:
+          ANDROID_HOME: ${{ runner.temp }}/android-sdk
+        run: |
+          mkdir -p "$ANDROID_HOME/cmdline-tools"
+          cd "$ANDROID_HOME/cmdline-tools"
+          curl -sSLo tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q tools.zip
+          mv cmdline-tools latest
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+          yes | sdkmanager --licenses
+          sdkmanager --sdk_root="$ANDROID_HOME" "platform-tools" "build-tools;35.0.1" "platforms;android-35"
+          ls "$ANDROID_HOME"
+
+      - name: Point Godot at the Android tools
+        if: steps.android_tools.outcome == 'success'
+        continue-on-error: true
+        env:
+          ANDROID_HOME: ${{ runner.temp }}/android-sdk
+        run: |
+          mkdir -p ~/.config/godot
+          cat > ~/.config/godot/editor_settings-4.7.tres <<EOF
+          [gd_resource type="EditorSettings" format=3]
+          [resource]
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/java_sdk_path = "$JAVA_HOME"
+          export/android/debug_keystore = "$HOME/.android/debug.keystore"
+          export/android/debug_keystake_user = "androiddebugkey"
+          export/android/debug_keystore_pass = "android"
+          EOF
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair -v -keystore "$HOME/.android/debug.keystore" \
+              -storepass android -alias androiddebugkey -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US" 2>/dev/null || true
+          fi
+          ls -la ~/.android/ || true
+
+      - name: Import the project
+        run: |
+          touch build/.gdignore
+          godot --headless --editor --quit --path .
+
+      - name: Write the version into the build
+        run: echo "${GITHUB_SHA}" > version_embedded.txt
+
+      - name: Build the game for the browser
+        run: |
+          mkdir -p build/web/game
+          godot --headless --path . --export-release "Web" build/web/game/index.html
+
+      - name: Build the game for Windows
+        run: |
+          mkdir -p build/web/downloads
+          godot --headless --path . --export-release "Windows" build/web/downloads/mt-space.exe --verbose
+          ls -la build/web/downloads/
+
+      - name: Zip Windows build
+        run: |
+          cd build/web/downloads
+          zip -r mt-space-windows.zip mt-space.exe mt-space.pck
+
+      - name: Build the game for Android
+        if: steps.android_tools.outcome == 'success'
+        continue-on-error: true
+        env:
+          ANDROID_HOME: ${{ runner.temp }}/android-sdk
+        run: |
+          mkdir -p build/web/downloads
+          godot --headless --path . --export-debug "Android" build/web/downloads/mt-space-android.apk
+          rm -f build/web/downloads/mt-space-android.apk.idsig
+
+      - name: Make sure the phone download is there
+        run: test -s build/web/downloads/mt-space-android.apk
+
+      - name: Put the website together
+        run: |
+          cp -r site/. build/web/
+          echo "${GITHUB_SHA}" > build/web/version.txt
+
+      - name: Upload the pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://cxp00000001"]
+
+[ext_resource type="Script" path="res://scripts/xp_orb.gd" id="1_xp"]
+
+[node name="XpOrb" type="Node2D"]
+script = ExtResource("1_xp")

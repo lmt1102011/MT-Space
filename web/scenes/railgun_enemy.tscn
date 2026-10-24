@@ -1,0 +1,19 @@
+[gd_scene format=3 uid="uid://crailgun0001"]
+
+[ext_resource type="Script" path="res://scripts/railgun_enemy.gd" id="1_railgun"]
+[ext_resource type="Script" path="res://scripts/hp_bar.gd" id="2_hpbar"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_railgun"]
+radius = 24.0
+
+[node name="RailgunEnemy" type="CharacterBody2D" groups=["enemy", "monster", "railgun_enemy"]]
+collision_layer = 8
+collision_mask = 13
+script = ExtResource("1_railgun")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_railgun")
+
+[node name="HpBar" type="Node2D" parent="."]
+top_level = true
+script = ExtResource("2_hpbar")

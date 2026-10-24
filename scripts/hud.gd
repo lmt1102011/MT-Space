@@ -40,6 +40,8 @@ func _ready() -> void:
 		_on_player_name_taken()
 	Web.update_available.connect(_on_update_available)
 	if _update_btn:
+		_update_btn.visible = false
+		_update_btn.text = "CHECK FOR UPDATE"
 		_update_btn.pressed.connect(_on_update_pressed)
 	if Web.has_update():
 		_on_update_available(Web.available_version)
@@ -48,6 +50,7 @@ func _ready() -> void:
 		spawner.wave_cleared_text.connect(_on_wave_cleared)
 	_on_wave_changed(Game.wave)
 	_on_level_changed(Game.level)
+	Game.level_changed.connect(_show_level_up)
 	call_deferred("_refresh_xp")
 	_clear_label.visible = false
 	_countdown_label.visible = false
@@ -146,6 +149,7 @@ func _on_spectate_changed(_target_id: int) -> void:
 func _on_update_available(_version: String) -> void:
 	if _update_btn:
 		_update_btn.visible = true
+		_update_btn.text = "NEW VERSION - UPDATE"
 	Web.hide_web_update_button()
 
 
@@ -177,6 +181,37 @@ func _on_wave_changed(wave: int) -> void:
 
 func _on_level_changed(level: int) -> void:
 	_lv_label.text = "LV %d" % level
+
+
+func _show_level_up(level: int) -> void:
+	# Compact world-space-independent banner: readable on both desktop and phone.
+	var fx := Control.new()
+	fx.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fx.set_anchors_preset(Control.PRESET_CENTER)
+	fx.position = Vector2(-110, -95)
+	fx.size = Vector2(220, 60)
+	var label := Label.new()
+	label.text = "LEVEL %d" % level
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.size = fx.size
+	label.add_theme_font_size_override("font_size", 30)
+	label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.45, 1.0))
+	label.add_theme_color_override("font_outline_color", Color(0.18, 0.08, 0.02, 0.95))
+	label.add_theme_constant_override("outline_size", 6)
+	label.modulate.a = 0.0
+	label.scale = Vector2(0.72, 0.72)
+	label.pivot_offset = fx.size * 0.5
+	fx.add_child(label)
+	add_child(fx)
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(label, "modulate:a", 1.0, 0.14)
+	tween.tween_property(label, "scale", Vector2.ONE, 0.34).set_trans(Tween.TRANS_BACK)
+	tween.tween_property(label, "position:y", -18.0, 0.95).set_delay(0.18)
+	tween.tween_property(label, "modulate:a", 0.0, 0.3).set_delay(0.72)
+	tween.set_parallel(false)
+	tween.tween_callback(fx.queue_free)
 
 
 func _on_xp_changed(xp: int, needed: int) -> void:

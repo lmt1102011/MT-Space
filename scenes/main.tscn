@@ -380,6 +380,7 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="UpdateButton" type="Button" parent="HUD"]
+visible = false
 anchors_preset = 7
 anchor_left = 0.5
 anchor_top = 0.0
@@ -392,7 +393,7 @@ offset_bottom = 104.0
 grow_horizontal = 2
 theme_override_colors/font_color = Color(0.04, 0.07, 0.09, 1)
 theme_override_font_sizes/font_size = 15
-text = "NEW VERSION - UPDATE"
+text = "CHECK FOR UPDATE"
 
 [node name="XpBar" type="Control" parent="HUD"]
 anchor_left = 0.5

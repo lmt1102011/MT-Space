@@ -142,9 +142,9 @@ func _update_bar() -> void:
 
 
 func _get_player() -> Node2D:
-	if _player == null or not is_instance_valid(_player) or _player.get("net_alive") == false \
-		or not Net.is_host():
-		_player = Net.target_player(global_position)
+	if not Net.is_host():
+		return null
+	_player = Net.target_player(global_position)
 	return _player
 
 
@@ -154,6 +154,7 @@ func _physics_process(delta: float) -> void:
 		# a copy of a host enemy just walks to where the host says it is
 		NetEnemy.follow(self, delta)
 		_tick_status(delta, false)
+		_update_charge_dash_visuals(delta)
 		_bar.global_position = global_position + Vector2(0, 30.0)
 		_bar.global_rotation = 0.0
 		return
@@ -291,6 +292,7 @@ func apply_push(impulse: Vector2) -> void:
 
 
 func apply_status(burn_stacks: int, freeze_stacks: int) -> void:
+	NetEnemy.report_status(self, burn_stacks, freeze_stacks)
 	if burn_stacks > 0:
 		_burn = maxf(_burn, 2.0 + burn_stacks * 0.5)
 		_burn_dmg = (0.6 + burn_stacks * 0.4) * (1.0 + 0.4 * float(Game.upg_inferno))
@@ -363,6 +365,16 @@ func make_elite(cards: int) -> void:
 	_add_elite_mark()
 	if _elite_ship != null:
 		_elite_ship.visible = true
+
+
+func apply_network_elite(network_max_hp: int) -> void:
+	if not elite:
+		elite = true
+		add_to_group("elite")
+		_add_elite_mark()
+	if _elite_ship != null:
+		_elite_ship.visible = true
+	max_hp = maxi(network_max_hp, 1)
 	_update_bar()
 
 
@@ -383,6 +395,9 @@ func drop_elite_card() -> void:
 	if _owned_cards.is_empty() or randf() >= 0.5:
 		return
 	var card: Dictionary = _owned_cards[randi() % _owned_cards.size()]
+	if Net.is_host() and int(_net_hitter) > 1:
+		Net.send_elite_card(int(_net_hitter), global_position, str(card.get("id", "")))
+		return
 	var d := UPGRADE_DROP.instantiate() as UpgradeDrop
 	d.card = card
 	d.global_position = global_position + Vector2.from_angle(randf() * TAU) * randf_range(0.0, 20.0)

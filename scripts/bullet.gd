@@ -12,6 +12,7 @@ extends Area2D
 @export var beam_color: Color = Color(1.0, 0.9, 0.2)
 
 var direction: Vector2 = Vector2.RIGHT
+var network_visual: bool = false
 
 const EXPLOSION_SCENE := preload("res://scenes/explosion.tscn")
 const BEAM_TEX := preload("res://assets/beam.svg")
@@ -19,11 +20,11 @@ const BEAM_CORE_TEX := preload("res://assets/beam_core.svg")
 # the size of the beam textures
 const BEAM_W := 64.0
 const BEAM_H := 16.0
-const HOMING_RANGE := 380.0
-const HOMING_TURN := 1.7
+const HOMING_RANGE := 520.0
+const HOMING_TURN := 4.6
 const HOMING_SEARCH := 0.08
-const HOMING_CONE := 1.15        # only lock on targets roughly in front
-const HOMING_MAX_TIME := 1.6     # stop steering eventually, no endless curls
+const HOMING_CONE := 1.75        # acquire a target in a broad front arc
+const HOMING_MAX_TIME := 2.4     # enough time to make a real correction
 const HOMING_LEAD := 0.35        # seconds of target velocity to lead the shot
 
 var _hit: Array = []
@@ -53,7 +54,9 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	_home(delta)
+	var previous := global_position
 	position += direction * speed * delta
+	_check_swept_enemy_hits(previous, global_position)
 	lifetime -= delta
 	if lifetime <= 0.0:
 		_detonate()
@@ -75,6 +78,9 @@ func _home(delta: float) -> void:
 		elif _home_target != null and not is_instance_valid(_home_target):
 			_home_target = null
 	var target := _home_target
+	if target != null and is_instance_valid(target) and target.get("_net_alive") == false:
+		_home_target = null
+		target = null
 	if target == null or not is_instance_valid(target):
 		return
 	# aim at where the target is going, not where it was
@@ -155,6 +161,9 @@ func _splash(origin: Node2D, dmg: float) -> void:
 
 
 func _on_body_entered(body: Node2D) -> void:
+	if network_visual:
+		_detonate()
+		return
 	if body.is_in_group("enemy"):
 		if _hit.has(body):
 			return
@@ -162,15 +171,39 @@ func _on_body_entered(body: Node2D) -> void:
 		_hurt(body)
 		if pierce <= 0:
 			_detonate()
+	elif body.is_in_group("obstacle"):
+		_detonate()
+
+
+func _check_swept_enemy_hits(from: Vector2, to: Vector2) -> void:
+	# Fast rounds can move farther than an enemy's collider in one physics
+	# frame. Test the travelled segment so homing rounds cannot visually pass
+	# through a target they crossed.
+	if network_visual:
+		return
+	var travel := to - from
+	var length_sq := travel.length_squared()
+	for enemy in get_tree().get_nodes_in_group("enemy"):
+		var target := enemy as Node2D
+		if target == null or not is_instance_valid(target) or _hit.has(target):
+			continue
+		var u := 0.0
+		if length_sq > 0.001:
+			u = clampf((target.global_position - from).dot(travel) / length_sq, 0.0, 1.0)
+		var closest := from + travel * u
+		var hit_radius := 24.0
+		var shape := target.get_node_or_null("CollisionShape2D") as CollisionShape2D
+		if shape != null and shape.shape is CircleShape2D:
+			hit_radius += (shape.shape as CircleShape2D).radius
+		if closest.distance_to(target.global_position) <= hit_radius:
+			_on_body_entered(target)
+			if not is_instance_valid(self):
+				return
 		else:
 			pierce -= 1
 			# Piercing Focus: every enemy it goes through makes it hit harder
 			if Game.upg_pierce_focus > 0:
 				damage *= 1.0 + 0.25 * float(Game.upg_pierce_focus)
-	elif body.is_in_group("obstacle"):
-		_detonate()
-
-
 func _detonate() -> void:
 	# Explosive Rounds: a small burst when the round dies
 	if Game.upg_explosive > 0:

@@ -95,6 +95,13 @@ func _draw() -> void:
 		else:
 			draw_circle(p, 2.0, COL_SHAPE)
 
-	var player := get_tree().get_first_node_in_group("player")
-	if player:
-		draw_circle(_world_to_map(player.global_position), 3.5, COL_PLAYER)
+	# Draw every local and remote player, not just the first group member.
+	for player in get_tree().get_nodes_in_group("player"):
+		if not is_instance_valid(player):
+			continue
+		var pcol := COL_PLAYER
+		if player.has_method("_refresh_name") or player.get("net_id") != null:
+			pcol = Net.player_color_of(int(player.get("net_id")))
+		if player.get("_dead") == true or player.get("net_alive") == false:
+			pcol.a = 0.35
+		draw_circle(_world_to_map(player.global_position), 3.5, pcol)

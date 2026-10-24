@@ -112,6 +112,7 @@ theme_override_font_sizes/font_size = 20
 text = "QUIT"
 
 [node name="UpdateButton" type="Button" parent="UI" unique_id=480023294]
+visible = false
 layout_mode = 0
 anchor_left = 0.5
 anchor_top = 0.5
@@ -124,7 +125,7 @@ offset_bottom = 248.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_font_sizes/font_size = 18
-text = "NEW VERSION - UPDATE"
+text = "CHECK FOR UPDATE"
 
 [node name="Version" type="Label" parent="UI" unique_id=217183245]
 layout_mode = 0

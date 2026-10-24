@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://cshipnamecheck1"]
+
+[ext_resource type="Script" path="res://tools/shipnamecheck.gd" id="1_shipname"]
+
+[node name="ShipNameCheck" type="Node"]
+script = ExtResource("1_shipname")

@@ -1,0 +1,213 @@
+[gd_scene format=3 uid="uid://cmenu00001"]
+
+[ext_resource type="Script" uid="uid://bf7wk3ikcf8ll" path="res://scripts/menu.gd" id="1_menu"]
+[ext_resource type="Script" uid="uid://bt6yaakxq8qxb" path="res://scripts/menu_demo.gd" id="2_demo"]
+
+[node name="Menu" type="CanvasLayer" unique_id=1052604950]
+script = ExtResource("1_menu")
+
+[node name="Demo" type="Node2D" parent="." unique_id=241943633]
+script = ExtResource("2_demo")
+
+[node name="UI" type="Control" parent="." unique_id=986526680]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+
+[node name="Dim" type="ColorRect" parent="UI" unique_id=748532817]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+color = Color(0.03, 0.05, 0.05, 0.55)
+
+[node name="Title" type="Label" parent="UI" unique_id=1112172140]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -400.0
+offset_top = -170.0
+offset_right = 400.0
+offset_bottom = -80.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(400, 45)
+theme_override_colors/font_color = Color(0.95, 0.97, 1, 1)
+theme_override_colors/font_outline_color = Color(0.02, 0.03, 0.05, 0.9)
+theme_override_constants/outline_size = 8
+theme_override_font_sizes/font_size = 76
+text = "MT  SPACE"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Subtitle" type="Label" parent="UI" unique_id=1295917918]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -400.0
+offset_top = -60.0
+offset_right = 400.0
+offset_bottom = -20.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(0.6, 0.72, 0.78, 1)
+theme_override_font_sizes/font_size = 20
+text = "SURVIVE  THE  SWARM"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="PlayButton" type="Button" parent="UI" unique_id=1373289848]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -130.0
+offset_top = 10.0
+offset_right = 130.0
+offset_bottom = 74.0
+theme_override_font_sizes/font_size = 30
+text = "PLAY"
+
+[node name="SettingsButton" type="Button" parent="UI" unique_id=1649571372]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -130.0
+offset_top = 84.0
+offset_right = 130.0
+offset_bottom = 134.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 20
+text = "SETTINGS"
+
+[node name="QuitButton" type="Button" parent="UI" unique_id=339412176]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -130.0
+offset_top = 138.0
+offset_right = 130.0
+offset_bottom = 190.0
+theme_override_font_sizes/font_size = 20
+text = "QUIT"
+
+[node name="UpdateButton" type="Button" parent="UI" unique_id=480023294]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -130.0
+offset_top = 200.0
+offset_right = 130.0
+offset_bottom = 248.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 18
+text = "NEW VERSION - UPDATE"
+
+[node name="Version" type="Label" parent="UI" unique_id=217183245]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = -10.0
+offset_right = 200.0
+offset_bottom = 10.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(0.55, 0.65, 0.75, 1)
+theme_override_font_sizes/font_size = 16
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="SettingsPanel" type="Control" parent="UI" unique_id=2018651233]
+visible = false
+z_index = 10
+anchors_preset = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -250.0
+offset_top = -200.0
+offset_right = 250.0
+offset_bottom = 200.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Dim" type="ColorRect" parent="UI/SettingsPanel" unique_id=440185999]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.04, 0.06, 0.07, 0.96)
+
+[node name="Title" type="Label" parent="UI/SettingsPanel" unique_id=2032456868]
+layout_mode = 0
+anchor_right = 1.0
+offset_top = 10.0
+offset_bottom = 48.0
+grow_horizontal = 2
+theme_override_colors/font_color = Color(0.9, 0.93, 0.95, 1)
+theme_override_font_sizes/font_size = 26
+text = "SETTINGS"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="VolumeLabel" type="Label" parent="UI/SettingsPanel" unique_id=198840518]
+layout_mode = 0
+offset_left = 30.0
+offset_top = 64.0
+offset_right = 470.0
+offset_bottom = 90.0
+theme_override_colors/font_color = Color(0.75, 0.8, 0.82, 1)
+theme_override_font_sizes/font_size = 16
+text = "VOLUME"
+
+[node name="VolumeSlider" type="HSlider" parent="UI/SettingsPanel" unique_id=2052579369]
+layout_mode = 0
+offset_left = 30.0
+offset_top = 94.0
+offset_right = 470.0
+offset_bottom = 118.0
+max_value = 1.0
+step = 0.01
+value = 1.0
+
+[node name="VolumeValue" type="Label" parent="UI/SettingsPanel" unique_id=431337988]
+layout_mode = 0
+offset_left = 30.0
+offset_top = 118.0
+offset_right = 470.0
+offset_bottom = 140.0
+theme_override_colors/font_color = Color(0.55, 0.62, 0.66, 1)
+theme_override_font_sizes/font_size = 13
+text = "100%"
+
+[node name="CloseButton" type="Button" parent="UI/SettingsPanel" unique_id=563806443]
+layout_mode = 0
+offset_left = 30.0
+offset_top = 200.0
+offset_right = 470.0
+offset_bottom = 248.0
+theme_override_font_sizes/font_size = 18
+text = "CLOSE"

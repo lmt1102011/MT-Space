@@ -3,6 +3,8 @@ extends Node2D
 @export var min_spawn_dist: float = 500.0
 @export var max_spawn_dist: float = 950.0
 @export var spawn_interval: float = 0.7
+# Dead players stay spectating during this full rest period. They are revived
+# only when the next wave is actually announced, never immediately on death.
 @export var intermission: float = 20.0
 
 # The swarm shapes are ambient: they are not part of a wave, they keep
@@ -17,6 +19,7 @@ const SHOOTER_SCENE := preload("res://scenes/shooter_enemy.tscn")
 const DOUBLE_SCENE := preload("res://scenes/double_enemy.tscn")
 const RAILGUN_SCENE := preload("res://scenes/railgun_enemy.tscn")
 const CHARGER_SCENE := preload("res://scenes/charger_enemy.tscn")
+const ORB_ENEMY_SCENE := preload("res://scenes/orb_enemy.tscn")
 
 signal wave_cleared_text(show: bool)
 
@@ -88,6 +91,9 @@ func _shape_count_alive() -> int:
 
 
 func _start_next_wave() -> void:
+	var local_player := get_tree().current_scene.get_node_or_null("Player")
+	if local_player != null and local_player.has_method("revive_for_wave"):
+		local_player.call("revive_for_wave")
 	Game.wave += 1
 	Game.wave_changed.emit(Game.wave)
 	Game.sfx("alert", -17.0, 0.97, 1.05)
@@ -108,6 +114,8 @@ func _build_queue(wave: int) -> int:
 		_spawn_queue.append("railgun")
 	for i in _charger_count(wave):
 		_spawn_queue.append("charger")
+	for i in _orb_count(wave):
+		_spawn_queue.append("orb")
 	_spawn_queue.shuffle()
 	return _spawn_queue.size()
 
@@ -143,10 +151,18 @@ func _charger_count(wave: int) -> int:
 	return clampi((wave - 1) / 2, 0, 3)
 
 
+func _orb_count(wave: int) -> int:
+	if wave < 4:
+		return 0
+	# Orb enemies scale with the later waves as well, instead of staying capped
+	# at two while the other elite types continue increasing.
+	return clampi(1 + (wave - 4) / 2, 1, 5)
+
+
 func _total_count(wave: int) -> int:
 	# only the wave enemies, the shapes are ambient
 	return _shooter_count(wave) + _double_count(wave) \
-		+ _railgun_count(wave) + _charger_count(wave)
+		+ _railgun_count(wave) + _charger_count(wave) + _orb_count(wave)
 
 
 func _spawn_enemy(kind: String) -> void:
@@ -160,7 +176,15 @@ func _spawn_enemy(kind: String) -> void:
 			return
 	elif get_tree().get_nodes_in_group("monster").size() >= MAX_TOTAL:
 		return
-	var target := get_tree().get_first_node_in_group("player")
+	var targets: Array[Node2D] = []
+	for candidate in get_tree().get_nodes_in_group("player"):
+		var player := candidate as Node2D
+		if player == null or not is_instance_valid(player):
+			continue
+		if player.get("_dead") == true or player.get("net_alive") == false:
+			continue
+		targets.append(player)
+	var target: Node2D = targets[randi_range(0, targets.size() - 1)] if not targets.is_empty() else null
 	var center: Vector2 = target.global_position if target else Vector2.ZERO
 
 	# the ambient swarm shows up closer, it is the constant background
@@ -235,6 +259,8 @@ func _spawn_local(kind: String, pos: Vector2, params: Dictionary) -> Node2D:
 			scene = RAILGUN_SCENE
 		"charger":
 			scene = CHARGER_SCENE
+		"orb":
+			scene = ORB_ENEMY_SCENE
 	if scene == null:
 		return null
 	var enemy := scene.instantiate() as Node2D

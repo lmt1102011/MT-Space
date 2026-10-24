@@ -7,7 +7,7 @@ extends RefCounted
 # position the host sent, so the whole fight looks the same everywhere.
 
 # how fast a remote enemy catches up with the position it was told about
-const FOLLOW_SPEED := 14.0
+const FOLLOW_SPEED := 38.0
 const FOLLOW_TURN := 10.0
 
 # the fields every enemy needs for the network
@@ -27,16 +27,18 @@ static func is_remote(node: Node) -> bool:
 # movement stays smooth even though the updates are only a few per second.
 static func follow(node: Node2D, delta: float) -> void:
 	var target: Vector2 = node.get("_net_target")
-	var to := target - node.global_position
-	var step := to * clampf(FOLLOW_SPEED * delta, 0.0, 1.0)
-	# never move further in one frame than the enemy could travel, so a long
-	# distance is walked over instead of teleported
-	var limit := 700.0 * minf(delta, 1.0 / 60.0)
-	if step.length() > limit:
-		step = step.normalized() * limit
-	node.global_position += step
-	node.rotation = lerp_angle(node.rotation, float(node.get("_net_rot")),
-		clampf(FOLLOW_TURN * delta, 0.0, 1.0))
+	var network_velocity: Vector2 = node.get_meta("net_velocity", Vector2.ZERO)
+	var error := target + network_velocity * 0.06 - node.global_position
+	if error.length() > 520.0:
+		node.global_position = target
+	else:
+		var correction := error * (1.0 - exp(-16.0 * delta))
+		var step := network_velocity * delta * 0.92 + correction
+		if step.length() > 26.0:
+			step = step.normalized() * 26.0
+		node.global_position += step
+	node.global_rotation = lerp_angle(node.global_rotation, float(node.get("_net_rot")),
+		1.0 - exp(-14.0 * delta))
 
 
 # A client asks the host to deal the damage, the host is the one who decides.
@@ -48,6 +50,18 @@ static func report_hit(node: Node, amount: float, kind: String) -> bool:
 	if id == 0:
 		return false
 	Net.report_hit(id, amount, kind)
+	return true
+
+
+# Keep burn/freeze on the host authoritative while showing it immediately on
+# the local remote copy as well.
+static func report_status(node: Node, burn: int, freeze: int) -> bool:
+	if not is_remote(node):
+		return false
+	var id := int(node.get("net_id"))
+	if id == 0:
+		return false
+	Net.report_enemy_status(id, burn, freeze)
 	return true
 
 

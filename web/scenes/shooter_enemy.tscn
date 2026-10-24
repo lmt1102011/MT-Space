@@ -1,0 +1,26 @@
+[gd_scene load_steps=5 format=3 uid="uid://cshooter0001"]
+
+[ext_resource type="Script" path="res://scripts/shooter_enemy.gd" id="1_shooter"]
+[ext_resource type="Texture2D" path="res://assets/player.svg" id="2_ship"]
+[ext_resource type="Script" path="res://scripts/hp_bar.gd" id="3_hpbar"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_shooter"]
+radius = 18.0
+
+[node name="ShooterEnemy" type="CharacterBody2D" groups=["enemy", "shooter_enemy"]]
+collision_layer = 8
+collision_mask = 13
+script = ExtResource("1_shooter")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture_filter = 2
+modulate = Color(1, 0.15, 0.15, 1)
+texture = ExtResource("2_ship")
+scale = Vector2(0.2, 0.2)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_shooter")
+
+[node name="HpBar" type="Node2D" parent="."]
+top_level = true
+script = ExtResource("3_hpbar")

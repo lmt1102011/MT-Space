@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://cwavecheck0001"]
+
+[ext_resource type="Script" path="res://tools/wavecheck.gd" id="1_wavecheck"]
+
+[node name="WaveCheck" type="Node2D"]
+script = ExtResource("1_wavecheck")

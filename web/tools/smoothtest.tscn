@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://csmoothtest01"]
+
+[ext_resource type="Script" path="res://tools/smoothtest.gd" id="1_smoothtest"]
+
+[node name="SmoothTest" type="Node2D"]
+script = ExtResource("1_smoothtest")

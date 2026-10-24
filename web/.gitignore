@@ -1,0 +1,17 @@
+# Godot
+.godot/
+.import/
+export.cfg
+
+# Build output
+build/
+*.pck
+
+# Godot Web build files (they live in build/ anyway)
+*.wasm
+
+# Editors
+.vscode/
+.idea/
+*.swp
+.DS_Store

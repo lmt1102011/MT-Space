@@ -53,7 +53,6 @@ var _name_prompt: Control
 
 
 func _ready() -> void:
-	Net.browse_rooms()
 	if Web.has_update():
 		Web.show_web_update_button()
 	_create_btn.pressed.connect(_on_create)
@@ -86,6 +85,15 @@ func _ready() -> void:
 		_create_btn.disabled = true
 		_create_btn.text = "CANNOT HOST HERE"
 		_sub_header.text = "a browser can only join a desktop host - use JOIN BY HOST"
+	# Let the lobby finish entering the scene before opening UDP discovery.
+	# This avoids blocking/crashing during scene creation on Android and keeps
+	# the Play transition safe on desktop.
+	call_deferred("_start_room_browser")
+
+
+func _start_room_browser() -> void:
+	if is_inside_tree():
+		Net.browse_rooms()
 
 
 # --- views ----------------------------------------------------------------

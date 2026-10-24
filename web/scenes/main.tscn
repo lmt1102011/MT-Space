@@ -1,0 +1,428 @@
+[gd_scene load_steps=17 format=3 uid="uid://cmain0001"]
+
+[ext_resource type="Script" path="res://scripts/grid_background.gd" id="1_grid"]
+[ext_resource type="PackedScene" path="res://scenes/player.tscn" id="2_player"]
+[ext_resource type="Script" path="res://scripts/spawner.gd" id="3_spawner"]
+[ext_resource type="Script" path="res://scripts/hud.gd" id="4_hud"]
+[ext_resource type="Script" path="res://scripts/minimap.gd" id="5_minimap"]
+[ext_resource type="Script" path="res://scripts/upgrade_cards.gd" id="6_upgrade"]
+[ext_resource type="Script" path="res://scripts/net_world.gd" id="7_networld"]
+[ext_resource type="Script" path="res://scripts/touch_controls.gd" id="8_touch"]
+
+[sub_resource type="RectangleShape2D" id="Wall_h"]
+size = Vector2(5400, 60)
+
+[sub_resource type="RectangleShape2D" id="Wall_v"]
+size = Vector2(60, 3200)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_obs1"]
+size = Vector2(220, 60)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_obs2"]
+size = Vector2(60, 260)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_obs3"]
+size = Vector2(160, 160)
+
+[node name="Main" type="Node2D"]
+
+[node name="Grid" type="Node2D" parent="."]
+script = ExtResource("1_grid")
+
+[node name="Walls" type="Node2D" parent="."]
+
+[node name="WallTop" type="StaticBody2D" groups=["obstacle"] parent="Walls"]
+position = Vector2(0, -1600)
+collision_layer = 4
+collision_mask = 15
+
+[node name="ColorRect" type="ColorRect" parent="Walls/WallTop"]
+offset_left = -2700.0
+offset_top = -30.0
+offset_right = 2700.0
+offset_bottom = 30.0
+color = Color(0.13, 0.21, 0.2, 1)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Walls/WallTop"]
+shape = SubResource("Wall_h")
+
+[node name="WallBottom" type="StaticBody2D" groups=["obstacle"] parent="Walls"]
+position = Vector2(0, 1600)
+collision_layer = 4
+collision_mask = 15
+
+[node name="ColorRect" type="ColorRect" parent="Walls/WallBottom"]
+offset_left = -2700.0
+offset_top = -30.0
+offset_right = 2700.0
+offset_bottom = 30.0
+color = Color(0.13, 0.21, 0.2, 1)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Walls/WallBottom"]
+shape = SubResource("Wall_h")
+
+[node name="WallLeft" type="StaticBody2D" groups=["obstacle"] parent="Walls"]
+position = Vector2(-2700, 0)
+collision_layer = 4
+collision_mask = 15
+
+[node name="ColorRect" type="ColorRect" parent="Walls/WallLeft"]
+offset_left = -30.0
+offset_top = -1600.0
+offset_right = 30.0
+offset_bottom = 1600.0
+color = Color(0.13, 0.21, 0.2, 1)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Walls/WallLeft"]
+shape = SubResource("Wall_v")
+
+[node name="WallRight" type="StaticBody2D" groups=["obstacle"] parent="Walls"]
+position = Vector2(2700, 0)
+collision_layer = 4
+collision_mask = 15
+
+[node name="ColorRect" type="ColorRect" parent="Walls/WallRight"]
+offset_left = -30.0
+offset_top = -1600.0
+offset_right = 30.0
+offset_bottom = 1600.0
+color = Color(0.13, 0.21, 0.2, 1)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Walls/WallRight"]
+shape = SubResource("Wall_v")
+
+[node name="Obstacles" type="Node2D" parent="."]
+
+[node name="Obstacle1" type="StaticBody2D" groups=["obstacle"] parent="Obstacles"]
+position = Vector2(1150, -560)
+collision_layer = 4
+collision_mask = 15
+
+[node name="ColorRect" type="ColorRect" parent="Obstacles/Obstacle1"]
+offset_left = -110.0
+offset_top = -30.0
+offset_right = 110.0
+offset_bottom = 30.0
+color = Color(0.16, 0.24, 0.22, 1)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Obstacles/Obstacle1"]
+shape = SubResource("RectangleShape2D_obs1")
+
+[node name="Obstacle2" type="StaticBody2D" groups=["obstacle"] parent="Obstacles"]
+position = Vector2(-1050, 700)
+collision_layer = 4
+collision_mask = 15
+
+[node name="ColorRect" type="ColorRect" parent="Obstacles/Obstacle2"]
+offset_left = -30.0
+offset_top = -130.0
+offset_right = 30.0
+offset_bottom = 130.0
+color = Color(0.16, 0.24, 0.22, 1)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Obstacles/Obstacle2"]
+shape = SubResource("RectangleShape2D_obs2")
+
+[node name="Obstacle3" type="StaticBody2D" groups=["obstacle"] parent="Obstacles"]
+position = Vector2(-560, -1180)
+collision_layer = 4
+collision_mask = 15
+
+[node name="ColorRect" type="ColorRect" parent="Obstacles/Obstacle3"]
+offset_left = -80.0
+offset_top = -80.0
+offset_right = 80.0
+offset_bottom = 80.0
+color = Color(0.16, 0.24, 0.22, 1)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Obstacles/Obstacle3"]
+shape = SubResource("RectangleShape2D_obs3")
+
+[node name="Obstacle4" type="StaticBody2D" groups=["obstacle"] parent="Obstacles"]
+position = Vector2(2050, 820)
+collision_layer = 4
+collision_mask = 15
+
+[node name="ColorRect" type="ColorRect" parent="Obstacles/Obstacle4"]
+offset_left = -140.0
+offset_top = -40.0
+offset_right = 140.0
+offset_bottom = 40.0
+color = Color(0.16, 0.24, 0.22, 1)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Obstacles/Obstacle4"]
+shape = SubResource("RectangleShape2D_obs1")
+
+[node name="Obstacle5" type="StaticBody2D" groups=["obstacle"] parent="Obstacles"]
+position = Vector2(-2250, -480)
+collision_layer = 4
+collision_mask = 15
+
+[node name="ColorRect" type="ColorRect" parent="Obstacles/Obstacle5"]
+offset_left = -30.0
+offset_top = -160.0
+offset_right = 30.0
+offset_bottom = 160.0
+color = Color(0.16, 0.24, 0.22, 1)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Obstacles/Obstacle5"]
+shape = SubResource("RectangleShape2D_obs2")
+
+[node name="Player" parent="." instance=ExtResource("2_player")]
+position = Vector2(0, 0)
+
+[node name="Camera2D" type="Camera2D" parent="Player"]
+zoom = Vector2(0.8, 0.8)
+position_smoothing_enabled = true
+position_smoothing_speed = 7.0
+limit_left = -2700
+limit_top = -1600
+limit_right = 2700
+limit_bottom = 1600
+
+[node name="Spawner" type="Node2D" parent="."]
+script = ExtResource("3_spawner")
+
+[node name="NetWorld" type="Node2D" parent="."]
+script = ExtResource("7_networld")
+
+[node name="HUD" type="CanvasLayer" parent="."]
+script = ExtResource("4_hud")
+
+[node name="UpgradeCards" type="CanvasLayer" parent="."]
+script = ExtResource("6_upgrade")
+
+[node name="TouchControls" type="CanvasLayer" parent="."]
+layer = 5
+
+[node name="TouchPad" type="Control" parent="TouchControls" groups=["touch_controls"]]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("8_touch")
+
+[node name="WaveLabel" type="Label" parent="HUD"]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 0.0
+anchor_right = 0.5
+anchor_bottom = 0.0
+offset_left = -300.0
+offset_top = 16.0
+offset_right = 300.0
+offset_bottom = 60.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 34
+text = "WAVE 1"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="WaveClear" type="Label" parent="HUD"]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -300.0
+offset_top = -40.0
+offset_right = 300.0
+offset_bottom = 40.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(0.45, 0.95, 0.6, 1)
+theme_override_font_sizes/font_size = 60
+text = "WAVE CLEAR"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Countdown" type="Label" parent="HUD"]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -300.0
+offset_top = -130.0
+offset_right = 300.0
+offset_bottom = -80.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(0.85, 0.95, 0.85, 1)
+theme_override_font_sizes/font_size = 34
+text = "Next wave in 10"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Minimap" type="Control" parent="HUD"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -244.0
+offset_top = 16.0
+offset_right = -24.0
+offset_bottom = 146.0
+grow_horizontal = 0
+script = ExtResource("5_minimap")
+
+[node name="SettingsButton" type="Button" parent="HUD"]
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 0.0
+anchor_bottom = 0.0
+offset_left = 24.0
+offset_top = 16.0
+offset_right = 88.0
+offset_bottom = 80.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_font_sizes/font_size = 32
+theme_override_constants/corner_radius = 16
+text = "⚙"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="SettingsPanel" type="Control" parent="HUD"]
+anchors_preset = 2
+anchor_top = 0.0
+anchor_bottom = 0.0
+offset_left = 24.0
+offset_top = 66.0
+offset_right = 344.0
+offset_bottom = 266.0
+grow_vertical = 2
+visible = false
+
+[node name="Dim" type="ColorRect" parent="HUD/SettingsPanel"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.05, 0.07, 0.08, 0.95)
+
+[node name="Title" type="Label" parent="HUD/SettingsPanel"]
+anchor_right = 1.0
+offset_top = 8.0
+offset_bottom = 42.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 22
+theme_override_colors/font_color = Color(0.9, 0.93, 0.95, 1)
+text = "SETTINGS"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="VolumeLabel" type="Label" parent="HUD/SettingsPanel"]
+offset_left = 20.0
+offset_top = 52.0
+offset_right = 300.0
+offset_bottom = 78.0
+theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(0.75, 0.8, 0.82, 1)
+text = "VOLUME"
+
+[node name="VolumeSlider" type="HSlider" parent="HUD/SettingsPanel"]
+offset_left = 20.0
+offset_top = 80.0
+offset_right = 300.0
+offset_bottom = 104.0
+max_value = 1.0
+step = 0.01
+value = 1.0
+
+[node name="VolumeValue" type="Label" parent="HUD/SettingsPanel"]
+offset_left = 20.0
+offset_top = 104.0
+offset_right = 300.0
+offset_bottom = 126.0
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.55, 0.62, 0.66, 1)
+text = "100%"
+
+[node name="CloseButton" type="Button" parent="HUD/SettingsPanel"]
+offset_left = 20.0
+offset_top = 134.0
+offset_right = 150.0
+offset_bottom = 172.0
+theme_override_font_sizes/font_size = 15
+text = "CLOSE"
+
+[node name="QuitButton" type="Button" parent="HUD/SettingsPanel"]
+offset_left = 160.0
+offset_top = 134.0
+offset_right = 290.0
+offset_bottom = 172.0
+theme_override_font_sizes/font_size = 14
+text = "TO LOBBY"
+
+[node name="SpectateLabel" type="Label" parent="HUD"]
+visible = false
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -300.0
+offset_top = -86.0
+offset_right = 300.0
+offset_bottom = -58.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(0.72, 0.86, 1, 0.85)
+text = "SPECTATING"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="UpdateButton" type="Button" parent="HUD"]
+visible = false
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 0.0
+anchor_right = 0.5
+anchor_bottom = 0.0
+offset_left = -130.0
+offset_top = 66.0
+offset_right = 130.0
+offset_bottom = 104.0
+grow_horizontal = 2
+theme_override_colors/font_color = Color(0.04, 0.07, 0.09, 1)
+theme_override_font_sizes/font_size = 15
+text = "NEW VERSION - UPDATE"
+
+[node name="XpBar" type="Control" parent="HUD"]
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -300.0
+offset_top = -38.0
+offset_right = 300.0
+offset_bottom = -10.0
+grow_horizontal = 2
+grow_vertical = 0
+
+[node name="LvLabel" type="Label" parent="HUD/XpBar"]
+offset_left = 4.0
+offset_right = 70.0
+offset_bottom = 28.0
+theme_override_font_sizes/font_size = 22
+text = "LV 1"
+vertical_alignment = 1
+
+[node name="Bg" type="ColorRect" parent="HUD/XpBar"]
+offset_left = 78.0
+offset_right = 596.0
+offset_bottom = 24.0
+color = Color(0.05, 0.07, 0.06, 0.85)
+
+[node name="Fill" type="ColorRect" parent="HUD/XpBar/Bg"]
+offset_left = 2.0
+offset_top = 2.0
+offset_right = 516.0
+offset_bottom = 22.0
+color = Color(0.35, 0.85, 1, 1)

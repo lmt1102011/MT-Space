@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="220" height="130" viewBox="0 0 220 130">
+<!--
+  The minimap background: a dark panel with a thin border. The dots on top of
+  it stay dynamic, they are drawn by the script.
+-->
+<rect fill="#0d1713" fill-opacity="0.8" x="0" y="0" width="220" height="130"/>
+<rect fill="none" stroke="#4d8073" stroke-width="2" x="1" y="1" width="218" height="128"/>
+</svg>

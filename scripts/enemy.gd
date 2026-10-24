@@ -121,6 +121,14 @@ func _update_bar() -> void:
 func _physics_process(delta: float) -> void:
 	# on a client this enemy is only a copy of the host's one
 	if NetEnemy.is_remote(self):
+		# Remote shapes are visual replicas. If they keep a local collision
+		# shape, the local player's move_and_slide() collides with a position
+		# that is also being network-interpolated, which causes visible jitter.
+		# Put visual-only remote shapes on the bullet-only layer. This lets a
+		# client bullet detect/report the hit while the player body can never
+		# physically collide with the interpolated shape.
+		collision_layer = 2
+		collision_mask = 0
 		# a copy of a host enemy just walks to where the host says it is
 		NetEnemy.follow(self, delta)
 		_tick_status(delta, false)
@@ -189,6 +197,7 @@ func apply_push(impulse: Vector2) -> void:
 
 
 func apply_status(burn_stacks: int, freeze_stacks: int) -> void:
+	NetEnemy.report_status(self, burn_stacks, freeze_stacks)
 	if burn_stacks > 0:
 		_burn = maxf(_burn, 2.0 + burn_stacks * 0.5)
 		_burn_dmg = (0.6 + burn_stacks * 0.4) * (1.0 + 0.4 * float(Game.upg_inferno))

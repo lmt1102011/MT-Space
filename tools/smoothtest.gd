@@ -27,12 +27,12 @@ func _ok(cond: bool, label: String) -> void:
 func _check_follow() -> void:
 	var p := REMOTE_PLAYER.instantiate() as Node2D
 	add_child(p)
-	p.set("_net_target", Vector2(400.0, 0.0))
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 
 	# the ship starts at the origin and has to walk over
 	var start := p.global_position
+	p.set("_net_target", Vector2(400.0, 0.0))
 	var biggest_jump := 0.0
 	var last := start
 	var frames := 0
