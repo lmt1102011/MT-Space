@@ -7,6 +7,7 @@ var _cards: CanvasLayer = null
 
 
 func _ready() -> void:
+	Game.reset_run()
 	var main := load("res://scenes/main.tscn").instantiate() as Node2D
 	add_child(main)
 	await get_tree().process_frame
@@ -29,16 +30,23 @@ func _wait_frames(count: int = 20) -> void:
 		await get_tree().process_frame
 
 
+func _total_upgrade_stacks() -> int:
+	var total: int = 0
+	for value in Game.upg_stacks.values():
+		total += int(value)
+	return total
+
+
 func _choose_first_card() -> void:
 	var picked: Array = _cards.get("_cards")
 	_check(not picked.is_empty(), "upgrade choices are present")
 	if picked.is_empty():
 		return
 	var chosen_card: Dictionary = picked[0].get("card")
-	var before := Game.upg_stacks.size()
+	var before := _total_upgrade_stacks()
 	_cards.call("_on_card_chosen", chosen_card, picked[0])
 	await _wait_frames(20)
-	_check(Game.upg_stacks.size() > before, "the selected card applied an upgrade")
+	_check(_total_upgrade_stacks() > before, "the selected card applied an upgrade")
 
 
 func _run() -> void:

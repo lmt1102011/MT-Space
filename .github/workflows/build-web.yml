@@ -80,6 +80,9 @@ jobs:
           touch build/.gdignore
           godot --headless --editor --quit --path .
 
+      - name: Check level-up upgrade queue
+        run: godot --headless --path . res://tools/levelupcheck.tscn
+
       - name: Write the version into the build
         run: echo "${GITHUB_SHA}" > version_embedded.txt
 
