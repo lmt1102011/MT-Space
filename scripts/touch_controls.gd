@@ -21,6 +21,7 @@ var _move_center: Vector2 = Vector2.ZERO
 var _move_pos: Vector2 = Vector2.ZERO
 var _aim_center: Vector2 = Vector2.ZERO
 var _aim_pos: Vector2 = Vector2.ZERO
+var _last_aim_dir: Vector2 = Vector2.RIGHT
 # true when the player touched the screen, the sticks show up then
 var _touched: bool = false
 
@@ -86,6 +87,9 @@ func _on_drag(d: InputEventScreenDrag) -> void:
 		_move_pos = d.position
 	elif d.index == _aim_touch:
 		_aim_pos = d.position
+		var direction := _stick_vector(_aim_pos - _aim_center)
+		if direction != Vector2.ZERO:
+			_last_aim_dir = direction
 	queue_redraw()
 
 
@@ -101,6 +105,10 @@ func aim_direction() -> Vector2:
 	if _aim_touch == -1:
 		return Vector2.ZERO
 	return _stick_vector(_aim_pos - _aim_center)
+
+
+func last_aim_direction() -> Vector2:
+	return _last_aim_dir
 
 
 # The right stick shoots as long as it is held down.

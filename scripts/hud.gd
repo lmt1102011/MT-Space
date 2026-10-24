@@ -2,6 +2,7 @@ extends CanvasLayer
 
 const CardScript := preload("res://scripts/card.gd")
 const NAME_PROMPT := preload("res://scenes/name_prompt.tscn")
+const SETTINGS_ICON := preload("res://assets/icons/settings.svg")
 
 @onready var _wave_label: Label = $WaveLabel
 @onready var _clear_label: Label = $WaveClear
@@ -70,7 +71,9 @@ func _on_replacement_name_chosen(_name: String) -> void:
 # The little panel with the volume and the quit button.
 func _setup_settings() -> void:
 	if _settings_btn:
-		_settings_btn.text = "⚙"  # icon only
+		_settings_btn.text = ""
+		_settings_btn.icon = SETTINGS_ICON
+		_settings_btn.expand_icon = true
 		_settings_btn.add_theme_constant_override("corner_radius", 16)
 		_settings_btn.pressed.connect(_on_settings_pressed)
 	if _settings_panel:
@@ -114,6 +117,10 @@ func _leave_to_lobby() -> void:
 	Game.set_fire(false)
 	Game.reset_run()
 	Net.leave()
+	call_deferred("_change_to_lobby")
+
+
+func _change_to_lobby() -> void:
 	get_tree().change_scene_to_file("res://scenes/lobby.tscn")
 
 
@@ -301,4 +308,9 @@ func _on_play_again() -> void:
 func _on_main_menu() -> void:
 	Game.sfx("click", -14.0, 0.95, 1.05)
 	Game.reset_run()
+	Net.leave()
+	call_deferred("_change_to_menu")
+
+
+func _change_to_menu() -> void:
 	get_tree().change_scene_to_file("res://scenes/menu.tscn")

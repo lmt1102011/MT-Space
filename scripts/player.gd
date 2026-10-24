@@ -191,10 +191,9 @@ func _physics_process(delta: float) -> void:
 	# aim toward mouse
 	var mouse := get_global_mouse_position()
 	if _touch != null and _touch.is_shooting():
-		# the right stick aims where the finger points
-		var aim_dir: Vector2 = _touch.aim_direction()
-		if aim_dir != Vector2.ZERO:
-			mouse = global_position + aim_dir * 200.0
+		# the right stick controls aim independently of the left movement stick
+		var aim_dir: Vector2 = _touch.last_aim_direction()
+		mouse = global_position + aim_dir * 200.0
 	var aim := (mouse - global_position).angle()
 	_sprite.rotation = lerp_angle(_sprite.rotation, aim, turn_speed * delta)
 
@@ -232,6 +231,8 @@ func _shoot(delta: float) -> void:
 	_cooldown = maxf(_cooldown - delta, 0.0)
 	var mouse := get_global_mouse_position()
 	var dir := (mouse - global_position).normalized()
+	if _touch != null and _touch.is_shooting():
+		dir = _touch.last_aim_direction().normalized()
 	if dir == Vector2.ZERO:
 		dir = Vector2.RIGHT
 

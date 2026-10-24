@@ -19,6 +19,7 @@ const ROOM_NAMES := [
 @onready var _create_btn: Button = $UI/CreateRoomButton
 @onready var _solo_btn: Button = $UI/PlaySoloButton
 @onready var _join_btn: Button = $UI/JoinRoomButton
+@onready var _refresh_btn: Button = $UI/RefreshRoomsButton
 @onready var _back_btn: Button = $UI/BackButton
 @onready var _header: Label = $UI/Header
 @onready var _sub_header: Label = $UI/SubHeader
@@ -52,10 +53,12 @@ var _name_prompt: Control
 
 
 func _ready() -> void:
+	Net.browse_rooms()
 	if Web.has_update():
 		Web.show_web_update_button()
 	_create_btn.pressed.connect(_on_create)
 	_join_btn.pressed.connect(_on_join_pressed)
+	_refresh_btn.pressed.connect(_on_refresh_rooms)
 	_back_btn.pressed.connect(_on_back)
 	_leave_btn.pressed.connect(_on_leave)
 	_add_btn.pressed.connect(_on_add_player)
@@ -97,6 +100,7 @@ func _refresh() -> void:
 	_rooms_list.visible = not _in_room
 	_create_btn.visible = not _in_room
 	_join_btn.visible = not _in_room
+	_refresh_btn.visible = not _in_room
 	_empty_label.visible = not _in_room
 	_back_btn.visible = not _in_room
 	_solo_btn.visible = OS.has_feature("web") and not _in_room
@@ -120,7 +124,7 @@ func _refresh_room_list() -> void:
 	if Net.rooms.is_empty():
 		if Net.can_host():
 			_empty_label.text = "no rooms found - create one, or use JOIN BY HOST\n" \
-				+ "if a room is open, check the firewall and that both are on the same wifi"
+				+ "auto-discovery needs the same Wi-Fi/LAN; otherwise enter the host IP"
 		else:
 			_empty_label.text = "a browser cannot find rooms - use JOIN BY HOST"
 	for i in Net.rooms.size():
@@ -184,6 +188,7 @@ func _show_create_view() -> void:
 	_empty_label.visible = false
 	_create_btn.visible = false
 	_join_btn.visible = false
+	_refresh_btn.visible = false
 	_back_btn.visible = false
 	_room_panel.visible = false
 	_address_open = false
@@ -239,6 +244,11 @@ func _on_join_pressed() -> void:
 	_address_panel.visible = _address_open
 	if _address_open and _address_edit:
 		_address_edit.grab_focus()
+
+
+func _on_refresh_rooms() -> void:
+	Game.sfx("click", -10.0, 0.95, 1.05)
+	Net.refresh_rooms()
 
 
 func _on_join_address() -> void:
@@ -327,6 +337,7 @@ func _on_join(index: int) -> void:
 func _on_leave() -> void:
 	Game.sfx("click", -10.0, 0.95, 1.05)
 	Net.leave()
+	Net.browse_rooms()
 	_in_room = false
 	_address_open = false
 	_refresh()
@@ -364,6 +375,10 @@ func _on_start() -> void:
 func _on_back() -> void:
 	Game.sfx("click", -10.0, 0.95, 1.05)
 	Net.leave()
+	call_deferred("_change_to_menu")
+
+
+func _change_to_menu() -> void:
 	get_tree().change_scene_to_file("res://scenes/menu.tscn")
 
 

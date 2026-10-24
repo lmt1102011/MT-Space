@@ -1,4 +1,4 @@
-[gd_scene load_steps=17 format=3 uid="uid://cmain0001"]
+[gd_scene load_steps=18 format=3 uid="uid://cmain0001"]
 
 [ext_resource type="Script" path="res://scripts/grid_background.gd" id="1_grid"]
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="2_player"]
@@ -8,6 +8,7 @@
 [ext_resource type="Script" path="res://scripts/upgrade_cards.gd" id="6_upgrade"]
 [ext_resource type="Script" path="res://scripts/net_world.gd" id="7_networld"]
 [ext_resource type="Script" path="res://scripts/touch_controls.gd" id="8_touch"]
+[ext_resource type="Texture2D" path="res://assets/icons/settings.svg" id="9_settings_icon"]
 
 [sub_resource type="RectangleShape2D" id="Wall_h"]
 size = Vector2(5400, 60)
@@ -280,9 +281,9 @@ offset_right = 88.0
 offset_bottom = 80.0
 grow_horizontal = 0
 grow_vertical = 0
-theme_override_font_sizes/font_size = 32
 theme_override_constants/corner_radius = 16
-text = "⚙"
+icon = ExtResource("9_settings_icon")
+expand_icon = true
 horizontal_alignment = 1
 vertical_alignment = 1
 

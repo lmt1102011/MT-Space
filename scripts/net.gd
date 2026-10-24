@@ -15,7 +15,7 @@ const DISCOVERY_PORT := 27016
 const MAX_PLAYERS := 4
 const XP_DROP := preload("res://scripts/xp_pickup.gd")
 # a room that stopped answering is dropped after this many seconds
-const ROOM_TTL := 6.0
+const ROOM_TTL := 15.0
 # how often the local player sends its position
 const NET_TICK := 1.0 / 20.0
 # how often the host sends the enemy positions
@@ -48,10 +48,14 @@ var _peer: MultiplayerPeer = null
 # the multiplayer api of the scene tree, the net node uses it for the rpcs
 var _api: MultiplayerAPI = null
 var _hosting: bool = false
+var _room_port: int = DEFAULT_PORT
 # true when the room speaks websocket instead of enet
 var _web_mode: bool = false
 var _discovery: PacketPeerUDP = null
 var _disc_timer: float = 0.0
+var _unicast_scan_timer: float = 0.0
+var _unicast_scan_targets: Array[String] = []
+var _unicast_scan_index: int = 0
 var _net_timer: float = 0.0
 var _enemy_timer: float = 0.0
 var _next_enemy_id: int = 1
@@ -137,6 +141,21 @@ func can_join() -> bool:
 	return true
 
 
+func browse_rooms() -> void:
+	if is_online() or OS.has_feature("web"):
+		return
+	if _discovery == null:
+		_start_discovery(false)
+
+
+func refresh_rooms() -> void:
+	if is_online() or OS.has_feature("web"):
+		return
+	rooms.clear()
+	rooms_changed.emit()
+	_start_discovery(false)
+
+
 # True when the room uses websocket instead of the faster enet.
 func is_web_mode() -> bool:
 	return _web_mode
@@ -179,6 +198,7 @@ func host_room(name: String, port: int = DEFAULT_PORT, web_mode: bool = false) -
 		peer = enet
 	_peer = peer
 	_web_mode = web_mode
+	_room_port = port
 	# the flag is set before the api, so nothing thinks it is a client
 	_hosting = true
 	_new_api(peer)
@@ -326,6 +346,25 @@ func _start_discovery(hosting: bool) -> void:
 	# a socket may not send to a broadcast address unless it is allowed to
 	_discovery.set_broadcast_enabled(true)
 	_disc_timer = 0.0
+	_unicast_scan_timer = 0.0
+	_unicast_scan_index = 0
+	_unicast_scan_targets = _local_subnet_targets() if not hosting else []
+
+
+func _local_subnet_targets() -> Array[String]:
+	var targets: Array[String] = []
+	for ip in IP.get_local_addresses():
+		if ip.contains(":") or ip.begins_with("127.") or ip.begins_with("169.254."):
+			continue
+		var parts := ip.split(".")
+		if parts.size() != 4:
+			continue
+		var prefix := "%s.%s.%s." % [parts[0], parts[1], parts[2]]
+		for host in range(1, 255):
+			var target := prefix + str(host)
+			if not targets.has(target):
+				targets.append(target)
+	return targets
 
 
 # Every address a discovery packet should go to. The global broadcast works on
@@ -404,6 +443,15 @@ func _process(delta: float) -> void:
 			for target in _broadcast_targets():
 				_discovery.set_dest_address(target, DISCOVERY_PORT)
 				_discovery.put_packet("MTDISC?".to_utf8_buffer())
+	if not _hosting and not _unicast_scan_targets.is_empty():
+		_unicast_scan_timer -= delta
+		if _unicast_scan_timer <= 0.0:
+			_unicast_scan_timer = 0.025
+			_discovery.set_dest_address(_unicast_scan_targets[_unicast_scan_index], DISCOVERY_PORT)
+			_discovery.put_packet("MTDISC?".to_utf8_buffer())
+			_unicast_scan_index += 1
+			if _unicast_scan_index >= _unicast_scan_targets.size():
+				_unicast_scan_index = 0
 	# read the answers
 	while _discovery.get_available_packet_count() > 0:
 		var ip := _discovery.get_packet_ip()
@@ -424,7 +472,7 @@ func _process(delta: float) -> void:
 
 func _room_packet() -> String:
 	# the last part says how the room talks, so the players know what to use
-	return "MTROOM:%s:%d:%d:%d" % [room_name, DEFAULT_PORT, players.size(),
+	return "MTROOM:%s:%d:%d:%d" % [room_name, _room_port, players.size(),
 		1 if _web_mode else 0]
 
 
@@ -434,7 +482,7 @@ func _add_own_room() -> void:
 		return
 	var ip := "127.0.0.1"
 	for r in rooms:
-		if str(r["address"]) == ip and int(r["port"]) == DEFAULT_PORT:
+		if str(r["address"]) == ip and int(r["port"]) == _room_port:
 			r["count"] = players.size()
 			r["web"] = _web_mode
 			r["seen"] = Time.get_ticks_msec() / 1000.0
@@ -443,7 +491,7 @@ func _add_own_room() -> void:
 	rooms.append({
 		"name": room_name,
 		"address": ip,
-		"port": DEFAULT_PORT,
+		"port": _room_port,
 		"count": players.size(),
 		"web": _web_mode,
 		"seen": Time.get_ticks_msec() / 1000.0,

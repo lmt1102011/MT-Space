@@ -58,6 +58,7 @@ func _run() -> void:
 	var mdir: Vector2 = pad.move_direction()
 	_check(mdir.x > 0.1, "the left stick points to the right: %s" % str(mdir))
 	_check(absf(mdir.y) < 0.01, "the left stick does not point up or down")
+	_check(not pad.is_shooting(), "the left movement stick does not shoot")
 
 	# a finger on the right half aims and shoots
 	var aim_touch := InputEventScreenTouch.new()
@@ -79,6 +80,9 @@ func _run() -> void:
 	adir = pad.aim_direction()
 	_check(adir.x < -0.1, "the right stick aims to the left: %s" % str(adir))
 	_check(adir.y < -0.1, "the right stick aims up: %s" % str(adir))
+	var last_aim: Vector2 = pad.last_aim_direction()
+	_check(last_aim.x < -0.1 and last_aim.y < -0.1,
+		"the right stick stores the firing direction")
 	_check(pad.is_shooting(), "the right stick still shoots")
 
 	# letting go of both
