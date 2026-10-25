@@ -29,7 +29,7 @@ func _check_boss() -> void:
 	await get_tree().process_frame
 	_check(boss.is_in_group("monster"), "boss blocks wave completion while alive")
 	boss.call("setup", 1.0, 0, 1.0, 1.9)
-	_check(int(boss.get("max_hp")) > 1000, "boss health scales to a tanky wave-10 value")
+	_check(int(boss.get("max_hp")) == 798, "boss health uses the reduced wave-10 balance")
 	var hp_before := int(boss.get("hp"))
 	boss.call("take_damage", 25.0)
 	_check(int(boss.get("hp")) == hp_before - 25,
