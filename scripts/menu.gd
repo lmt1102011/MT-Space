@@ -11,6 +11,7 @@ const PROMPT_SCENE := preload("res://scenes/name_prompt.tscn")
 @onready var _settings_panel: Control = $UI/SettingsPanel
 @onready var _volume_slider: HSlider = $UI/SettingsPanel/VolumeSlider
 @onready var _volume_value: Label = $UI/SettingsPanel/VolumeValue
+@onready var _lang_option: OptionButton = $UI/SettingsPanel/LangOption
 @onready var _settings_close: Button = $UI/SettingsPanel/CloseButton
 @onready var _update_btn: Button = $UI/UpdateButton
 @onready var _version_label: Label = $UI/Version
@@ -32,6 +33,15 @@ func _ready() -> void:
 	_volume_slider.value = Game.get_master_volume()
 	_volume_slider.value_changed.connect(_on_volume_changed)
 	_on_volume_changed(_volume_slider.value)
+	if _lang_option:
+		var cur := get_node_or_null("/root/Locale")
+		if cur != null and cur.has_method("get_locale"):
+			var lcur := str(cur.get_locale())
+			if lcur == "vi":
+				_lang_option.select(1)
+			else:
+				_lang_option.select(0)
+		_lang_option.item_selected.connect(_on_lang_selected)
 	# a link can ask for the game right away, that is handy for the website
 	if _wants_to_play_now():
 		_start_game()
@@ -95,7 +105,9 @@ func _on_quit() -> void:
 # --- the update ------------------------------------------------------------
 func _on_update_available(_version: String) -> void:
 	_update_btn.visible = true
-	_update_btn.text = "NEW VERSION - UPDATE"
+	var text := "NEW VERSION - UPDATE"
+	var locale := get_node_or_null("/root/Locale")
+	_update_btn.text = locale.translate_text(text) if locale else text
 	# the scene has its own button now, the page one would be a duplicate
 	Web.hide_web_update_button()
 
@@ -114,6 +126,16 @@ func _on_settings_pressed() -> void:
 func _on_settings_close() -> void:
 	Game.sfx("click", -10.0, 0.95, 1.05)
 	_settings_panel.visible = false
+
+
+func _on_lang_selected(idx: int) -> void:
+	var cur := get_node_or_null("/root/Locale")
+	if cur == null or not cur.has_method("set_locale"):
+		return
+	if idx == 1:
+		cur.set_locale("vi")
+	else:
+		cur.set_locale("en")
 
 
 func _on_volume_changed(value: float) -> void:

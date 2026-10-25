@@ -42,7 +42,6 @@ const ROOM_NAMES := [
 	$UI/RoomPanel/SlotBL, $UI/RoomPanel/SlotBR,
 ]
 
-var _my_room: int = -1          # index into Net.rooms
 var _creating: bool = false
 var _in_room: bool = false
 # the address box is only open after the join by host button was pressed
@@ -83,8 +82,11 @@ func _ready() -> void:
 	# a browser cannot host, and it cannot look for rooms either
 	if not Net.can_host():
 		_create_btn.disabled = true
-		_create_btn.text = "CANNOT HOST HERE"
-		_sub_header.text = "a browser can only join a desktop host - use JOIN BY HOST"
+		_set_localized(_create_btn, "CANNOT HOST HERE")
+		_set_localized(
+			_sub_header,
+			"a browser can only join a desktop host - use JOIN BY HOST"
+		)
 	# Let the lobby finish entering the scene before opening UDP discovery.
 	# This avoids blocking/crashing during scene creation on Android and keeps
 	# the Play transition safe on desktop.
@@ -121,8 +123,9 @@ func _refresh() -> void:
 
 
 func _refresh_web_mode() -> void:
-	_web_mode_btn.text = "CONNECTION: BROWSER FRIENDLY" if _web_mode \
+	var text := "CONNECTION: BROWSER FRIENDLY" if _web_mode \
 		else "CONNECTION: FAST (LAN)"
+	_web_mode_btn.text = _localized_text(text)
 
 
 func _refresh_room_list() -> void:
@@ -131,17 +134,19 @@ func _refresh_room_list() -> void:
 	_empty_label.visible = Net.rooms.is_empty()
 	if Net.rooms.is_empty():
 		if Net.can_host():
-			_empty_label.text = "no rooms found - create one, or use JOIN BY HOST\n" \
+			var text := "no rooms found - create one, or use JOIN BY HOST\n" \
 				+ "auto-discovery needs the same Wi-Fi/LAN; otherwise enter the host IP"
+			_empty_label.text = _localized_text(text)
 		else:
-			_empty_label.text = "a browser cannot find rooms - use JOIN BY HOST"
+			_empty_label.text = _localized_text("a browser cannot find rooms - use JOIN BY HOST")
 	for i in Net.rooms.size():
 		var room: Dictionary = Net.rooms[i]
 		var count := int(room["count"])
 		var b := Button.new()
 		var tag := " (browser)" if bool(room.get("web", false)) else ""
-		b.text = "%s%s        %d / %d        %s" % [
+		var text := "%s%s        %d / %d        %s" % [
 			str(room["name"]), tag, count, MAX_PLAYERS, str(room["address"])]
+		b.text = _localized_text(text)
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		b.custom_minimum_size = Vector2(0, 40)
 		b.add_theme_font_size_override("font_size", 17)
@@ -151,7 +156,7 @@ func _refresh_room_list() -> void:
 
 
 func _refresh_room() -> void:
-	_room_title.text = Net.room_name if Net.room_name != "" else "ROOM"
+	_room_title.text = _localized_text(Net.room_name if Net.room_name != "" else "ROOM")
 	var players: Array = Net.players
 	var host := _is_host()
 
@@ -170,7 +175,7 @@ func _refresh_room() -> void:
 			if not kick.pressed.is_connected(_on_kick.bind(id)):
 				kick.pressed.connect(_on_kick.bind(id))
 		else:
-			lbl.text = "open slot"
+			lbl.text = _localized_text("open slot")
 			ship.visible = false
 			kick.visible = false
 
@@ -181,11 +186,15 @@ func _refresh_room() -> void:
 	_start_btn.disabled = false
 	if host:
 		if full:
-			_status.text = "ready to start  -  %d / %d" % [players.size(), MAX_PLAYERS]
+			_status.text = _localized_text(
+				"ready to start  -  %d / %d" % [players.size(), MAX_PLAYERS]
+			)
 		else:
-			_status.text = "%d / %d players - start whenever you like" % [players.size(), MAX_PLAYERS]
+			_status.text = _localized_text(
+				"%d / %d players - start whenever you like" % [players.size(), MAX_PLAYERS]
+			)
 	else:
-		_status.text = "waiting for the host to start..."
+		_status.text = _localized_text("waiting for the host to start...")
 
 
 func _show_create_view() -> void:
@@ -226,11 +235,11 @@ func _on_create_cancel() -> void:
 func _on_create_confirm() -> void:
 	Game.sfx("cardget", -9.0, 0.98, 1.05)
 	_creating = false
-	var name := _name_edit.text.strip_edges()
-	if name == "":
-		name = ROOM_NAMES[randi() % ROOM_NAMES.size()]
+	var room_name := _name_edit.text.strip_edges()
+	if room_name == "":
+		room_name = ROOM_NAMES[randi() % ROOM_NAMES.size()]
 	Net.player_name = _player_name()
-	if not Net.host_room(name, Net.DEFAULT_PORT, _web_mode):
+	if not Net.host_room(room_name, Net.DEFAULT_PORT, _web_mode):
 		_refresh()
 		return
 	_in_room = true
@@ -285,7 +294,10 @@ func _on_join_address() -> void:
 	var probe := address if address.begins_with("ws://") else "ws://" + address
 	if web and Web.page_is_secure() and not address.begins_with("wss://") \
 			and not _is_local_address(probe):
-		_sub_header.text = "this page is https - type a secure wss:// host address"
+		_set_localized(
+			_sub_header,
+			"this page is https - type a secure wss:// host address"
+		)
 		return
 	Net.player_name = _player_name()
 	if not Net.join_room(address, port, web):
@@ -406,7 +418,7 @@ func _on_room_left() -> void:
 func _on_session_failed(reason: String) -> void:
 	_in_room = false
 	_creating = false
-	_sub_header.text = reason
+	_set_localized(_sub_header, reason)
 	_refresh()
 
 
@@ -433,3 +445,16 @@ func _player_name() -> String:
 	var pick: String = names[randi() % names.size()]
 	Net.player_name = pick
 	return pick
+
+
+func _localized_text(text: String) -> String:
+	var locale := get_node_or_null("/root/Locale")
+	return locale.translate_text(text) if locale else text
+
+
+func _set_localized(control: Control, source_text: String) -> void:
+	var locale := get_node_or_null("/root/Locale")
+	if locale:
+		locale.localize_control(control, source_text)
+	else:
+		control.set("text", source_text)

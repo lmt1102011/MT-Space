@@ -13,8 +13,10 @@ extends Area2D
 
 var direction: Vector2 = Vector2.RIGHT
 var network_visual: bool = false
+var source_position: Vector2 = Vector2.ZERO
 
 const EXPLOSION_SCENE := preload("res://scenes/explosion.tscn")
+const ENEMY_INDEX := preload("res://scripts/enemy_spatial_index.gd")
 const BEAM_TEX := preload("res://assets/beam.svg")
 const BEAM_CORE_TEX := preload("res://assets/beam_core.svg")
 # the size of the beam textures
@@ -102,7 +104,11 @@ func _pick_target() -> Node2D:
 	var best: Node2D = null
 	var best_score := INF
 	var fwd := direction.angle()
-	for e in get_tree().get_nodes_in_group("enemy"):
+	var search := Rect2(
+		global_position - Vector2(HOMING_RANGE, HOMING_RANGE),
+		Vector2(HOMING_RANGE * 2.0, HOMING_RANGE * 2.0)
+	)
+	for e in ENEMY_INDEX.query_rect(get_tree(), search):
 		var n := e as Node2D
 		if n == null or not is_instance_valid(n):
 			continue
@@ -131,6 +137,9 @@ func _target_velocity(target: Node2D) -> Vector2:
 # --- damage ---------------------------------------------------------------
 func _hurt(target: Node2D) -> void:
 	var dmg := damage
+	if Game.upg_close_quarters > 0 \
+			and source_position.distance_squared_to(target.global_position) <= 150.0 * 150.0:
+		dmg *= 1.0 + 0.15 * float(Game.upg_close_quarters)
 	# Elite Hunter: extra damage against elites
 	if Game.upg_elite_hunter > 0 and target.is_in_group("elite"):
 		dmg *= 1.0 + 0.5 * float(Game.upg_elite_hunter)
@@ -148,7 +157,8 @@ func _splash(origin: Node2D, dmg: float) -> void:
 	var radius := 50.0 + 10.0 * float(Game.upg_splash)
 	var r2 := radius * radius
 	var o_pos := origin.global_position
-	for e in get_tree().get_nodes_in_group("enemy"):
+	var search := Rect2(o_pos - Vector2.ONE * radius, Vector2.ONE * radius * 2.0)
+	for e in ENEMY_INDEX.query_rect(get_tree(), search):
 		if e == origin:
 			continue
 		var n := e as Node2D
@@ -169,8 +179,12 @@ func _on_body_entered(body: Node2D) -> void:
 			return
 		_hit.append(body)
 		_hurt(body)
-		if pierce <= 0:
-			_detonate()
+		if pierce > 0:
+			pierce -= 1
+			if Game.upg_pierce_focus > 0:
+				damage *= 1.0 + 0.25 * float(Game.upg_pierce_focus)
+			return
+		_detonate()
 	elif body.is_in_group("obstacle"):
 		_detonate()
 
@@ -183,7 +197,10 @@ func _check_swept_enemy_hits(from: Vector2, to: Vector2) -> void:
 		return
 	var travel := to - from
 	var length_sq := travel.length_squared()
-	for enemy in get_tree().get_nodes_in_group("enemy"):
+	var start := from.min(to)
+	var end := from.max(to)
+	var search := Rect2(start, end - start)
+	for enemy in ENEMY_INDEX.query_rect(get_tree(), search, 48.0):
 		var target := enemy as Node2D
 		if target == null or not is_instance_valid(target) or _hit.has(target):
 			continue
@@ -191,19 +208,14 @@ func _check_swept_enemy_hits(from: Vector2, to: Vector2) -> void:
 		if length_sq > 0.001:
 			u = clampf((target.global_position - from).dot(travel) / length_sq, 0.0, 1.0)
 		var closest := from + travel * u
-		var hit_radius := 24.0
+		var hit_radius := 14.0
 		var shape := target.get_node_or_null("CollisionShape2D") as CollisionShape2D
 		if shape != null and shape.shape is CircleShape2D:
-			hit_radius += (shape.shape as CircleShape2D).radius
-		if closest.distance_to(target.global_position) <= hit_radius:
+			hit_radius += (shape.shape as CircleShape2D).radius * 0.6
+		if closest.distance_squared_to(target.global_position) <= hit_radius * hit_radius:
 			_on_body_entered(target)
 			if not is_instance_valid(self):
 				return
-		else:
-			pierce -= 1
-			# Piercing Focus: every enemy it goes through makes it hit harder
-			if Game.upg_pierce_focus > 0:
-				damage *= 1.0 + 0.25 * float(Game.upg_pierce_focus)
 func _detonate() -> void:
 	# Explosive Rounds: a small burst when the round dies
 	if Game.upg_explosive > 0:
@@ -217,7 +229,8 @@ func _detonate() -> void:
 # Damages every enemy inside the radius (used by Shatter and Explosive Rounds).
 func _burst(center: Vector2, dmg: float, radius: float) -> void:
 	var r2 := radius * radius
-	for e in get_tree().get_nodes_in_group("enemy"):
+	var search := Rect2(center - Vector2.ONE * radius, Vector2.ONE * radius * 2.0)
+	for e in ENEMY_INDEX.query_rect(get_tree(), search):
 		var n := e as Node2D
 		if n == null or not is_instance_valid(n):
 			continue

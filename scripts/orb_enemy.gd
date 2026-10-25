@@ -3,6 +3,7 @@ extends CharacterBody2D
 const ORB_PROJECTILE := preload("res://scenes/orb_projectile.tscn")
 const XP_DROP := preload("res://scripts/xp_pickup.gd")
 const EXPLOSION_SCENE := preload("res://scenes/explosion.tscn")
+const DAMAGE_NUMBER := preload("res://scenes/damage_number.tscn")
 const NetEnemy := preload("res://scripts/net_enemy.gd")
 
 @export var max_hp: int = 18
@@ -102,7 +103,6 @@ func _physics_process(delta: float) -> void:
 	_update_charge_art()
 	_bar.global_position = global_position + Vector2(0, 34)
 	_bar.global_rotation = 0.0
-	queue_redraw()
 
 
 func _update_charge_art() -> void:
@@ -158,8 +158,24 @@ func take_damage(amount: float, kind: String = "normal") -> void:
 		return
 	hp -= maxi(1, int(round(amount)))
 	_update_bar()
+	_spawn_damage_number(amount, kind)
 	if hp <= 0:
 		_die()
+
+
+func _spawn_damage_number(amount: float, kind: String) -> void:
+	var number := DAMAGE_NUMBER.instantiate() as DamageNumber
+	number.global_position = global_position + Vector2(
+		randf_range(-24.0, 24.0), -radius - randf_range(8.0, 34.0)
+	)
+	match kind:
+		"crit":
+			number.setup(amount, Color(1.0, 0.85, 0.2), 34)
+		"burn":
+			number.setup(amount, Color(1.0, 0.55, 0.15), 18)
+		_:
+			number.setup(amount, Color(0.82, 0.85, 0.9), 22)
+	get_tree().current_scene.add_child(number)
 
 
 func apply_status(burn_stacks: int, freeze_stacks: int) -> void:
@@ -199,7 +215,3 @@ func _die() -> void:
 	if drop:
 		XP_DROP.drop(get_tree(), global_position, xp)
 	queue_free()
-
-
-func _draw() -> void:
-	pass

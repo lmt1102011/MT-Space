@@ -1,4 +1,4 @@
-[gd_scene load_steps=18 format=3 uid="uid://cmain0001"]
+[gd_scene load_steps=19 format=3 uid="uid://cmain0001"]
 
 [ext_resource type="Script" path="res://scripts/grid_background.gd" id="1_grid"]
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="2_player"]
@@ -9,6 +9,7 @@
 [ext_resource type="Script" path="res://scripts/net_world.gd" id="7_networld"]
 [ext_resource type="Script" path="res://scripts/touch_controls.gd" id="8_touch"]
 [ext_resource type="Texture2D" path="res://assets/icons/settings.svg" id="9_settings_icon"]
+[ext_resource type="Script" path="res://scripts/backpack_button.gd" id="10_backpack"]
 
 [sub_resource type="RectangleShape2D" id="Wall_h"]
 size = Vector2(5400, 60)
@@ -395,6 +396,16 @@ theme_override_colors/font_color = Color(0.04, 0.07, 0.09, 1)
 theme_override_font_sizes/font_size = 15
 text = "CHECK FOR UPDATE"
 
+[node name="BackpackButton" type="Button" parent="HUD"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -88.0
+offset_top = 158.0
+offset_right = -24.0
+offset_bottom = 222.0
+grow_horizontal = 0
+script = ExtResource("10_backpack")
 [node name="XpBar" type="Control" parent="HUD"]
 anchor_left = 0.5
 anchor_top = 1.0

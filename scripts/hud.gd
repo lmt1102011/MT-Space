@@ -12,12 +12,13 @@ const SETTINGS_ICON := preload("res://assets/icons/settings.svg")
 @onready var _xp_bg: ColorRect = $XpBar/Bg
 @onready var _settings_btn: Button = $SettingsButton
 @onready var _settings_panel: Control = $SettingsPanel
-@onready var _volume_slider: HSlider = $SettingsPanel/VolumeSlider
 @onready var _volume_value: Label = $SettingsPanel/VolumeValue
-@onready var _settings_close: Button = $SettingsPanel/CloseButton
 @onready var _settings_quit: Button = $SettingsPanel/QuitButton
 @onready var _spectate_label: Label = $SpectateLabel
 @onready var _update_btn: Button = $UpdateButton
+@onready var _backpack_btn: Button = get_node_or_null("BackpackButton")
+const INVENTORY_SCENE := preload("res://scenes/inventory_ui.tscn")
+var _inventory: CanvasLayer = null
 
 var _countdown: int = 0
 
@@ -43,6 +44,8 @@ func _ready() -> void:
 		_update_btn.visible = false
 		_update_btn.text = "CHECK FOR UPDATE"
 		_update_btn.pressed.connect(_on_update_pressed)
+	if _backpack_btn:
+		_backpack_btn.pressed.connect(_on_backpack_pressed)
 	if Web.has_update():
 		_on_update_available(Web.available_version)
 	var spawner := get_node_or_null("../Spawner")
@@ -141,7 +144,9 @@ func _on_spectate_changed(_target_id: int) -> void:
 		_spectate_label.visible = false
 		return
 	var who := Game.spectate_name()
-	_spectate_label.text = "SPECTATING %s" % who if who != "" else "SPECTATING"
+	var spectating_text := "SPECTATING %s" % who if who != "" else "SPECTATING"
+	var locale := get_node_or_null("/root/Locale")
+	_spectate_label.text = locale.translate_text(spectating_text) if locale else spectating_text
 	_spectate_label.visible = true
 
 
@@ -149,13 +154,24 @@ func _on_spectate_changed(_target_id: int) -> void:
 func _on_update_available(_version: String) -> void:
 	if _update_btn:
 		_update_btn.visible = true
-		_update_btn.text = "NEW VERSION - UPDATE"
+		var text := "NEW VERSION - UPDATE"
+		var locale := get_node_or_null("/root/Locale")
+		_update_btn.text = locale.translate_text(text) if locale else text
 	Web.hide_web_update_button()
 
 
 func _on_update_pressed() -> void:
 	Game.sfx("click", -12.0, 0.95, 1.05)
 	Web.request_update()
+
+
+func _on_backpack_pressed() -> void:
+	Game.sfx("click", -12.0, 0.95, 1.05)
+	if _inventory == null or not is_instance_valid(_inventory):
+		_inventory = INVENTORY_SCENE.instantiate()
+		add_child(_inventory)
+	if _inventory.has_method("open"):
+		_inventory.open()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -173,14 +189,18 @@ func _refresh_xp() -> void:
 
 
 func _on_wave_changed(wave: int) -> void:
-	_wave_label.text = "WAVE %d" % maxi(wave, 1)
+	var text := "WAVE %d" % maxi(wave, 1)
+	var locale := get_node_or_null("/root/Locale")
+	_wave_label.text = locale.translate_text(text) if locale else text
 	# a new wave started: hide the intermission overlays
 	_countdown_label.visible = false
 	_clear_label.visible = false
 
 
 func _on_level_changed(level: int) -> void:
-	_lv_label.text = "LV %d" % level
+	var text := "LV %d" % level
+	var locale := get_node_or_null("/root/Locale")
+	_lv_label.text = locale.translate_text(text) if locale else text
 
 
 func _show_level_up(level: int) -> void:
@@ -191,7 +211,9 @@ func _show_level_up(level: int) -> void:
 	fx.position = Vector2(-110, -95)
 	fx.size = Vector2(220, 60)
 	var label := Label.new()
-	label.text = "LEVEL %d" % level
+	var text := "LEVEL %d" % level
+	var locale := get_node_or_null("/root/Locale")
+	label.text = locale.translate_text(text) if locale else text
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	label.size = fx.size
@@ -221,11 +243,13 @@ func _on_xp_changed(xp: int, needed: int) -> void:
 
 func _on_countdown_changed(seconds_left: int) -> void:
 	_countdown = seconds_left
-	_countdown_label.text = "Next wave in %d" % maxi(_countdown, 0)
+	var text := "Next wave in %d" % maxi(_countdown, 0)
+	var locale := get_node_or_null("/root/Locale")
+	_countdown_label.text = locale.translate_text(text) if locale else text
 
 
-func _on_wave_cleared(show: bool) -> void:
-	if show:
+func _on_wave_cleared(has_cleared: bool) -> void:
+	if has_cleared:
 		_show_clear_text()
 		_countdown_label.visible = true
 		Game.sfx("fanfare", -17.0, 0.97, 1.04)

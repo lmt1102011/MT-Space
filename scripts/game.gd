@@ -56,6 +56,9 @@ var upg_rushed: int = 0
 var upg_heavy_caliber: int = 0
 var upg_second_chance: int = 0
 var upg_cold_blood: int = 0
+var upg_range: float = 0.0
+var upg_momentum: int = 0
+var upg_close_quarters: int = 0
 
 var weapon: String = "basic"          # chosen weapon archetype (from LV5 card)
 var weapon_chosen: bool = false
@@ -215,6 +218,9 @@ func reset_upgrades() -> void:
 	upg_heavy_caliber = 0
 	upg_second_chance = 0
 	upg_cold_blood = 0
+	upg_range = 0.0
+	upg_momentum = 0
+	upg_close_quarters = 0
 	weapon = "basic"
 	weapon_chosen = false
 	_burst_left = 0

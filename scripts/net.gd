@@ -70,6 +70,8 @@ var _net_timer: float = 0.0
 var _heartbeat_timer: float = 0.0
 var _enemy_timer: float = 0.0
 var _next_enemy_id: int = 1
+var _player_nodes_cache: Array = []
+var _player_nodes_cache_frame: int = -1
 # how often the client says hello again until the host knows it
 var _hello_timer: float = 0.0
 # true while a session is being torn down, the old callbacks are ignored
@@ -188,7 +190,7 @@ func my_id() -> int:
 # The room speaks enet by default, that is the fast one. A room that speaks
 # websocket can be joined from a browser, because a browser cannot open a
 # udp port.
-func host_room(name: String, port: int = DEFAULT_PORT, web_mode: bool = false) -> bool:
+func host_room(room_title: String, port: int = DEFAULT_PORT, web_mode: bool = false) -> bool:
 	if not can_host():
 		session_failed.emit("a browser cannot host a room")
 		return false
@@ -216,7 +218,7 @@ func host_room(name: String, port: int = DEFAULT_PORT, web_mode: bool = false) -
 	# the flag is set before the api, so nothing thinks it is a client
 	_hosting = true
 	_new_api(peer)
-	room_name = name
+	room_name = room_title
 	players = [{"id": my_id(), "name": _my_name(), "color": _color_for(0)}]
 	_start_discovery(true)
 	room_joined.emit()
@@ -533,11 +535,11 @@ func _add_own_room() -> void:
 	rooms_changed.emit()
 
 
-func _add_room(ip: String, port: int, text: String) -> void:
+func _add_room(ip: String, _port: int, text: String) -> void:
 	var parts := text.split(":")
 	if parts.size() < 4:
 		return
-	var name := parts[1]
+	var room_title := parts[1]
 	var game_port := int(parts[2])
 	var count := int(parts[3])
 	# the room tells how it talks, a browser can only join a websocket room
@@ -545,12 +547,12 @@ func _add_room(ip: String, port: int, text: String) -> void:
 	for r in rooms:
 		# The host can receive its own broadcast through both 127.0.0.1 and
 		# its LAN address. Treat those as one room.
-		if _room_identity_matches(r, name, game_port, web) \
+		if _room_identity_matches(r, room_title, game_port, web) \
 			and (str(r["address"]) == ip or _is_room_alias(str(r["address"]), ip)):
 			var address := str(r["address"])
 			if _prefer_room_address(address, ip):
 				address = ip
-			var changed := str(r["name"]) != name or int(r["count"]) != count \
+			var changed := str(r["name"]) != room_title or int(r["count"]) != count \
 				or bool(r["web"]) != web or str(r["address"]) != address
 			r["address"] = address
 			r["count"] = count
@@ -561,7 +563,7 @@ func _add_room(ip: String, port: int, text: String) -> void:
 				rooms_changed.emit()
 			return
 	rooms.append({
-		"name": name,
+		"name": room_title,
 		"address": ip,
 		"port": game_port,
 		"count": count,
@@ -572,8 +574,8 @@ func _add_room(ip: String, port: int, text: String) -> void:
 	rooms_changed.emit()
 
 
-func _room_identity_matches(room: Dictionary, name: String, port: int, web: bool) -> bool:
-	return str(room.get("name", "")) == name \
+func _room_identity_matches(room: Dictionary, room_title: String, port: int, web: bool) -> bool:
+	return str(room.get("name", "")) == room_title \
 		and int(room.get("port", 0)) == port \
 		and bool(room.get("web", false)) == web
 
@@ -704,16 +706,16 @@ func _on_server_disconnected() -> void:
 
 
 @rpc("any_peer", "call_remote", "reliable", 0)
-func _srv_hello(name: String) -> void:
+func _srv_hello(requested_name: String) -> void:
 	if not _hosting:
 		return
 	var id := _api.get_remote_sender_id()
 	if _find_player(id) >= 0:
 		return
-	if is_player_name_taken(name):
+	if is_player_name_taken(requested_name):
 		rpc_id(id, "_cli_name_taken")
 		return
-	players.append({"id": id, "name": name, "color": _color_for(players.size())})
+	players.append({"id": id, "name": requested_name, "color": _color_for(players.size())})
 	_broadcast_players()
 	_add_own_room()
 	players_changed.emit()
@@ -797,7 +799,7 @@ func player_color_of(id: int) -> Color:
 func target_player(from_position: Vector2) -> Node2D:
 	var best: Node2D = null
 	var best_distance := INF
-	for candidate in get_tree().get_nodes_in_group("player"):
+	for candidate in _players_for_physics_frame():
 		var node := candidate as Node2D
 		if node == null or not is_instance_valid(node):
 			continue
@@ -811,7 +813,7 @@ func target_player(from_position: Vector2) -> Node2D:
 
 
 func any_player_alive() -> bool:
-	for candidate in get_tree().get_nodes_in_group("player"):
+	for candidate in _players_for_physics_frame():
 		var node := candidate as Node2D
 		if node == null or not is_instance_valid(node):
 			continue
@@ -819,6 +821,14 @@ func any_player_alive() -> bool:
 			continue
 		return true
 	return false
+
+
+func _players_for_physics_frame() -> Array:
+	var frame := Engine.get_physics_frames()
+	if frame != _player_nodes_cache_frame:
+		_player_nodes_cache = get_tree().get_nodes_in_group("player")
+		_player_nodes_cache_frame = frame
+	return _player_nodes_cache
 
 
 # Damage to a remote player is decided by the host and applied by that player's
@@ -1014,17 +1024,66 @@ func send_elite_card(peer: int, pos: Vector2, card_id: String) -> void:
 
 @rpc("authority", "call_remote", "reliable", 0)
 func _cli_elite_card(pos: Vector2, card_id: String) -> void:
-	var card: Dictionary = {}
-	for candidate in CARD_DB.passives():
-		if str(candidate.get("id", "")) == card_id:
-			card = candidate
-			break
+	var card := _find_upgrade_card(card_id)
 	if card.is_empty():
 		return
 	var drop := UPGRADE_DROP.instantiate() as UpgradeDrop
 	drop.card = card
 	drop.global_position = pos + Vector2.from_angle(randf() * TAU) * randf_range(0.0, 20.0)
 	get_tree().current_scene.add_child(drop)
+
+
+func request_discarded_card(card_id: String, pos: Vector2, direction: Vector2) -> bool:
+	if _find_upgrade_card(card_id).is_empty() or direction.is_zero_approx():
+		return false
+	if not is_online():
+		_spawn_discarded_card(my_id(), pos, direction, card_id)
+		return true
+	if _hosting:
+		_spawn_discarded_card(my_id(), pos, direction, card_id)
+		return true
+	if _peer == null or _peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
+		return false
+	rpc_id(1, "_srv_discard_card", card_id, pos, direction.normalized())
+	return true
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func _srv_discard_card(card_id: String, pos: Vector2, direction: Vector2) -> void:
+	if not _hosting or _api == null or not pos.is_finite() \
+			or not direction.is_finite() or direction.is_zero_approx():
+		return
+	var sender := _api.get_remote_sender_id()
+	if sender <= 1 or _find_player(sender) < 0 or _find_upgrade_card(card_id).is_empty():
+		return
+	rpc_id(sender, "_cli_discarded_card", pos, direction.normalized(), card_id)
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _cli_discarded_card(pos: Vector2, direction: Vector2, card_id: String) -> void:
+	_spawn_discarded_card(my_id(), pos, direction, card_id)
+
+
+func _spawn_discarded_card(owner_id: int, pos: Vector2, direction: Vector2,
+		card_id: String) -> void:
+	var card := _find_upgrade_card(card_id)
+	if card.is_empty() or direction.is_zero_approx():
+		return
+	var drop := UPGRADE_DROP.instantiate() as UpgradeDrop
+	drop.card = card
+	drop.global_position = pos + direction.normalized() * 82.0
+	drop.configure_thrown(owner_id, direction)
+	get_tree().current_scene.add_child(drop)
+
+
+func _find_upgrade_card(card_id: String) -> Dictionary:
+	for card in CARD_DB.passives():
+		if str(card.get("id", "")) == card_id:
+			return card
+	for card in CARD_DB.weapon_cards():
+		if str(card.get("id", "")) == card_id:
+			return card
+	return {}
 
 
 # Sends the enemy positions, the host runs the world.

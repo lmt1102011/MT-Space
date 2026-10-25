@@ -22,6 +22,8 @@ version/code=2
 Game="*res://scripts/game.gd"
 Net="*res://scripts/net.gd"
 Web="*res://scripts/web.gd"
+Locale="*res://scripts/locale.gd"
+CardQueue="*res://scripts/card_queue.gd"
 
 [display]
 

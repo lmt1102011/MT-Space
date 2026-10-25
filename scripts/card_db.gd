@@ -69,7 +69,7 @@ static func passives() -> Array:
 		},
 		{
 			"id": "orb_magnet", "cat": Category.PASSIVE,
-			"name": "araviton", "desc": "+40% XP pickup range",
+			"name": "Graviton", "desc": "+40% XP pickup range",
 			"rarity": Rarity.COMMON, "max": 4,
 			"apply": func(g): g.upg_magnet *= 1.4,
 		},
@@ -197,7 +197,28 @@ static func passives() -> Array:
 			"rarity": Rarity.RARE, "max": 3,
 			"apply": func(g): g.upg_cold_blood += 1,
 		},
+		{
+			"id": "longshot", "cat": Category.PASSIVE,
+			"name": "Longshot", "desc": "+15% bullet range per stack",
+			"rarity": Rarity.COMMON, "max": 5,
+			"apply": func(g): g.upg_range += 0.15,
+		},
+		{
+			"id": "momentum", "cat": Category.PASSIVE,
+			"name": "Momentum", "desc": "+15% damage while moving fast",
+			"rarity": Rarity.RARE, "max": 3,
+			"apply": func(g): g.upg_momentum += 1,
+		},
+		{
+			"id": "point_blank", "cat": Category.PASSIVE,
+			"name": "Point Blank", "desc": "+15% damage to nearby enemies",
+			"rarity": Rarity.RARE, "max": 3,
+			"apply": func(g): g.upg_close_quarters += 1,
+		},
 	]
+
+static func all_cards() -> Array:
+	return passives()
 
 # Weapon cards: offered ALL AT ONCE the first time you reach LV5.
 static func weapon_cards() -> Array:

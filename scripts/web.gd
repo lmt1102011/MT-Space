@@ -275,6 +275,11 @@ func _start_windows_update() -> void:
 	var script_path := OS.get_user_data_dir().path_join("mt_space_updater.ps1")
 	var zip_path := OS.get_user_data_dir().path_join("mt_space_update.zip")
 	var stage_dir := OS.get_user_data_dir().path_join("mt_space_update_stage")
+	var dialog_scene := preload("res://scenes/update_dialog.tscn")
+	var dialog := dialog_scene.instantiate()
+	get_tree().current_scene.add_child(dialog)
+	if dialog.has_method("show_progress"):
+		dialog.show_progress("Đang tải bản cập nhật...")
 	var q := func(value: String) -> String:
 		return "'" + value.replace("'", "''") + "'"
 	var script := """
@@ -289,24 +294,56 @@ while (Get-Process -Id %d -ErrorAction SilentlyContinue) { Start-Sleep -Millisec
 try {
     Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
+    $ProgressPreference = 'SilentlyContinue'
     Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
     Expand-Archive -LiteralPath $zip -DestinationPath $stage -Force
     Copy-Item -LiteralPath (Join-Path $stage 'mt-space.exe') -Destination (Join-Path $root 'mt-space.exe') -Force
     Copy-Item -LiteralPath (Join-Path $stage 'mt-space.pck') -Destination (Join-Path $root 'mt-space.pck') -Force
-    Start-Process -FilePath (Join-Path $root 'mt-space.exe')
+    Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
+    $marker = Join-Path $root 'mt_space_update_ready.flag'
+    New-Item -ItemType File -Path $marker -Force | Out-Null
 } catch {
-    Start-Process -FilePath (Join-Path $root 'mt-space.exe')
 }
-Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
 """ % [q.call(install_dir), q.call(zip_path), q.call(stage_dir),
 		q.call(executable), q.call(SITE_URL + WINDOWS_DOWNLOAD), OS.get_process_id()]
 	var file := FileAccess.open(script_path, FileAccess.WRITE)
 	if file == null:
 		OS.shell_open(SITE_URL + WINDOWS_DOWNLOAD)
+		if dialog and is_instance_valid(dialog):
+			dialog.queue_free()
 		return
 	file.store_string(script)
 	file.close()
 	OS.create_process("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", script_path])
+	_start_update_monitor(dialog, install_dir)
+
+
+func _start_update_monitor(dialog: Node, install_dir: String) -> void:
+	var t := Timer.new()
+	t.wait_time = 0.5
+	t.one_shot = false
+	var executable := OS.get_executable_path()
+	var marker_path := install_dir.path_join("mt_space_update_ready.flag")
+	add_child(t)
+	t.timeout.connect(func():
+		if FileAccess.file_exists(marker_path):
+			t.stop()
+			t.queue_free()
+			if dialog and is_instance_valid(dialog):
+				if dialog.has_method("show_ready_to_launch"):
+					dialog.show_ready_to_launch()
+				dialog.confirmed_launch.connect(func():
+					_launch_updated_game(executable)
+				)
+				dialog.cancelled.connect(func():
+					pass
+				)
+	)
+	t.start()
+
+
+func _launch_updated_game(executable: String) -> void:
 	get_tree().quit()
+	OS.create_process(executable, [])

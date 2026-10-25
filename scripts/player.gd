@@ -366,6 +366,10 @@ func _spawn_bullet(dir: Vector2, spd: float, dmg: float, burn: int, freeze: int,
 	bullet.beam_length = length
 	bullet.beam_width = width * (1.7 if is_crit else 1.0)
 	bullet.beam_color = col
+	bullet.source_position = global_position
+	if Game.upg_momentum > 0 and velocity.length() >= _base_max_speed * 0.6:
+		bullet.damage *= 1.0 + 0.15 * float(Game.upg_momentum)
+	bullet.lifetime *= 1.0 + Game.upg_range
 	_limit_bullets()
 	get_tree().current_scene.add_child(bullet)
 	Net.broadcast_player_bullet(bullet.global_position, bullet.direction, bullet.speed,
@@ -692,4 +696,3 @@ func _update_flame() -> void:
 	_flame_in.scale = Vector2(length * 0.55, 1.0)
 	_flame_in.color = Color(1.0, 1.0, 0.8, 0.6 + 0.4 * _thrust)
 	_flame_in.visible = lit
-

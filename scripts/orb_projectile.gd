@@ -33,7 +33,6 @@ func _ready() -> void:
 	if shape != null and shape.shape != null:
 		shape.shape = shape.shape.duplicate()
 		(shape.shape as CircleShape2D).radius = radius
-	queue_redraw()
 
 
 func _physics_process(delta: float) -> void:
@@ -70,7 +69,6 @@ func _physics_process(delta: float) -> void:
 				_hit_timers[key] = HIT_INTERVAL
 				_damage_player(body)
 	_update_art()
-	queue_redraw()
 
 
 func _update_art() -> void:
@@ -97,7 +95,3 @@ func _damage_player(body: Node2D) -> void:
 		body.take_damage(damage)
 	if body.has_method("apply_orb_slow"):
 		body.apply_orb_slow(slow_duration)
-
-
-func _draw() -> void:
-	pass
