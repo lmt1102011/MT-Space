@@ -25,7 +25,11 @@ func _ready() -> void:
 	_update_btn.visible = false
 	_update_btn.text = "CHECK FOR UPDATE"
 	_update_btn.pressed.connect(_on_update_pressed)
-	_version_label.text = "v%s" % ProjectSettings.get_setting("application/config/version/name")
+	var version_name := str(ProjectSettings.get_setting("application/version/name", "1.0"))
+	var embedded_version := Web.get_embedded_version()
+	_version_label.text = "v%s" % version_name
+	if not embedded_version.is_empty() and embedded_version != "local":
+		_version_label.text += " (%s)" % embedded_version.left(7)
 	Web.update_available.connect(_on_update_available)
 	call_deferred("_check_for_updates")
 	if Web.has_update():
