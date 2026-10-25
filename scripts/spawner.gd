@@ -21,6 +21,9 @@ const RAILGUN_SCENE := preload("res://scenes/railgun_enemy.tscn")
 const CHARGER_SCENE := preload("res://scenes/charger_enemy.tscn")
 const ORB_ENEMY_SCENE := preload("res://scenes/orb_enemy.tscn")
 const BOSS_SCENE := preload("res://scenes/boss_1.tscn")
+const BOSS2_SCENE := preload("res://scenes/boss_2.tscn")
+const BEAM_ENEMY_SCENE := preload("res://scenes/beam_enemy.tscn")
+const BOSS_DRONE_SCENE := preload("res://scenes/boss_drone.tscn")
 const BOSS_WAVE_INTERVAL := 10
 
 signal wave_cleared_text(show: bool)
@@ -125,6 +128,10 @@ func _start_next_wave() -> void:
 
 func _build_queue(wave: int) -> int:
 	_spawn_queue.clear()
+	if wave % 20 == 0:
+		for i in randi_range(1, 3):
+			_spawn_queue.append("boss2")
+		return _spawn_queue.size()
 	if wave % BOSS_WAVE_INTERVAL == 0:
 		_spawn_queue.append("boss")
 		return _spawn_queue.size()
@@ -138,6 +145,8 @@ func _build_queue(wave: int) -> int:
 		_spawn_queue.append("charger")
 	for i in _orb_count(wave):
 		_spawn_queue.append("orb")
+	for i in _beam_count(wave):
+		_spawn_queue.append("beam_enemy")
 	_spawn_queue.shuffle()
 	return _spawn_queue.size()
 
@@ -181,12 +190,21 @@ func _orb_count(wave: int) -> int:
 	return clampi(1 + (wave - 4) / 2, 1, 5)
 
 
+func _beam_count(wave: int) -> int:
+	if wave < 6:
+		return 0
+	return clampi(1 + (wave - 6) / 5, 1, 3)
+
+
 func _total_count(wave: int) -> int:
+	if wave % 20 == 0:
+		return 2
 	if wave % BOSS_WAVE_INTERVAL == 0:
 		return 1
 	# only the wave enemies, the shapes are ambient
 	return _shooter_count(wave) + _double_count(wave) \
-		+ _railgun_count(wave) + _charger_count(wave) + _orb_count(wave)
+		+ _railgun_count(wave) + _charger_count(wave) + _orb_count(wave) \
+		+ _beam_count(wave)
 
 
 func _spawn_enemy(kind: String, boss_minion: bool = false) -> void:
@@ -279,6 +297,33 @@ func spawn_boss_minions() -> void:
 		_spawn_enemy(kind, true)
 
 
+func spawn_boss_drones(origin: Vector2) -> void:
+	if _is_client() or not get_tree().get_nodes_in_group("boss_drone").is_empty():
+		return
+	var count := randi_range(2, 4)
+	var params := {
+		"speed_mult": Game.enemy_speed_mult(),
+		"dmg_bonus": Game.enemy_damage_bonus(),
+		"fire_mult": Game.enemy_fire_mult(),
+		"hp_mult": 1.0 + (Game.wave - 1) * 0.1,
+	}
+	for index in count:
+		if get_tree().get_nodes_in_group("monster").size() >= MAX_TOTAL:
+			return
+		var pos := origin + Vector2.from_angle(randf() * TAU) * randf_range(24.0, 44.0)
+		if Net.is_online():
+			var world := _net_world()
+			if world != null:
+				world.call("spawn_enemy", "boss_drone", pos, params)
+		else:
+			var drone := BOSS_DRONE_SCENE.instantiate() as Node2D
+			drone.global_position = pos
+			add_child(drone)
+			drone.call("setup", float(params["speed_mult"]),
+				int(params["dmg_bonus"]), float(params["fire_mult"]),
+				float(params["hp_mult"]))
+
+
 func _net_world() -> Node:
 	var n := get_tree().get_first_node_in_group("net_world")
 	return n
@@ -301,6 +346,12 @@ func _spawn_local(kind: String, pos: Vector2, params: Dictionary) -> Node2D:
 			scene = ORB_ENEMY_SCENE
 		"boss":
 			scene = BOSS_SCENE
+		"boss2":
+			scene = BOSS2_SCENE
+		"beam_enemy":
+			scene = BEAM_ENEMY_SCENE
+		"boss_drone":
+			scene = BOSS_DRONE_SCENE
 	if scene == null:
 		return null
 	var enemy := scene.instantiate() as Node2D

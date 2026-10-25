@@ -16,6 +16,9 @@ const RAILGUN_SCENE := preload("res://scenes/railgun_enemy.tscn")
 const CHARGER_SCENE := preload("res://scenes/charger_enemy.tscn")
 const ORB_ENEMY_SCENE := preload("res://scenes/orb_enemy.tscn")
 const BOSS_SCENE := preload("res://scenes/boss_1.tscn")
+const BOSS2_SCENE := preload("res://scenes/boss_2.tscn")
+const BOSS_DRONE_SCENE := preload("res://scenes/boss_drone.tscn")
+const BEAM_ENEMY_SCENE := preload("res://scenes/beam_enemy.tscn")
 const REMOTE_PLAYER := preload("res://scenes/remote_player.tscn")
 
 # how fast a remote thing catches up with the position it was told about
@@ -134,6 +137,27 @@ func _make_enemy(kind: String, pos: Vector2, params: Dictionary) -> Node2D:
 			e.call("setup", float(params.get("speed_mult", 1.0)), int(params.get("dmg_bonus", 0)),
 				float(params.get("fire_mult", 1.0)), float(params.get("hp_mult", 1.0)))
 			return e
+		"boss2":
+			var e := BOSS2_SCENE.instantiate() as Node2D
+			e.global_position = pos
+			add_child(e)
+			e.call("setup", float(params.get("speed_mult", 1.0)), int(params.get("dmg_bonus", 0)),
+				float(params.get("fire_mult", 1.0)), float(params.get("hp_mult", 1.0)))
+			return e
+		"beam_enemy":
+			var e := BEAM_ENEMY_SCENE.instantiate() as Node2D
+			e.global_position = pos
+			add_child(e)
+			e.call("setup", float(params.get("speed_mult", 1.0)), int(params.get("dmg_bonus", 0)),
+				float(params.get("fire_mult", 1.0)), float(params.get("hp_mult", 1.0)))
+			return e
+		"boss_drone":
+			var e := BOSS_DRONE_SCENE.instantiate() as Node2D
+			e.global_position = pos
+			add_child(e)
+			e.call("setup", float(params.get("speed_mult", 1.0)), int(params.get("dmg_bonus", 0)),
+				float(params.get("fire_mult", 1.0)), float(params.get("hp_mult", 1.0)))
+			return e
 	return null
 
 
@@ -202,6 +226,15 @@ func enemy_removed(id: int) -> void:
 		var n := raw as Node2D
 		n.queue_free()
 	_enemies.erase(id)
+
+
+func enemy_attack_state(id: int, state: String, duration: float,
+		point: Vector2 = Vector2.ZERO) -> void:
+	var raw: Variant = _enemies.get(id)
+	if raw == null or not is_instance_valid(raw):
+		return
+	if raw.has_method("apply_network_attack_state"):
+		raw.call("apply_network_attack_state", state, duration, point)
 
 
 # --- players ----------------------------------------------------------------

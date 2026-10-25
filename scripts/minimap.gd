@@ -10,6 +10,8 @@ const COL_DOUBLE := Color(1.0, 0.6, 0.15)
 const COL_RAILGUN := Color(0.68, 0.45, 1.0)
 const COL_CHARGER := Color(0.4, 1.0, 0.2)
 const COL_ELITE := Color(1.0, 0.85, 0.25)
+const COL_BOSS := Color(1.0, 0.25, 0.35)
+const COL_BEAM := Color(0.35, 0.82, 1.0)
 const COL_Ba := Color(0.05, 0.09, 0.08, 0.8)
 const COL_BORDER := Color(0.3, 0.5, 0.45, 1.0)
 const COL_OBSTACLE := Color(0.25, 0.4, 0.36, 1.0)
@@ -82,7 +84,11 @@ func _draw() -> void:
 		if not is_instance_valid(e):
 			continue
 		var p := _world_to_map(e.global_position)
-		if e.is_in_group("elite"):
+		if e.is_in_group("boss"):
+			draw_circle(p, 4.5, COL_BOSS)
+		elif e.is_in_group("beam_enemy"):
+			draw_circle(p, 3.0, COL_BEAM)
+		elif e.is_in_group("elite"):
 			draw_circle(p, 3.6, COL_ELITE)
 		elif e.is_in_group("charger_enemy"):
 			draw_circle(p, 3.2, COL_CHARGER)

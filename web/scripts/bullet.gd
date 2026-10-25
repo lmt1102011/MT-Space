@@ -126,6 +126,8 @@ func _target_velocity(target: Node2D) -> Vector2:
 
 # --- damage ---------------------------------------------------------------
 func _hurt(target: Node2D) -> void:
+	if Net.is_host() and target.get("_net_copy") != true:
+		target.set("_net_hitter", Net.my_id())
 	var dmg := damage
 	# Elite Hunter: extra damage against elites
 	if Game.upg_elite_hunter > 0 and target.is_in_group("elite"):

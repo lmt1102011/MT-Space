@@ -19,6 +19,8 @@ const CARD_DB := preload("res://scripts/card_db.gd")
 const ENEMY_BULLET := preload("res://scenes/enemy_bullet.tscn")
 const BOSS_MISSILE := preload("res://scenes/boss_missile.tscn")
 const ORB_PROJECTILE := preload("res://scenes/orb_projectile.tscn")
+const BOSS_SONIC_WAVE := preload("res://scenes/boss_sonic_wave.tscn")
+const EXPLOSION_SCENE := preload("res://scenes/explosion.tscn")
 # a room that stopped answering is dropped after this many seconds
 const ROOM_TTL := 15.0
 # A refresh sends a few quick discovery bursts so a host that misses one UDP
@@ -880,6 +882,44 @@ func broadcast_boss_missile(pos: Vector2, direction: Vector2, speed: float,
 		rpc_id(pid, "_cli_boss_missile", pos, direction, speed, turn_rate, lifetime)
 
 
+func spawn_boss_sonic_wave(pos: Vector2, max_radius: float, duration: float) -> void:
+	_create_boss_sonic_wave(pos, max_radius, duration, false)
+	if not _hosting:
+		return
+	for pid in _client_ids():
+		rpc_id(pid, "_cli_boss_sonic_wave", pos, max_radius, duration)
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _cli_boss_sonic_wave(pos: Vector2, max_radius: float, duration: float) -> void:
+	_create_boss_sonic_wave(pos, max_radius, duration, true)
+
+
+func _create_boss_sonic_wave(pos: Vector2, max_radius: float,
+		duration: float, visual_only: bool) -> void:
+	var wave := BOSS_SONIC_WAVE.instantiate()
+	wave.global_position = pos
+	wave.max_radius = max_radius
+	wave.duration = duration
+	wave.visual_only = visual_only
+	get_tree().current_scene.add_child(wave)
+
+
+func broadcast_boss_drone_explosion(pos: Vector2, large: bool) -> void:
+	if not _hosting:
+		return
+	for pid in _client_ids():
+		rpc_id(pid, "_cli_boss_drone_explosion", pos, large)
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _cli_boss_drone_explosion(pos: Vector2, large: bool) -> void:
+	var explosion := EXPLOSION_SCENE.instantiate() as Explosion
+	explosion.global_position = pos
+	explosion.setup(1.8 if large else 0.9)
+	get_tree().current_scene.add_child(explosion)
+
+
 func broadcast_orb(pos: Vector2, direction: Vector2, speed: float,
 		radius: float, lifetime: float) -> void:
 	if not _hosting:
@@ -950,6 +990,21 @@ func remove_enemy(id: int) -> void:
 		return
 	for pid in _client_ids():
 		rpc_id(pid, "_cli_enemy_removed", id)
+
+
+func broadcast_enemy_attack_state(id: int, state: String, duration: float,
+		point: Vector2 = Vector2.ZERO) -> void:
+	if not _hosting or id <= 0:
+		return
+	for pid in _client_ids():
+		rpc_id(pid, "_cli_enemy_attack_state", id, state, duration, point)
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _cli_enemy_attack_state(id: int, state: String, duration: float,
+		point: Vector2) -> void:
+	if world != null and world.has_method("enemy_attack_state"):
+		world.call("enemy_attack_state", id, state, duration, point)
 
 
 # A client says "this enemy took a hit", the host applies it.

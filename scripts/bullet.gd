@@ -67,7 +67,7 @@ func _physics_process(delta: float) -> void:
 
 # --- homing ---------------------------------------------------------------
 func _home(delta: float) -> void:
-	if Game.upg_homing <= 0:
+	if network_visual or Game.upg_homing <= 0:
 		return
 	_home_age += delta
 	if _home_age > HOMING_MAX_TIME:
@@ -138,6 +138,8 @@ func _target_velocity(target: Node2D) -> Vector2:
 
 # --- damage ---------------------------------------------------------------
 func _hurt(target: Node2D) -> void:
+	if Net.is_host() and target.get("_net_copy") != true:
+		target.set("_net_hitter", Net.my_id())
 	var dmg := damage
 	if Game.upg_close_quarters > 0 \
 			and source_position.distance_squared_to(target.global_position) <= 150.0 * 150.0:
@@ -168,6 +170,8 @@ func _splash(origin: Node2D, dmg: float) -> void:
 			continue
 		if n.global_position.distance_squared_to(o_pos) > r2:
 			continue
+		if Net.is_host() and n.get("_net_copy") != true:
+			n.set("_net_hitter", Net.my_id())
 		if n.has_method("take_damage"):
 			n.take_damage(dmg * 0.4, "normal")
 

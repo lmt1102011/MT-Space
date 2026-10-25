@@ -8,7 +8,7 @@ const EXPLOSION_SCENE := preload("res://scenes/explosion.tscn")
 const DAMAGE_NUMBER := preload("res://scenes/damage_number.tscn")
 const NetEnemy := preload("res://scripts/net_enemy.gd")
 
-@export var max_hp: int = 650
+@export var max_hp: int = 420
 @export var move_speed: float = 38.0
 @export var radius: float = 76.0
 @export var contact_damage: int = 4
@@ -20,7 +20,7 @@ const MISSILE_INTERVAL := 5.0
 const MINION_INTERVAL := 8.0
 const BARRAGE_SPREAD := [-0.3, -0.15, 0.0, 0.15, 0.3]
 
-var hp: int = 650
+var hp: int = 420
 var elite := false
 var net_id: int = 0
 var _net_target := Vector2.ZERO
@@ -50,6 +50,7 @@ var _brain := EnemyBrain.new()
 func _ready() -> void:
 	add_to_group("enemy")
 	add_to_group("monster")
+	add_to_group("boss")
 	collision_layer = 8
 	collision_mask = 13
 	_update_bar()

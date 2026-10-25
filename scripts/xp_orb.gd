@@ -53,8 +53,8 @@ func _refresh_visual_tier() -> void:
 		return
 	var merged := xp_value >= 20
 	_visual_scale = 1.25 if merged else 1.0
-	_glow.modulate = Color(0.2, 0.65, 1.0, 1.0) if merged else Color(0.3, 1.0, 0.5, 1.0)
-	_gem.modulate = Color(0.6, 0.85, 1.0, 1.0) if merged else Color.WHITE
+	_glow.modulate = Color(0.48, 0.82, 1.0, 1.0) if merged else Color(0.3, 1.0, 0.5, 1.0)
+	_gem.modulate = Color(0.82, 0.96, 1.0, 1.0) if merged else Color.WHITE
 	_glow.scale = Vector2.ONE * GLOW_RADIUS * _visual_scale / 30.0
 	_gem.scale = Vector2.ONE * GEM_RADIUS * _visual_scale / 16.0
 
