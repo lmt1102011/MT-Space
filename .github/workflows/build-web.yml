@@ -84,7 +84,7 @@ jobs:
         run: godot --headless --path . res://tools/levelupcheck.tscn
 
       - name: Check boss wave and damage
-        run: godot --headless --path . res://tools/wavecheck.tscn
+        run: godot --headless --path . res://tools/bosscheck.tscn
 
       - name: Write the version into the build
         run: echo "${GITHUB_SHA}" > version_embedded.txt
