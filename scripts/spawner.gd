@@ -20,6 +20,8 @@ const DOUBLE_SCENE := preload("res://scenes/double_enemy.tscn")
 const RAILGUN_SCENE := preload("res://scenes/railgun_enemy.tscn")
 const CHARGER_SCENE := preload("res://scenes/charger_enemy.tscn")
 const ORB_ENEMY_SCENE := preload("res://scenes/orb_enemy.tscn")
+const BOSS_SCENE := preload("res://scenes/boss_1.tscn")
+const BOSS_WAVE_INTERVAL := 10
 
 signal wave_cleared_text(show: bool)
 
@@ -77,6 +79,8 @@ func _process(delta: float) -> void:
 
 # Trickles in the ambient swarm shapes, up to the cap on how many are alive.
 func _spawn_shapes(delta: float) -> void:
+	if Game.wave > 0 and Game.wave % BOSS_WAVE_INTERVAL == 0:
+		return
 	_shape_timer -= delta
 	if _shape_timer > 0.0:
 		return
@@ -106,6 +110,9 @@ func _start_next_wave() -> void:
 
 func _build_queue(wave: int) -> int:
 	_spawn_queue.clear()
+	if wave % BOSS_WAVE_INTERVAL == 0:
+		_spawn_queue.append("boss")
+		return _spawn_queue.size()
 	for i in _shooter_count(wave):
 		_spawn_queue.append("shooter")
 	for i in _double_count(wave):
@@ -160,6 +167,8 @@ func _orb_count(wave: int) -> int:
 
 
 func _total_count(wave: int) -> int:
+	if wave % BOSS_WAVE_INTERVAL == 0:
+		return 1
 	# only the wave enemies, the shapes are ambient
 	return _shooter_count(wave) + _double_count(wave) \
 		+ _railgun_count(wave) + _charger_count(wave) + _orb_count(wave)
@@ -237,8 +246,18 @@ func _spawn_enemy(kind: String) -> void:
 		var shape := cs.shape.duplicate() as CircleShape2D
 		shape.radius = radius
 		cs.shape = shape
-	if kind != "shape":
+	if kind != "shape" and kind != "boss":
 		_maybe_elite(enemy)
+
+
+func spawn_boss_minions() -> void:
+	if _is_client():
+		return
+	var minion_kinds := ["shooter", "double", "railgun", "charger", "orb"]
+	var minion_count := randi_range(2, 4)
+	for i in minion_count:
+		var kind: String = minion_kinds.pick_random()
+		_spawn_enemy(kind)
 
 
 func _net_world() -> Node:
@@ -261,6 +280,8 @@ func _spawn_local(kind: String, pos: Vector2, params: Dictionary) -> Node2D:
 			scene = CHARGER_SCENE
 		"orb":
 			scene = ORB_ENEMY_SCENE
+		"boss":
+			scene = BOSS_SCENE
 	if scene == null:
 		return null
 	var enemy := scene.instantiate() as Node2D

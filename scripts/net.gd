@@ -17,6 +17,7 @@ const XP_DROP := preload("res://scripts/xp_pickup.gd")
 const UPGRADE_DROP := preload("res://scenes/upgrade_drop.tscn")
 const CARD_DB := preload("res://scripts/card_db.gd")
 const ENEMY_BULLET := preload("res://scenes/enemy_bullet.tscn")
+const BOSS_MISSILE := preload("res://scenes/boss_missile.tscn")
 const ORB_PROJECTILE := preload("res://scenes/orb_projectile.tscn")
 # a room that stopped answering is dropped after this many seconds
 const ROOM_TTL := 15.0
@@ -867,6 +868,14 @@ func broadcast_enemy_bullet(pos: Vector2, direction: Vector2, speed: float,
 			burn, freeze, lifetime, beam_length, beam_width)
 
 
+func broadcast_boss_missile(pos: Vector2, direction: Vector2, speed: float,
+		turn_rate: float, lifetime: float) -> void:
+	if not _hosting:
+		return
+	for pid in _client_ids():
+		rpc_id(pid, "_cli_boss_missile", pos, direction, speed, turn_rate, lifetime)
+
+
 func broadcast_orb(pos: Vector2, direction: Vector2, speed: float,
 		radius: float, lifetime: float) -> void:
 	if not _hosting:
@@ -1299,6 +1308,19 @@ func _cli_enemy_bullet(pos: Vector2, direction: Vector2, speed: float,
 	bullet.beam_width = beam_width
 	bullet.network_visual = true
 	get_tree().current_scene.add_child(bullet)
+
+
+@rpc("authority", "call_remote", "unreliable_ordered", 1)
+func _cli_boss_missile(pos: Vector2, direction: Vector2, speed: float,
+		turn_rate: float, lifetime: float) -> void:
+	var missile := BOSS_MISSILE.instantiate()
+	missile.global_position = pos
+	missile.direction = direction
+	missile.speed = speed
+	missile.turn_rate = turn_rate
+	missile.lifetime = lifetime
+	missile.network_visual = true
+	get_tree().current_scene.add_child(missile)
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered", 1)

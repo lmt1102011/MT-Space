@@ -15,6 +15,7 @@ const DOUBLE_SCENE := preload("res://scenes/double_enemy.tscn")
 const RAILGUN_SCENE := preload("res://scenes/railgun_enemy.tscn")
 const CHARGER_SCENE := preload("res://scenes/charger_enemy.tscn")
 const ORB_ENEMY_SCENE := preload("res://scenes/orb_enemy.tscn")
+const BOSS_SCENE := preload("res://scenes/boss_1.tscn")
 const REMOTE_PLAYER := preload("res://scenes/remote_player.tscn")
 
 # how fast a remote thing catches up with the position it was told about
@@ -121,6 +122,13 @@ func _make_enemy(kind: String, pos: Vector2, params: Dictionary) -> Node2D:
 			return e
 		"orb":
 			var e := ORB_ENEMY_SCENE.instantiate() as Node2D
+			e.global_position = pos
+			add_child(e)
+			e.call("setup", float(params.get("speed_mult", 1.0)), int(params.get("dmg_bonus", 0)),
+				float(params.get("fire_mult", 1.0)), float(params.get("hp_mult", 1.0)))
+			return e
+		"boss":
+			var e := BOSS_SCENE.instantiate() as Node2D
 			e.global_position = pos
 			add_child(e)
 			e.call("setup", float(params.get("speed_mult", 1.0)), int(params.get("dmg_bonus", 0)),

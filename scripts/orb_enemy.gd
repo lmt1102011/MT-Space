@@ -13,7 +13,7 @@ const NetEnemy := preload("res://scripts/net_enemy.gd")
 @export var orb_radius: float = 56.0
 @export var orb_lifetime: float = 6.5
 @export var contact_damage: int = 1
-@export var radius: float = 29.0
+@export var radius: float = 34.0
 
 var hp: int = 18
 var net_id: int = 0
@@ -67,7 +67,7 @@ func _physics_process(delta: float) -> void:
 		collision_layer = 2
 		collision_mask = 0
 		NetEnemy.follow(self, delta)
-		_bar.global_position = global_position + Vector2(0, 34)
+		_bar.global_position = global_position + Vector2(0, radius + 8.0)
 		_bar.global_rotation = 0.0
 		return
 	if Net.is_online() and not Net.is_host():
@@ -101,7 +101,7 @@ func _physics_process(delta: float) -> void:
 		velocity = velocity.move_toward(Vector2.ZERO, 90.0 * delta)
 		move_and_slide()
 	_update_charge_art()
-	_bar.global_position = global_position + Vector2(0, 34)
+	_bar.global_position = global_position + Vector2(0, radius + 8.0)
 	_bar.global_rotation = 0.0
 
 
