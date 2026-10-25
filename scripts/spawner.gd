@@ -174,7 +174,7 @@ func _total_count(wave: int) -> int:
 		+ _railgun_count(wave) + _charger_count(wave) + _orb_count(wave)
 
 
-func _spawn_enemy(kind: String) -> void:
+func _spawn_enemy(kind: String, boss_minion: bool = false) -> void:
 	# the host owns the world, the clients get the enemies from it
 	if Net.is_online() and not Net.is_host():
 		return
@@ -248,16 +248,20 @@ func _spawn_enemy(kind: String) -> void:
 		cs.shape = shape
 	if kind != "shape" and kind != "boss":
 		_maybe_elite(enemy)
+	if boss_minion:
+		enemy.add_to_group("boss_minion")
 
 
 func spawn_boss_minions() -> void:
 	if _is_client():
 		return
+	if not get_tree().get_nodes_in_group("boss_minion").is_empty():
+		return
 	var minion_kinds := ["shooter", "double", "railgun", "charger", "orb"]
 	var minion_count := randi_range(2, 4)
 	for i in minion_count:
 		var kind: String = minion_kinds.pick_random()
-		_spawn_enemy(kind)
+		_spawn_enemy(kind, true)
 
 
 func _net_world() -> Node:

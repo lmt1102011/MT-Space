@@ -24,6 +24,7 @@ const BEAM_W := 64.0
 const BEAM_H := 16.0
 const HOMING_RANGE := 520.0
 const HOMING_TURN := 4.6
+const HOMING_TURN_FIRST := 0.8
 const HOMING_SEARCH := 0.08
 const HOMING_CONE := 1.75        # acquire a target in a broad front arc
 const HOMING_MAX_TIME := 2.4     # enough time to make a real correction
@@ -92,7 +93,8 @@ func _home(delta: float) -> void:
 	# never turn around: a target behind us is simply not chased
 	if absf(diff) > 2.4:
 		return
-	var turn := HOMING_TURN * (1.0 + 0.25 * float(Game.upg_homing - 1))
+	var turn := HOMING_TURN_FIRST if Game.upg_homing == 1 else \
+		HOMING_TURN * (1.0 + 0.25 * float(Game.upg_homing - 2))
 	direction = direction.rotated(diff * clampf(turn * delta, 0.0, 1.0))
 	rotation = direction.angle()   # keep the beam pointing where it flies
 	speed *= 0.999   # barely bleeds speed so it still reaches the target
