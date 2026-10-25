@@ -290,6 +290,94 @@ func grant_card(card: Dictionary) -> bool:
 		card.apply.call(self)
 	return true
 
+
+func remove_card(card: Dictionary) -> bool:
+	var id := str(card.get("id", ""))
+	var taken := int(upg_stacks.get(id, 0))
+	if id.is_empty() or taken <= 0:
+		return false
+
+	match id:
+		"fire_rate":
+			upg_fire_rate /= 1.18
+		"bullet_speed":
+			upg_bullet_speed /= 1.20
+		"move_speed":
+			upg_move_speed /= 1.14
+		"damage":
+			upg_damage /= 1.20
+		"burn":
+			upg_burn -= 1
+		"freeze":
+			upg_freeze -= 1
+		"lifesteal":
+			upg_lifesteal = false
+		"crit":
+			upg_crit -= 0.12
+		"orb_magnet":
+			upg_magnet /= 1.4
+		"max_hp":
+			upg_bonus_hp -= 2
+			var player := get_tree().get_first_node_in_group("player")
+			if player and player.has_method("max_hp_total"):
+				player.set("hp", mini(int(player.get("hp")),
+					int(player.call("max_hp_total"))))
+		"regen":
+			upg_regen -= 1
+		"pierce":
+			upg_pierce -= 1
+		"homing":
+			upg_homing -= 1
+		"splash":
+			upg_splash -= 1
+		"elite_hunter":
+			upg_elite_hunter -= 1
+		"bloodthirst":
+			upg_bloodthirst -= 1
+		"plating":
+			upg_plating -= 1
+		"level_heal":
+			upg_level_heal -= 1
+		"xp_greed":
+			upg_xp_greed -= 1
+		"inferno":
+			upg_inferno -= 1
+		"brittle":
+			upg_brittle -= 1
+		"thorns":
+			upg_thorns -= 1
+		"pierce_focus":
+			upg_pierce_focus -= 1
+		"explosive":
+			upg_explosive -= 1
+		"scavenger":
+			upg_scavenger -= 1
+		"rushed":
+			upg_rushed -= 1
+		"heavy_caliber":
+			upg_heavy_caliber -= 1
+		"second_chance":
+			upg_second_chance -= 1
+		"cold_blood":
+			upg_cold_blood -= 1
+		"longshot":
+			upg_range -= 0.15
+		"momentum":
+			upg_momentum -= 1
+		"point_blank":
+			upg_close_quarters -= 1
+		_:
+			if id.begins_with("weapon_"):
+				weapon = "basic"
+				weapon_chosen = false
+
+	if taken == 1:
+		upg_stacks.erase(id)
+	else:
+		upg_stacks[id] = taken - 1
+	return true
+
+
 func xp_needed_for(level_num: int) -> int:
 	# gentler curve: steady growth that stays approachable
 	return int(round(6 + (level_num - 1) * 5 + pow(level_num - 1, 1.9) * 1.2)) * 5

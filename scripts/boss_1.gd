@@ -133,6 +133,7 @@ func _update_attacks(delta: float, aim_angle: float) -> void:
 
 
 func _fire_fan(aim_angle: float) -> void:
+	Game.sfx("shoot", -21.0, 0.72, 0.84)
 	var direction := Vector2.from_angle(aim_angle)
 	var muzzle := global_position + direction * (radius * 0.82)
 	for spread: float in BARRAGE_SPREAD:
@@ -152,6 +153,7 @@ func _fire_fan(aim_angle: float) -> void:
 
 
 func _fire_missile_pair(aim_angle: float) -> void:
+	Game.sfx("charge", -15.0, 0.78, 0.9)
 	for side: float in [-1.0, 1.0]:
 		var muzzle_offset := Vector2(-radius * 0.12, side * radius * 0.58).rotated(rotation)
 		var direction := Vector2.from_angle(aim_angle)
@@ -219,8 +221,10 @@ func apply_status(burn_stacks: int, freeze_stacks: int) -> void:
 		_burn = maxf(_burn, 2.0 + burn_stacks * 0.5)
 		_burn_damage = (0.6 + burn_stacks * 0.4) \
 			* (1.0 + 0.4 * float(Game.upg_inferno))
+		Game.sfx("sizzle", -23.0, 0.9, 1.15)
 	if freeze_stacks > 0:
 		_slow = maxf(_slow, 1.2 + freeze_stacks * 0.4)
+		Game.sfx("frost", -23.0, 0.92, 1.12)
 
 
 func _tick_burn(delta: float) -> void:

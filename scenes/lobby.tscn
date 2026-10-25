@@ -289,7 +289,7 @@ vertical_alignment = 1
 [node name="Status" type="Label" parent="UI/RoomPanel"]
 anchor_right = 1.0
 offset_top = 46.0
-offset_bottom = 72.0
+offset_bottom = 70.0
 grow_horizontal = 2
 theme_override_font_sizes/font_size = 15
 theme_override_colors/font_color = Color(0.5, 0.57, 0.6, 1)
@@ -297,12 +297,35 @@ text = ""
 horizontal_alignment = 1
 vertical_alignment = 1
 
+[node name="RoomAddress" type="Label" parent="UI/RoomPanel"]
+anchor_right = 1.0
+offset_top = 72.0
+offset_bottom = 98.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.62, 0.78, 0.82, 1)
+text = ""
+horizontal_alignment = 1
+vertical_alignment = 1
+selectable = true
+
+[node name="CopyAddressButton" type="Button" parent="UI/RoomPanel"]
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = 196.0
+offset_top = 73.0
+offset_right = 264.0
+offset_bottom = 97.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 12
+text = "COPY"
+
 [node name="SlotTL" type="Panel" parent="UI/RoomPanel"]
 anchor_bottom = 0.0
 offset_left = 0.0
-offset_top = 86.0
+offset_top = 108.0
 offset_right = 218.0
-offset_bottom = 186.0
+offset_bottom = 208.0
 grow_vertical = 2
 theme_override_styles/panel = SubResource("SlotStyle")
 
@@ -344,9 +367,9 @@ anchor_left = 1.0
 anchor_right = 1.0
 anchor_bottom = 0.0
 offset_left = -218.0
-offset_top = 86.0
+offset_top = 108.0
 offset_right = 0.0
-offset_bottom = 186.0
+offset_bottom = 208.0
 grow_horizontal = 0
 grow_vertical = 2
 theme_override_styles/panel = SubResource("SlotStyle")

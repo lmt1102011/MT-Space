@@ -233,6 +233,7 @@ func _cull(delta: float) -> void:
 
 
 func _fire(dir: Vector2) -> void:
+	Game.sfx("shoot", -22.0, 0.92, 1.08)
 	var b := ENEMY_BULLET.instantiate()
 	b.global_position = global_position + dir * 26.0
 	b.direction = dir
@@ -397,5 +398,4 @@ func drop_xp(amount: int) -> void:
 
 func _draw() -> void:
 	pass
-
 

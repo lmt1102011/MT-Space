@@ -231,6 +231,7 @@ func _cull(delta: float) -> void:
 
 func _fire(dir: Vector2) -> void:
 	# two parallel bullets, offset along the perpendicular axis
+	Game.sfx("shoot", -22.0, 0.78, 0.9)
 	var perp := dir.orthogonal()
 	for sign_i in [-1.0, 1.0]:
 		var b := ENEMY_BULLET.instantiate()
@@ -399,5 +400,4 @@ func _die() -> void:
 
 func drop_xp(amount: int) -> void:
 	XP_DROP.drop(get_tree(), global_position, amount)
-
 

@@ -446,6 +446,15 @@ func local_lan_ip() -> String:
 	return "127.0.0.1"
 
 
+func room_connect_address() -> String:
+	var address := local_lan_ip() if _hosting else _last_address
+	if address.begins_with("ws://") or address.begins_with("wss://"):
+		return address
+	if address == "":
+		address = local_lan_ip()
+	return "%s:%d" % [address, _last_port if not _hosting else _room_port]
+
+
 func _process(delta: float) -> void:
 	# a heartbeat keeps the connection alive even when nothing else is sent
 	if _peer != null and _peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED:

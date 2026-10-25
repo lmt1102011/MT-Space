@@ -5,6 +5,7 @@ const XP_DROP := preload("res://scripts/xp_pickup.gd")
 const EXPLOSION_SCENE := preload("res://scenes/explosion.tscn")
 const DAMAGE_NUMBER := preload("res://scenes/damage_number.tscn")
 const NetEnemy := preload("res://scripts/net_enemy.gd")
+const STATUS_VISUAL := preload("res://scripts/status_effect_visual.gd")
 
 @export var max_hp: int = 18
 @export var move_speed: float = 72.0
@@ -26,6 +27,8 @@ var _player: Node2D = null
 var _charge := 0.0
 var _cooldown := 0.8
 var _burn := 0.0
+var _burn_tick := 0.0
+var _burn_damage := 0.0
 var _slow := 0.0
 var _push := Vector2.ZERO
 var _ai_acc := 0.0
@@ -36,6 +39,7 @@ var elite := false
 @onready var _sprite: Sprite2D = $Sprite2D
 @onready var _bar: HpBar = $HpBar
 var _charge_art: Sprite2D = null
+var _status_visual: Node2D
 
 
 func _ready() -> void:
@@ -46,10 +50,13 @@ func _ready() -> void:
 	collision_mask = 13
 	hp = max_hp
 	_charge_art = get_node_or_null("ChargeArt") as Sprite2D
-	if _charge_art == null:
-		return
-	_charge_art.z_index = -1
-	_charge_art.modulate = Color(0.35, 1.0, 0.75, 0.0)
+	if _charge_art != null:
+		_charge_art.z_index = -1
+		_charge_art.modulate = Color(0.35, 1.0, 0.75, 0.0)
+	_status_visual = STATUS_VISUAL.new()
+	_status_visual.set("radius", radius)
+	_status_visual.z_index = 2
+	add_child(_status_visual)
 	_update_bar()
 
 
@@ -67,13 +74,13 @@ func _physics_process(delta: float) -> void:
 		collision_layer = 2
 		collision_mask = 0
 		NetEnemy.follow(self, delta)
+		_tick_status(delta, false)
 		_bar.global_position = global_position + Vector2(0, radius + 8.0)
 		_bar.global_rotation = 0.0
 		return
 	if Net.is_online() and not Net.is_host():
 		return
-	_burn = maxf(_burn - delta, 0.0)
-	_slow = maxf(_slow - delta, 0.0)
+	_tick_status(delta)
 	_contact_t = maxf(_contact_t - delta, 0.0)
 	_player = Net.target_player(global_position)
 	if _player != null:
@@ -137,6 +144,7 @@ func _handle_collisions() -> void:
 
 
 func _launch_orb(dir: Vector2) -> void:
+	Game.sfx("charge", -17.0, 0.68, 0.78)
 	var orb := ORB_PROJECTILE.instantiate()
 	orb.global_position = global_position + dir * 30.0
 	orb.direction = dir
@@ -156,6 +164,8 @@ func _launch_orb(dir: Vector2) -> void:
 func take_damage(amount: float, kind: String = "normal") -> void:
 	if NetEnemy.report_hit(self, amount, kind):
 		return
+	if _slow > 0.0:
+		amount *= 1.0 + 0.35 * float(Game.upg_brittle)
 	hp -= maxi(1, int(round(amount)))
 	_update_bar()
 	_spawn_damage_number(amount, kind)
@@ -179,12 +189,28 @@ func _spawn_damage_number(amount: float, kind: String) -> void:
 
 
 func apply_status(burn_stacks: int, freeze_stacks: int) -> void:
-	if NetEnemy.report_status(self, burn_stacks, freeze_stacks):
-		return
+	NetEnemy.report_status(self, burn_stacks, freeze_stacks)
 	if burn_stacks > 0:
-		_burn = maxf(_burn, 2.0)
+		_burn = maxf(_burn, 2.0 + burn_stacks * 0.5)
+		_burn_damage = (0.6 + burn_stacks * 0.4) \
+			* (1.0 + 0.4 * float(Game.upg_inferno))
+		Game.sfx("sizzle", -23.0, 0.9, 1.15)
 	if freeze_stacks > 0:
-		_slow = maxf(_slow, 1.5)
+		_slow = maxf(_slow, 1.2 + freeze_stacks * 0.4)
+		Game.sfx("frost", -23.0, 0.92, 1.12)
+
+
+func _tick_status(delta: float, apply_burn_damage: bool = true) -> void:
+	if _burn > 0.0:
+		_burn = maxf(_burn - delta, 0.0)
+		_burn_tick -= delta
+		if _burn_tick <= 0.0:
+			_burn_tick = 0.4
+			if apply_burn_damage:
+				take_damage(_burn_damage, "burn")
+	if _slow > 0.0:
+		_slow = maxf(_slow - delta, 0.0)
+	_status_visual.call("set_status", _burn > 0.0, _slow > 0.0)
 
 
 func apply_network_elite(network_max_hp: int) -> void:

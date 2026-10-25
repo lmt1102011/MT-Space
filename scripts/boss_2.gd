@@ -2,6 +2,7 @@ extends CharacterBody2D
 
 @export var max_hp: int = 460
 @export var move_speed: float = 48.0
+@export var radius: float = 76.0
 @export var contact_damage: int = 3
 @export var wave_radius: float = 520.0
 @export var wave_duration: float = 0.85
@@ -17,6 +18,10 @@ var _net_rot: float = 0.0
 var _net_alive: bool = true
 var _net_copy: bool = false
 var _net_hitter: int = 0
+var _burn: float = 0.0
+var _burn_tick: float = 0.0
+var _burn_damage: float = 0.0
+var _slow: float = 0.0
 var _push := Vector2.ZERO
 var _brain := EnemyBrain.new()
 var _ai_acc: float = 0.0
@@ -35,9 +40,11 @@ const CARD_DB := preload("res://scripts/card_db.gd")
 const EXPLOSION_SCENE := preload("res://scenes/explosion.tscn")
 const WARNING_TEX := preload("res://assets/charge_ring.svg")
 const DAMAGE_NUMBER := preload("res://scenes/damage_number.tscn")
+const STATUS_VISUAL := preload("res://scripts/status_effect_visual.gd")
 
 @onready var _sprite: Sprite2D = $Sprite2D
 @onready var _bar: HpBar = $HpBar
+var _status_visual: Node2D
 
 
 func _ready() -> void:
@@ -55,6 +62,10 @@ func _ready() -> void:
 	_warning_ring.modulate = Color(0.55, 0.8, 1.0, 0.3)
 	_warning_ring.visible = false
 	add_child(_warning_ring)
+	_status_visual = STATUS_VISUAL.new()
+	_status_visual.set("radius", radius)
+	_status_visual.z_index = 2
+	add_child(_status_visual)
 	_update_bar()
 
 
@@ -74,6 +85,7 @@ func _physics_process(delta: float) -> void:
 		collision_layer = 2
 		collision_mask = 0
 		NetEnemy.follow(self, delta)
+		_tick_status(delta, false)
 		_remote_warning_time = maxf(_remote_warning_time - delta, 0.0)
 		_update_warning(_remote_warning_time > 0.0,
 			1.0 - _remote_warning_time / 1.5, _remote_warning_center)
@@ -83,6 +95,7 @@ func _physics_process(delta: float) -> void:
 	if Net.is_online() and not Net.is_host():
 		return
 
+	_tick_status(delta)
 	var target := Net.target_player(global_position)
 	if _warning_time >= 0.0:
 		_warning_time += delta
@@ -93,6 +106,7 @@ func _physics_process(delta: float) -> void:
 			move_and_slide()
 		_update_warning(true, _warning_time / 1.5, _warning_center)
 		if _warning_time >= 1.5:
+			Game.sfx("boom", -14.0, 0.64, 0.78)
 			Net.spawn_boss_sonic_wave(_warning_center, wave_radius, wave_duration)
 			_warning_time = -1.0
 			_attack_timer = attack_cooldown
@@ -121,10 +135,12 @@ func _move_step(delta: float, target: Node2D) -> void:
 	if _ai_acc <= 0.0:
 		_ai_acc = 0.05
 		var desired := Vector2.ZERO
+		var move_mult := 0.55 if _slow > 0.0 else 1.0
 		if target != null:
-			desired = _brain.move(global_position, target.global_position, move_speed, 0.05)
+			desired = _brain.move(global_position, target.global_position,
+				move_speed * move_mult, 0.05)
 		else:
-			desired = _brain.wander(move_speed * 0.5, 0.05)
+			desired = _brain.wander(move_speed * 0.5 * move_mult, 0.05)
 		_goal = desired + EnemyAI.steer(self, desired)
 	_push = _push.move_toward(Vector2.ZERO, 450.0 * delta)
 	velocity = velocity.lerp(_goal + _push, clampf(4.0 * delta, 0.0, 1.0))
@@ -169,6 +185,8 @@ func apply_network_attack_state(state: String, duration: float,
 func take_damage(amount: float, kind: String = "normal") -> void:
 	if NetEnemy.report_hit(self, amount, kind):
 		return
+	if _slow > 0.0:
+		amount *= 1.0 + 0.35 * float(Game.upg_brittle)
 	hp -= maxi(1, int(round(amount)))
 	_update_bar()
 	_spawn_damage_number(amount, kind)
@@ -178,6 +196,31 @@ func take_damage(amount: float, kind: String = "normal") -> void:
 
 func apply_push(impulse: Vector2) -> void:
 	_push = (_push + impulse).limit_length(320.0)
+
+
+func apply_status(burn_stacks: int, freeze_stacks: int) -> void:
+	NetEnemy.report_status(self, burn_stacks, freeze_stacks)
+	if burn_stacks > 0:
+		_burn = maxf(_burn, 2.0 + burn_stacks * 0.5)
+		_burn_damage = (0.6 + burn_stacks * 0.4) \
+			* (1.0 + 0.4 * float(Game.upg_inferno))
+		Game.sfx("sizzle", -23.0, 0.9, 1.15)
+	if freeze_stacks > 0:
+		_slow = maxf(_slow, 1.2 + freeze_stacks * 0.4)
+		Game.sfx("frost", -23.0, 0.92, 1.12)
+
+
+func _tick_status(delta: float, apply_burn_damage: bool = true) -> void:
+	if _burn > 0.0:
+		_burn = maxf(_burn - delta, 0.0)
+		_burn_tick -= delta
+		if _burn_tick <= 0.0:
+			_burn_tick = 0.4
+			if apply_burn_damage:
+				take_damage(_burn_damage, "burn")
+	if _slow > 0.0:
+		_slow = maxf(_slow - delta, 0.0)
+	_status_visual.call("set_status", _burn > 0.0, _slow > 0.0)
 
 
 func _update_bar() -> void:
@@ -198,6 +241,7 @@ func _die() -> void:
 	if not _net_alive or NetEnemy.is_remote(self):
 		return
 	_net_alive = false
+	Game.sfx("boom_big", -12.0, 0.72, 0.82)
 	var xp := 180
 	var drop_xp := NetEnemy.died(self, xp)
 	var explosion := EXPLOSION_SCENE.instantiate() as Node2D

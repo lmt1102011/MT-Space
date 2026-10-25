@@ -34,6 +34,8 @@ const ROOM_NAMES := [
 @onready var _room_panel: Control = $UI/RoomPanel
 @onready var _room_title: Label = $UI/RoomPanel/RoomTitle
 @onready var _status: Label = $UI/RoomPanel/Status
+@onready var _room_address: Label = $UI/RoomPanel/RoomAddress
+@onready var _copy_address_btn: Button = $UI/RoomPanel/CopyAddressButton
 @onready var _start_btn: Button = $UI/RoomPanel/StartButton
 @onready var _add_btn: Button = $UI/RoomPanel/AddPlayerButton
 @onready var _leave_btn: Button = $UI/RoomPanel/LeaveButton
@@ -59,6 +61,7 @@ func _ready() -> void:
 	_refresh_btn.pressed.connect(_on_refresh_rooms)
 	_back_btn.pressed.connect(_on_back)
 	_leave_btn.pressed.connect(_on_leave)
+	_copy_address_btn.pressed.connect(_on_copy_room_address)
 	_add_btn.pressed.connect(_on_add_player)
 	_start_btn.pressed.connect(_on_start)
 	_create_confirm.pressed.connect(_on_create_confirm)
@@ -159,6 +162,10 @@ func _refresh_room() -> void:
 	_room_title.text = _localized_text(Net.room_name if Net.room_name != "" else "ROOM")
 	var players: Array = Net.players
 	var host := _is_host()
+	var room_address := Net.room_connect_address()
+	_room_address.text = _localized_text("JOIN ADDRESS: %s" % room_address)
+	_copy_address_btn.visible = host
+	_copy_address_btn.tooltip_text = room_address
 
 	for i in _slots.size():
 		var slot: Panel = _slots[i]
@@ -195,6 +202,12 @@ func _refresh_room() -> void:
 			)
 	else:
 		_status.text = _localized_text("waiting for the host to start...")
+
+
+func _on_copy_room_address() -> void:
+	var address := Net.room_connect_address()
+	DisplayServer.clipboard_set(address)
+	_copy_address_btn.text = _localized_text("COPIED")
 
 
 func _show_create_view() -> void:

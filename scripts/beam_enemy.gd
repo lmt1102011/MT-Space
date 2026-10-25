@@ -4,7 +4,7 @@ extends CharacterBody2D
 @export var move_speed: float = 95.0
 @export var charge_time: float = 2.4
 @export var fire_cooldown: float = 3.4
-@export var beam_range: float = 1500.0
+@export var beam_range: float = 1900.0
 @export var beam_damage: int = 4
 
 var hp: int = 14
@@ -27,6 +27,10 @@ var _brain := EnemyBrain.new()
 var _remote_phase: String = "move"
 var _remote_phase_time: float = 0.0
 var _remote_phase_duration: float = 0.0
+var _burn: float = 0.0
+var _burn_tick: float = 0.0
+var _burn_damage: float = 0.0
+var _slow: float = 0.0
 var _charge_orb: Sprite2D
 var _charge_ring: Sprite2D
 var _warning_line: Sprite2D
@@ -42,10 +46,16 @@ const CHARGE_TEX := preload("res://assets/charge_ring.svg")
 const AIM_TEX := preload("res://assets/aim_line.svg")
 const BEAM_TEX := preload("res://assets/beam.svg")
 const BEAM_CORE_TEX := preload("res://assets/beam_core.svg")
+const STATUS_VISUAL := preload("res://scripts/status_effect_visual.gd")
 const MUZZLE := Vector2(30.0, 0.0)
+const BEAM_DURATION := 1.2
+const BEAM_START_DELAY := 0.22
+const BEAM_TICK_INTERVAL := 0.125
+const BEAM_DAMAGE_PER_TICK := 0.1
 
 @onready var _sprite: Sprite2D = $Sprite2D
 @onready var _bar: HpBar = $HpBar
+var _status_visual: Node2D
 
 
 func _ready() -> void:
@@ -56,6 +66,10 @@ func _ready() -> void:
 	collision_mask = 13
 	hp = max_hp
 	_build_attack_sprites()
+	_status_visual = STATUS_VISUAL.new()
+	_status_visual.set("radius", 30.0)
+	_status_visual.z_index = 2
+	add_child(_status_visual)
 	_update_bar()
 
 
@@ -77,7 +91,7 @@ func _build_attack_sprites() -> void:
 	_warning_line = Sprite2D.new()
 	_warning_line.texture = AIM_TEX
 	_warning_line.position = Vector2(MUZZLE.x + beam_range * 0.5, 0.0)
-	_warning_line.scale = Vector2(beam_range / 64.0, 0.65)
+	_warning_line.scale = Vector2(beam_range / 64.0, 0.9)
 	_warning_line.modulate = Color(0.4, 0.75, 1.0, 0.18)
 	_warning_line.visible = false
 	add_child(_warning_line)
@@ -85,7 +99,7 @@ func _build_attack_sprites() -> void:
 	_beam_outer = Sprite2D.new()
 	_beam_outer.texture = BEAM_TEX
 	_beam_outer.position = Vector2(MUZZLE.x + beam_range * 0.5, 0.0)
-	_beam_outer.scale = Vector2(beam_range / 64.0, 1.2)
+	_beam_outer.scale = Vector2(beam_range / 64.0, 1.8)
 	_beam_outer.modulate = Color(0.35, 0.7, 1.0, 0.9)
 	_beam_outer.visible = false
 	add_child(_beam_outer)
@@ -93,7 +107,7 @@ func _build_attack_sprites() -> void:
 	_beam_core = Sprite2D.new()
 	_beam_core.texture = BEAM_CORE_TEX
 	_beam_core.position = _beam_outer.position
-	_beam_core.scale = Vector2(beam_range / 64.0, 0.55)
+	_beam_core.scale = Vector2(beam_range / 64.0, 0.85)
 	_beam_core.modulate = Color(0.9, 0.97, 1.0, 1.0)
 	_beam_core.visible = false
 	add_child(_beam_core)
@@ -114,6 +128,7 @@ func _physics_process(delta: float) -> void:
 		collision_layer = 2
 		collision_mask = 0
 		NetEnemy.follow(self, delta)
+		_tick_status(delta, false)
 		_remote_phase_time = maxf(_remote_phase_time - delta, 0.0)
 		_update_visuals(_remote_phase,
 			1.0 - _remote_phase_time / maxf(_remote_phase_duration, 0.01))
@@ -123,6 +138,7 @@ func _physics_process(delta: float) -> void:
 	if Net.is_online() and not Net.is_host():
 		return
 
+	_tick_status(delta)
 	var target := Net.target_player(global_position)
 	if _phase == "fire":
 		_fire_step(delta, target)
@@ -151,7 +167,9 @@ func _move_step(delta: float, target: Node2D) -> void:
 		_ai_acc = 0.05
 		var desired := Vector2.ZERO
 		if target != null:
-			desired = _brain.move(global_position, target.global_position, move_speed, 0.05)
+			var move_mult := 0.55 if _slow > 0.0 else 1.0
+			desired = _brain.move(global_position, target.global_position,
+				move_speed * move_mult, 0.05)
 		else:
 			desired = _brain.wander(move_speed * 0.5, 0.05)
 		_goal = desired + EnemyAI.steer(self, desired)
@@ -184,22 +202,23 @@ func _start_fire() -> void:
 	_fire_start_angle = rotation
 	_beam_hits.clear()
 	_beam_players = get_tree().get_nodes_in_group("player")
-	Net.broadcast_enemy_attack_state(net_id, "fire", 0.95)
+	Game.sfx("laser", -9.0, 0.72, 0.82)
+	Net.broadcast_enemy_attack_state(net_id, "fire", BEAM_DURATION)
 
 
 func _fire_step(delta: float, target: Node2D) -> void:
 	_phase_time += delta
 	velocity = Vector2.ZERO
-	if _phase_time >= 0.22 and target != null:
+	if _phase_time >= BEAM_START_DELAY and target != null:
 		var wanted := (target.global_position - global_position).angle()
 		var offset := clampf(angle_difference(_fire_start_angle, wanted), -0.65, 0.65)
 		var limited_angle := _fire_start_angle + offset
 		rotation = lerp_angle(rotation, limited_angle,
 			clampf(1.25 * delta, 0.0, 1.0))
-	if _phase_time >= 0.22 and _phase_time <= 0.82:
+	if _phase_time >= BEAM_START_DELAY and _phase_time <= BEAM_DURATION:
 		_hit_players_with_beam()
-	_update_visuals("fire", _phase_time / 0.95)
-	if _phase_time >= 0.95:
+	_update_visuals("fire", _phase_time / BEAM_DURATION)
+	if _phase_time >= BEAM_DURATION:
 		_phase = "move"
 		_cooldown = fire_cooldown
 		Net.broadcast_enemy_attack_state(net_id, "move", 0.0)
@@ -215,23 +234,26 @@ func _hit_players_with_beam() -> void:
 		if player.get("_dead") == true or player.get("net_alive") == false:
 			continue
 		var player_id := player.get_instance_id()
-		if _beam_hits.has(player_id):
-			continue
 		var offset := player.global_position - origin
 		var along := offset.dot(direction)
 		if along < 0.0 or along > beam_range:
 			continue
 		var lateral := absf(direction.cross(offset))
-		if lateral > 28.0:
+		if lateral > 42.0:
 			continue
-		_beam_hits[player_id] = true
-		if player.has_method("take_damage"):
-			player.take_damage(beam_damage)
+		var next_hit := float(_beam_hits.get(player_id, 0.0))
+		if _phase_time < next_hit:
+			continue
+		_beam_hits[player_id] = _phase_time + BEAM_TICK_INTERVAL
+		if player.has_method("apply_orb_damage"):
+			player.apply_orb_damage(BEAM_DAMAGE_PER_TICK)
+		elif player.has_method("take_damage"):
+			player.take_damage(BEAM_DAMAGE_PER_TICK)
 
 
 func _update_visuals(phase: String, progress: float) -> void:
 	var charging := phase == "charge"
-	var firing := phase == "fire" and progress >= 0.22 / 0.95
+	var firing := phase == "fire" and progress >= BEAM_START_DELAY / BEAM_DURATION
 	_charge_orb.visible = charging
 	_charge_ring.visible = charging
 	_warning_line.visible = charging
@@ -245,7 +267,9 @@ func _update_visuals(phase: String, progress: float) -> void:
 		_charge_orb.scale = Vector2.ONE * orb_size
 		_warning_line.modulate.a = lerpf(0.12, 0.55, progress)
 	if firing:
-		var fade := 1.0 - clampf((progress - 0.75) / 0.25, 0.0, 1.0)
+		var fade_start := 1.0 - 0.25 / BEAM_DURATION
+		var fade := 1.0 - clampf((progress - fade_start) / (0.25 / BEAM_DURATION),
+			0.0, 1.0)
 		_beam_outer.modulate.a = 0.85 * fade
 		_beam_core.modulate.a = fade
 
@@ -262,10 +286,37 @@ func apply_network_attack_state(state: String, duration: float,
 func take_damage(amount: float, kind: String = "normal") -> void:
 	if NetEnemy.report_hit(self, amount, kind):
 		return
+	if _slow > 0.0:
+		amount *= 1.0 + 0.35 * float(Game.upg_brittle)
 	hp -= maxi(1, int(round(amount)))
 	_update_bar()
 	if hp <= 0:
 		_die()
+
+
+func apply_status(burn_stacks: int, freeze_stacks: int) -> void:
+	NetEnemy.report_status(self, burn_stacks, freeze_stacks)
+	if burn_stacks > 0:
+		_burn = maxf(_burn, 2.0 + burn_stacks * 0.5)
+		_burn_damage = (0.6 + burn_stacks * 0.4) \
+			* (1.0 + 0.4 * float(Game.upg_inferno))
+		Game.sfx("sizzle", -23.0, 0.9, 1.15)
+	if freeze_stacks > 0:
+		_slow = maxf(_slow, 1.2 + freeze_stacks * 0.4)
+		Game.sfx("frost", -23.0, 0.92, 1.12)
+
+
+func _tick_status(delta: float, apply_burn_damage: bool = true) -> void:
+	if _burn > 0.0:
+		_burn = maxf(_burn - delta, 0.0)
+		_burn_tick -= delta
+		if _burn_tick <= 0.0:
+			_burn_tick = 0.4
+			if apply_burn_damage:
+				take_damage(_burn_damage, "burn")
+	if _slow > 0.0:
+		_slow = maxf(_slow - delta, 0.0)
+	_status_visual.call("set_status", _burn > 0.0, _slow > 0.0)
 
 
 func apply_push(impulse: Vector2) -> void:

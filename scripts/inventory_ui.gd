@@ -3,7 +3,7 @@ extends CanvasLayer
 signal discarded(card_id: String)
 
 @onready var panel: Control = $Panel
-@onready var list: GridContainer = $Panel/HBox/Left/List
+@onready var list: GridContainer = $Panel/HBox/Left/ScrollContainer/List
 @onready var right_panel: Control = $Panel/HBox/Right
 @onready var card_preview: Control = $Panel/HBox/Right/Preview
 @onready var stacks_label: Label = $Panel/HBox/Right/Stacks
@@ -154,9 +154,9 @@ func _on_discard() -> void:
 		return
 	if Game == null:
 		return
-	var stacks = Game.upg_stacks
-	var taken = int(stacks.get(_selected_id, 0))
-	if taken <= 0:
+	var discarded_id := _selected_id
+	var card_def := _get_card_def(discarded_id)
+	if card_def.is_empty() or int(Game.upg_stacks.get(discarded_id, 0)) <= 0:
 		return
 	var player := get_tree().current_scene.get_node_or_null("Player") as Node2D
 	if player == null:
@@ -165,17 +165,13 @@ func _on_discard() -> void:
 	var ship_sprite := player.get_node_or_null("Sprite2D") as Node2D
 	if ship_sprite != null:
 		direction = Vector2.RIGHT.rotated(ship_sprite.global_rotation)
-	if not Net.request_discarded_card(_selected_id, player.global_position, direction):
+	if not Net.request_discarded_card(discarded_id, player.global_position, direction):
 		return
-	var discarded_id := _selected_id
-	taken -= 1
-	if taken <= 0:
-		stacks.erase(discarded_id)
-	else:
-		stacks[discarded_id] = taken
+	if not Game.remove_card(card_def):
+		return
 	discarded.emit(discarded_id)
 	_build_list()
-	if discarded_id in stacks:
+	if Game.upg_stacks.has(discarded_id):
 		_on_card_selected(discarded_id)
 	else:
 		right_panel.visible = false
