@@ -98,6 +98,9 @@ func _start_next_wave() -> void:
 	var local_player := get_tree().current_scene.get_node_or_null("Player")
 	if local_player != null and local_player.has_method("revive_for_wave"):
 		local_player.call("revive_for_wave")
+	var world := get_tree().get_first_node_in_group("net_world")
+	if world != null and world.has_method("revive_remote_players"):
+		world.call("revive_remote_players")
 	Game.wave += 1
 	Game.wave_changed.emit(Game.wave)
 	Game.sfx("alert", -17.0, 0.97, 1.05)
