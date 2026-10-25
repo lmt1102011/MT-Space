@@ -23,3 +23,4 @@ shape = SubResource("CircleShape2D_boss")
 [node name="HpBar" type="Node2D" parent="."]
 top_level = true
 script = ExtResource("3_hp_bar")
+bar_width = 180.0
