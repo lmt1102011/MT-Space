@@ -20,10 +20,17 @@ const ANDROID_DOWNLOAD := "downloads/mt-space-android.apk"
 # the version that was found on the server, empty when there is no update
 var available_version: String = ""
 var _manual_update_requested: bool = false
+var _windows_download_request: HTTPRequest
+var _windows_download_dialog: Node
+var _windows_download_file: String = ""
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+
+
+func _process(_delta: float) -> void:
+	_update_windows_download_progress()
 
 
 func is_web() -> bool:
@@ -265,85 +272,187 @@ func apply_update() -> void:
 	JavaScriptBridge.eval(js, true)
 
 
-# Downloads the new Windows archive after this process exits, replaces the
-# executable and PCK, then starts the updated game again. A running Windows
-# executable cannot overwrite itself, so a short PowerShell helper performs
-# the replacement after the game has closed.
+# Download the update while the game is running. The helper only replaces the
+# executable after the player confirms and this process exits.
 func _start_windows_update() -> void:
-	var executable := OS.get_executable_path()
-	var install_dir := executable.get_base_dir()
-	var script_path := OS.get_user_data_dir().path_join("mt_space_updater.ps1")
-	var zip_path := OS.get_user_data_dir().path_join("mt_space_update.zip")
-	var stage_dir := OS.get_user_data_dir().path_join("mt_space_update_stage")
+	if _windows_download_request != null:
+		return
+	var install_dir := OS.get_executable_path().get_base_dir()
+	_windows_download_file = OS.get_user_data_dir().path_join("mt_space_update.zip")
 	var dialog_scene := preload("res://scenes/update_dialog.tscn")
 	var dialog := dialog_scene.instantiate()
+	dialog.process_mode = Node.PROCESS_MODE_ALWAYS
 	get_tree().current_scene.add_child(dialog)
+	_windows_download_dialog = dialog
 	if dialog.has_method("show_progress"):
 		dialog.show_progress("Đang tải bản cập nhật...")
+	dialog.cancelled.connect(_cancel_windows_download)
+
+	if FileAccess.file_exists(_windows_download_file):
+		DirAccess.remove_absolute(_windows_download_file)
+	var request := HTTPRequest.new()
+	request.process_mode = Node.PROCESS_MODE_ALWAYS
+	request.timeout = 180.0
+	request.download_file = _windows_download_file
+	add_child(request)
+	_windows_download_request = request
+	request.request_completed.connect(_on_windows_archive_downloaded.bind(
+		dialog, request, install_dir
+	))
+	var error := request.request(SITE_URL + WINDOWS_DOWNLOAD)
+	if error != OK:
+		_windows_download_request = null
+		request.queue_free()
+		_show_windows_download_error(dialog,
+			"Không thể tải bản cập nhật. Hãy kiểm tra kết nối mạng rồi thử lại.")
+
+
+func _update_windows_download_progress() -> void:
+	var request := _windows_download_request
+	var dialog := _windows_download_dialog
+	if request == null or not is_instance_valid(request) \
+			or dialog == null or not is_instance_valid(dialog):
+		return
+	var downloaded := request.get_downloaded_bytes()
+	var total := request.get_body_size()
+	var locale := get_node_or_null("/root/Locale")
+	var is_vietnamese: bool = locale != null \
+		and str(locale.call("get_locale")) == "vi"
+	var text: String
+	if total > 0:
+		var downloaded_mb := float(downloaded) / 1048576.0
+		var total_mb := float(total) / 1048576.0
+		var template := "Đang tải bản cập nhật: %.1f / %.1f MB" if is_vietnamese \
+			else "Downloading update: %.1f / %.1f MB"
+		text = template % [downloaded_mb, total_mb]
+		dialog.set_progress(float(downloaded) * 100.0 / float(total), text)
+	else:
+		var downloaded_mb := float(downloaded) / 1048576.0
+		var template := "Đang tải bản cập nhật: %.1f MB" if is_vietnamese \
+			else "Downloading update: %.1f MB"
+		text = template % downloaded_mb
+		var pulse := absf(fposmod(float(Time.get_ticks_msec()) / 12.0, 180.0) - 90.0) + 5.0
+		dialog.set_progress(pulse, text, false)
+
+
+func _on_windows_archive_downloaded(result: int, response_code: int,
+		_headers: PackedStringArray, _body: PackedByteArray,
+		dialog: Node, request: HTTPRequest, install_dir: String) -> void:
+	if request != _windows_download_request:
+		return
+	_windows_download_request = null
+	request.queue_free()
+	if not is_instance_valid(dialog):
+		return
+	if result != HTTPRequest.RESULT_SUCCESS or response_code != 200:
+		push_warning("Windows update download failed (result=%d, HTTP=%d)" % [
+			result, response_code
+		])
+		_remove_windows_download_file()
+		_show_windows_download_error(dialog,
+			"Không thể tải bản cập nhật. Hãy kiểm tra kết nối mạng rồi thử lại.")
+		return
+	var archive := FileAccess.open(_windows_download_file, FileAccess.READ)
+	if archive == null or archive.get_length() <= 0:
+		if archive != null:
+			archive.close()
+		_remove_windows_download_file()
+		_show_windows_download_error(dialog,
+			"Không thể tải bản cập nhật. Hãy kiểm tra kết nối mạng rồi thử lại.")
+		return
+	archive.close()
+
+	var script_path := OS.get_user_data_dir().path_join("mt_space_updater.ps1")
+	var script := _make_windows_update_script(
+		install_dir, _windows_download_file, script_path
+	)
+	var script_file := FileAccess.open(script_path, FileAccess.WRITE)
+	if script_file == null:
+		_show_windows_download_error(dialog,
+			"Không thể khởi chạy trình cập nhật. Bạn có thể tải bản Windows trực tiếp từ trang web.")
+		return
+	script_file.store_string(script)
+	script_file.close()
+	dialog.confirmed_launch.connect(_launch_updated_game.bind(script_path, dialog))
+	_windows_download_dialog = null
+	dialog.show_ready_to_launch()
+
+
+func _show_windows_download_error(dialog: Node, message: String) -> void:
+	_windows_download_dialog = null
+	if is_instance_valid(dialog) and dialog.has_method("show_download_error"):
+		dialog.show_download_error(message)
+
+
+func _cancel_windows_download() -> void:
+	var request := _windows_download_request
+	_windows_download_request = null
+	_windows_download_dialog = null
+	if request != null and is_instance_valid(request):
+		request.cancel_request()
+		request.queue_free()
+		_remove_windows_download_file()
+
+
+func _remove_windows_download_file() -> void:
+	if _windows_download_file != "" and FileAccess.file_exists(_windows_download_file):
+		DirAccess.remove_absolute(_windows_download_file)
+
+
+func _make_windows_update_script(install_dir: String, zip_path: String,
+		script_path: String) -> String:
 	var q := func(value: String) -> String:
 		return "'" + value.replace("'", "''") + "'"
 	var script := """
 $ErrorActionPreference = 'Stop'
 $root = %s
 $zip = %s
-$stage = %s
-$exe = %s
+$stage = Join-Path $env:TEMP 'mt_space_update_stage'
 $url = %s
-Start-Sleep -Milliseconds 500
-while (Get-Process -Id %d -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 250 }
-try {
-    Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
-    $ProgressPreference = 'SilentlyContinue'
-    Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
-    Expand-Archive -LiteralPath $zip -DestinationPath $stage -Force
-    Copy-Item -LiteralPath (Join-Path $stage 'mt-space.exe') -Destination (Join-Path $root 'mt-space.exe') -Force
-    Copy-Item -LiteralPath (Join-Path $stage 'mt-space.pck') -Destination (Join-Path $root 'mt-space.pck') -Force
-    Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
-    $marker = Join-Path $root 'mt_space_update_ready.flag'
-    New-Item -ItemType File -Path $marker -Force | Out-Null
-} catch {
+Start-Sleep -Milliseconds 700
+while (Get-Process -Id %d -ErrorAction SilentlyContinue) {
+    Start-Sleep -Milliseconds 250
 }
-Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
-""" % [q.call(install_dir), q.call(zip_path), q.call(stage_dir),
-		q.call(executable), q.call(SITE_URL + WINDOWS_DOWNLOAD), OS.get_process_id()]
-	var file := FileAccess.open(script_path, FileAccess.WRITE)
-	if file == null:
-		OS.shell_open(SITE_URL + WINDOWS_DOWNLOAD)
-		if dialog and is_instance_valid(dialog):
-			dialog.queue_free()
+try {
+    Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
+    Expand-Archive -LiteralPath $zip -DestinationPath $stage -Force
+    $newExe = Join-Path $stage 'mt-space.exe'
+    $newPack = Join-Path $stage 'mt-space.pck'
+    if (!(Test-Path -LiteralPath $newExe) -or !(Test-Path -LiteralPath $newPack)) {
+        throw 'The downloaded archive is missing game files.'
+    }
+    Copy-Item -LiteralPath $newPack -Destination (Join-Path $root 'mt-space.pck') -Force
+    Copy-Item -LiteralPath $newExe -Destination (Join-Path $root 'mt-space.exe') -Force
+    Start-Process -FilePath (Join-Path $root 'mt-space.exe')
+    Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath %s -Force -ErrorAction SilentlyContinue
+} catch {
+    $message = "MT Space could not install the update.`n" +
+        $_.Exception.Message + "`nThe downloaded archive is here:`n" + $zip
+    try {
+        Add-Type -AssemblyName PresentationFramework
+        [System.Windows.MessageBox]::Show($message, 'MT Space updater') | Out-Null
+    } catch {
+        Start-Process -FilePath $url
+    }
+}
+""" % [q.call(install_dir), q.call(zip_path),
+		q.call(SITE_URL + WINDOWS_DOWNLOAD), OS.get_process_id(),
+		q.call(script_path)]
+	return script
+
+
+func _launch_updated_game(script_path: String, dialog: Node) -> void:
+	var process_id := OS.create_process("powershell.exe", [
+		"-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden",
+		"-File", script_path,
+	])
+	if process_id <= 0:
+		dialog.show_download_error(
+			"Không thể khởi chạy trình cập nhật. Bạn có thể tải bản Windows trực tiếp từ trang web."
+		)
 		return
-	file.store_string(script)
-	file.close()
-	OS.create_process("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", script_path])
-	_start_update_monitor(dialog, install_dir)
-
-
-func _start_update_monitor(dialog: Node, install_dir: String) -> void:
-	var t := Timer.new()
-	t.wait_time = 0.5
-	t.one_shot = false
-	var executable := OS.get_executable_path()
-	var marker_path := install_dir.path_join("mt_space_update_ready.flag")
-	add_child(t)
-	t.timeout.connect(func():
-		if FileAccess.file_exists(marker_path):
-			t.stop()
-			t.queue_free()
-			if dialog and is_instance_valid(dialog):
-				if dialog.has_method("show_ready_to_launch"):
-					dialog.show_ready_to_launch()
-				dialog.confirmed_launch.connect(func():
-					_launch_updated_game(executable)
-				)
-				dialog.cancelled.connect(func():
-					pass
-				)
-	)
-	t.start()
-
-
-func _launch_updated_game(executable: String) -> void:
+	if is_instance_valid(dialog):
+		dialog.queue_free()
 	get_tree().quit()
-	OS.create_process(executable, [])
