@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://dupdate00001"]
 
-[ext_resource type="Script" uid="uid://dupdate001" path="res://scripts/update_dialog.gd" id="1_dlg"]
+[ext_resource type="Script" uid="uid://gvv81iyqtkg4" path="res://scripts/update_dialog.gd" id="1_dlg"]
 
 [node name="UpdateDialog" type="CanvasLayer"]
 layer = 100

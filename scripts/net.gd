@@ -71,6 +71,8 @@ var _net_timer: float = 0.0
 var _heartbeat_timer: float = 0.0
 var _enemy_timer: float = 0.0
 var _next_enemy_id: int = 1
+var _next_discarded_card_id: int = 1
+var _discarded_card_drops: Dictionary = {}
 var _player_nodes_cache: Array = []
 var _player_nodes_cache_frame: int = -1
 # how often the client says hello again until the host knows it
@@ -334,6 +336,8 @@ func _reset_session() -> void:
 	name_change_required = false
 	room_name = ""
 	players = []
+	_discarded_card_drops.clear()
+	_next_discarded_card_id = 1
 	if _discovery != null:
 		_discovery.close()
 		_discovery = null
@@ -1063,10 +1067,10 @@ func request_discarded_card(card_id: String, pos: Vector2, direction: Vector2) -
 	if _find_upgrade_card(card_id).is_empty() or direction.is_zero_approx():
 		return false
 	if not is_online():
-		_spawn_discarded_card(my_id(), pos, direction, card_id)
+		_spawn_discarded_card(0, my_id(), pos, direction, card_id)
 		return true
 	if _hosting:
-		_spawn_discarded_card(my_id(), pos, direction, card_id)
+		_create_discarded_card_drop(my_id(), pos, direction, card_id)
 		return true
 	if _peer == null or _peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
 		return false
@@ -1082,24 +1086,77 @@ func _srv_discard_card(card_id: String, pos: Vector2, direction: Vector2) -> voi
 	var sender := _api.get_remote_sender_id()
 	if sender <= 1 or _find_player(sender) < 0 or _find_upgrade_card(card_id).is_empty():
 		return
-	rpc_id(sender, "_cli_discarded_card", pos, direction.normalized(), card_id)
+	_create_discarded_card_drop(sender, pos, direction, card_id)
 
 
 @rpc("authority", "call_remote", "reliable", 0)
-func _cli_discarded_card(pos: Vector2, direction: Vector2, card_id: String) -> void:
-	_spawn_discarded_card(my_id(), pos, direction, card_id)
+func _cli_discarded_card(drop_id: int, owner_id: int, pos: Vector2,
+		direction: Vector2, card_id: String) -> void:
+	_spawn_discarded_card(drop_id, owner_id, pos, direction, card_id)
 
 
-func _spawn_discarded_card(owner_id: int, pos: Vector2, direction: Vector2,
-		card_id: String) -> void:
+func _create_discarded_card_drop(owner_id: int, pos: Vector2,
+		direction: Vector2, card_id: String) -> void:
+	var drop_id := _next_discarded_card_id
+	_next_discarded_card_id += 1
+	_discarded_card_drops[drop_id] = card_id
+	_spawn_discarded_card(drop_id, owner_id, pos, direction, card_id)
+	for pid in _client_ids():
+		rpc_id(pid, "_cli_discarded_card", drop_id, owner_id, pos,
+			direction.normalized(), card_id)
+
+
+func _spawn_discarded_card(drop_id: int, owner_id: int, pos: Vector2,
+		direction: Vector2, card_id: String) -> void:
 	var card := _find_upgrade_card(card_id)
 	if card.is_empty() or direction.is_zero_approx():
 		return
 	var drop := UPGRADE_DROP.instantiate() as UpgradeDrop
 	drop.card = card
+	drop.network_drop_id = drop_id
 	drop.global_position = pos + direction.normalized() * 82.0
 	drop.configure_thrown(owner_id, direction)
 	get_tree().current_scene.add_child(drop)
+
+
+func claim_discarded_card(drop_id: int, player_id: int) -> void:
+	if not _hosting or not _discarded_card_drops.has(drop_id):
+		return
+	if player_id <= 0 or (player_id > 1 and _find_player(player_id) < 0):
+		return
+	var card_id := str(_discarded_card_drops[drop_id])
+	_discarded_card_drops.erase(drop_id)
+	if player_id == 1:
+		_grant_discarded_card(card_id)
+	else:
+		rpc_id(player_id, "_cli_grant_discarded_card", card_id)
+	_remove_discarded_card_drop(drop_id)
+	for pid in _client_ids():
+		rpc_id(pid, "_cli_remove_discarded_card", drop_id)
+
+
+func _grant_discarded_card(card_id: String) -> void:
+	var card := _find_upgrade_card(card_id)
+	if card.is_empty() or not Game.grant_card(card):
+		return
+	Game.card_collected.emit(card)
+	Game.sfx("cardget", -11.0, 0.95, 1.06)
+
+
+func _remove_discarded_card_drop(drop_id: int) -> void:
+	for node in get_tree().get_nodes_in_group("upgrade_drop"):
+		if int(node.get("network_drop_id")) == drop_id:
+			node.queue_free()
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _cli_grant_discarded_card(card_id: String) -> void:
+	_grant_discarded_card(card_id)
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _cli_remove_discarded_card(drop_id: int) -> void:
+	_remove_discarded_card_drop(drop_id)
 
 
 func _find_upgrade_card(card_id: String) -> Dictionary:

@@ -7,6 +7,7 @@ var _time: float = 0.0
 # level-up card choice screen (legacy behaviour).
 var card: Dictionary = {}
 var _thrown_owner_id: int = 0
+var network_drop_id: int = 0
 var _pickup_delay: float = 0.0
 var _throw_velocity: Vector2 = Vector2.ZERO
 
@@ -60,12 +61,23 @@ func _physics_process(delta: float) -> void:
 
 
 func _on_body_entered(body: Node2D) -> void:
-	if not body.is_in_group("player") or Game.player_dead:
+	if not body.is_in_group("player"):
+		return
+	var local_player := get_tree().current_scene.get_node_or_null("Player")
+	if body == local_player:
+		if Game.player_dead:
+			return
+	elif body.get("net_alive") == false:
 		return
 	if _pickup_delay > 0.0:
 		return
+	if network_drop_id > 0 and Net.is_online():
+		if not Net.is_host():
+			return
+		var player_id := Net.my_id() if body == local_player else int(body.get("net_id"))
+		Net.claim_discarded_card(network_drop_id, player_id)
+		return
 	if _thrown_owner_id > 0:
-		var local_player := get_tree().current_scene.get_node_or_null("Player")
 		if body != local_player or Net.my_id() != _thrown_owner_id:
 			return
 	if not card.is_empty():

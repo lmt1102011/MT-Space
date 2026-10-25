@@ -18,6 +18,7 @@ var _cull_acc: float = 0.0
 const SHAPES := preload("res://scripts/enemy_shapes.gd")
 var _gem: Sprite2D = null
 var _glow: Sprite2D = null
+var _visual_scale: float = 1.0
 
 # the glow disc has a radius of 30 in a 64px box, the gem a radius of 16
 const GLOW_RADIUS := 7.0
@@ -39,6 +40,23 @@ func _ready() -> void:
 	var g := GEM_RADIUS / 16.0
 	_gem.scale = Vector2(g, g)
 	add_child(_gem)
+	_refresh_visual_tier()
+
+
+func add_xp_value(amount: int) -> void:
+	xp_value += amount
+	_refresh_visual_tier()
+
+
+func _refresh_visual_tier() -> void:
+	if _glow == null or _gem == null:
+		return
+	var merged := xp_value >= 20
+	_visual_scale = 1.25 if merged else 1.0
+	_glow.modulate = Color(0.2, 0.65, 1.0, 1.0) if merged else Color(0.3, 1.0, 0.5, 1.0)
+	_gem.modulate = Color(0.6, 0.85, 1.0, 1.0) if merged else Color.WHITE
+	_glow.scale = Vector2.ONE * GLOW_RADIUS * _visual_scale / 30.0
+	_gem.scale = Vector2.ONE * GEM_RADIUS * _visual_scale / 16.0
 
 
 func _process(delta: float) -> void:
@@ -66,7 +84,7 @@ func _process(delta: float) -> void:
 	# the pulse is a scale change on the node, nothing is re-drawn
 	var pulse := 0.7 + sin(_time * 8.0) * 0.3
 	if _glow != null:
-		var g := GLOW_RADIUS * pulse / 30.0
+		var g := GLOW_RADIUS * pulse * _visual_scale / 30.0
 		_glow.scale = Vector2(g, g)
 
 
