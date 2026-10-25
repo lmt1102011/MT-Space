@@ -79,6 +79,7 @@ func _physics_process(delta: float) -> void:
 		collision_mask = 0
 	else:
 		visible = true
+	var follow_alpha := 1.0 - exp(-12.0 * delta)
 	# Predict from the replicated velocity and gently correct snapshot error.
 	# This removes the stop/start motion between 30 Hz network packets.
 	if net_alive or net_spectate_target <= 0:
@@ -86,16 +87,15 @@ func _physics_process(delta: float) -> void:
 		if error.length() > 520.0:
 			global_position = _net_target
 		else:
-			var correction := error * (1.0 - exp(-16.0 * delta))
-			_render_velocity = _render_velocity.lerp(net_velocity,
-				1.0 - exp(-14.0 * delta))
+			var correction := error * follow_alpha
+			_render_velocity = _render_velocity.lerp(net_velocity, follow_alpha)
 			var step := _render_velocity * delta * 0.92 + correction
 			if step.length() > 26.0:
 				step = step.normalized() * 26.0
 			global_position += step
 		# Only the ship rotates. The name, HP bar and ghost remain upright.
 		_sprite.rotation = lerp_angle(_sprite.rotation, _net_rot,
-			1.0 - exp(-14.0 * delta))
+			follow_alpha)
 	# the ship fades out when its owner dies
 	var want := 1.0 if net_alive else 0.0
 	_sprite.modulate.a = lerpf(_sprite.modulate.a, want, 0.1)

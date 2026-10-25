@@ -435,6 +435,43 @@ func _die() -> void:
 		_start_spectating()
 
 
+func revive_for_wave() -> void:
+	for ghost in get_tree().get_nodes_in_group("spectator_ghost"):
+		if ghost != null and is_instance_valid(ghost):
+			ghost.queue_free()
+	_dead = false
+	Game.player_dead = false
+	Game.is_game_over = false
+	Game.spectate_mode = false
+	Game.spectate_target = 0
+	Game.spectate_changed.emit(0)
+	hp = max_hp_total()
+	_burn = 0.0
+	_burn_tick = 0.0
+	_slow = 0.0
+	_stun_t = 0.0
+	_knock_vel = Vector2.ZERO
+	velocity = Vector2.ZERO
+	_thrust = 0.0
+	invuln = 1.5
+	_sprite.visible = true
+	_sprite.modulate = Color.WHITE
+	var name_label := get_node_or_null("NameLabel") as Label
+	if name_label:
+		name_label.visible = true
+	if _ghost != null and is_instance_valid(_ghost):
+		_ghost.queue_free()
+	_ghost = null
+	if Game.spectate_changed.is_connected(_on_spectate_changed):
+		Game.spectate_changed.disconnect(_on_spectate_changed)
+	var cam := get_node_or_null("Camera2D") as Camera2D
+	if cam != null:
+		cam.position = Vector2.ZERO
+	set_physics_process(true)
+	_update_flame()
+	queue_redraw()
+
+
 # The dead player turns into a little ghost that floats around the player
 # that is being watched.
 func _start_spectating() -> void:

@@ -1011,6 +1011,23 @@ func _cli_wave(wave: int) -> void:
 	Game.wave_changed.emit(wave)
 
 
+func send_revive_dead_players() -> void:
+	if not _hosting:
+		return
+	for pid in _client_ids():
+		rpc_id(pid, "_cli_revive_dead_players")
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _cli_revive_dead_players() -> void:
+	var local_player := get_tree().current_scene.get_node_or_null("Player")
+	if local_player != null and local_player.get("_dead") == true \
+			and local_player.has_method("revive_for_wave"):
+		local_player.call("revive_for_wave")
+	if world != null and world.has_method("revive_remote_players"):
+		world.call("revive_remote_players")
+
+
 # The host tells the player who got the kill to create their local XP orbs.
 func send_xp_drop(peer: int, pos: Vector2, amount: int) -> void:
 	if not _hosting or peer <= 0 or amount <= 0:
