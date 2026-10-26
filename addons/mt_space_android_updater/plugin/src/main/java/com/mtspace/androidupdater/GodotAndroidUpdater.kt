@@ -15,37 +15,41 @@ class GodotAndroidUpdater(godot: Godot) : GodotPlugin(godot) {
 
     @UsedByGodot
     fun canRequestInstallPackages(): Boolean {
+        val hostActivity = activity ?: return false
         return Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
-            activity.packageManager.canRequestPackageInstalls()
+            hostActivity.packageManager.canRequestPackageInstalls()
     }
 
     @UsedByGodot
     fun openInstallPermissionSettings() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val hostActivity = activity ?: return
         val intent = Intent(
             Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-            Uri.parse("package:${activity.packageName}")
+            Uri.parse("package:${hostActivity.packageName}")
         )
-        activity.startActivity(intent)
+        hostActivity.startActivity(intent)
     }
 
     @UsedByGodot
     fun installApk(path: String): String {
+        val hostActivity = activity
+            ?: return "Android activity is unavailable."
         return try {
             val apk = File(path)
             if (!apk.isFile || !apk.canRead()) {
                 return "Bản cập nhật không còn tồn tại hoặc không thể đọc."
             }
             val uri = FileProvider.getUriForFile(
-                activity,
-                "${activity.packageName}.mtspaceupdater.fileprovider",
+                hostActivity,
+                "${hostActivity.packageName}.mtspaceupdater.fileprovider",
                 apk
             )
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, "application/vnd.android.package-archive")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            activity.startActivity(intent)
+            hostActivity.startActivity(intent)
             ""
         } catch (error: Exception) {
             error.message ?: error.javaClass.simpleName
