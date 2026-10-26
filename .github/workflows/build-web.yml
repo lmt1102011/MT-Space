@@ -43,7 +43,8 @@ jobs:
       - name: Set up the Android tools
         id: android_tools
         env:
-          ANDROID_HOME: ${{ runner.temp }}/android-sdk
+          ANDROID_HOME: /usr/local/lib/android/sdk
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
         run: |
           mkdir -p "$ANDROID_HOME/cmdline-tools"
           cd "$ANDROID_HOME/cmdline-tools"
@@ -57,8 +58,8 @@ jobs:
 
       - name: Build the Android installer plugin
         env:
-          ANDROID_HOME: ${{ runner.temp }}/android-sdk
-          ANDROID_SDK_ROOT: ${{ runner.temp }}/android-sdk
+          ANDROID_HOME: /usr/local/lib/android/sdk
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
         run: |
           cd addons/mt_space_android_updater
           gradle --no-daemon :plugin:assembleDebug :plugin:assembleRelease
@@ -149,8 +150,8 @@ jobs:
 
       - name: Build the game for Android
         env:
-          ANDROID_HOME: ${{ runner.temp }}/android-sdk
-          ANDROID_SDK_ROOT: ${{ runner.temp }}/android-sdk
+          ANDROID_HOME: /usr/local/lib/android/sdk
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
         run: |
           mkdir -p build/web/downloads
           godot --headless --path . --install-android-build-template --export-release "Android" build/web/downloads/mt-space-android.apk
