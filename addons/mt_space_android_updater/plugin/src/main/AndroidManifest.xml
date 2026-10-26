@@ -7,7 +7,7 @@
             android:name="org.godotengine.plugin.v2.${godotPluginName}"
             android:value="${godotPluginPackageName}.GodotAndroidUpdater" />
         <provider
-            android:name="androidx.core.content.FileProvider"
+            android:name="com.mtspace.androidupdater.MTSpaceUpdateFileProvider"
             android:authorities="${applicationId}.mtspaceupdater.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
