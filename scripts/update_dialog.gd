@@ -50,12 +50,13 @@ func set_progress(pct: float, text: String = "", show_percentage: bool = true) -
 		_set_localized(status, text)
 
 
-func show_ready_to_launch() -> void:
+func show_ready_to_launch(message: String = "") -> void:
+	visible = true
 	_set_localized(title, "CẬP NHẬT HOÀN TẤT")
-	_set_localized(
-		status,
-		"Bản cập nhật đã sẵn sàng.\nBạn có muốn khởi động game ngay bây giờ không?"
-	)
+	var ready_message := message
+	if ready_message.is_empty():
+		ready_message = "Bản cập nhật đã sẵn sàng.\nBạn có muốn khởi động game ngay bây giờ không?"
+	_set_localized(status, ready_message)
 	progress.visible = false
 	if later_btn:
 		_set_localized(later_btn, "ĐỂ SAU")

@@ -16,6 +16,9 @@ const LOCAL_VERSION := "res://version_embedded.txt"
 const SITE_URL := "https://lmt1102011.github.io/MT-Space/"
 const WINDOWS_DOWNLOAD := "downloads/mt-space-windows.zip"
 const ANDROID_DOWNLOAD := "downloads/mt-space-android.apk"
+const ANDROID_UPDATE_MANIFEST := "android-update.json"
+const ANDROID_UPDATE_DIRECTORY := "mt_space_updates"
+const ANDROID_UPDATE_FILE := "mt-space-android.apk"
 
 # the version that was found on the server, empty when there is no update
 var available_version: String = ""
@@ -23,6 +26,13 @@ var _manual_update_requested: bool = false
 var _windows_download_request: HTTPRequest
 var _windows_download_dialog: Node
 var _windows_download_file: String = ""
+var _android_download_request: HTTPRequest
+var _android_download_dialog: Node
+var _android_download_file: String = ""
+var _android_update_file: String = ""
+var _android_update_version: String = ""
+var _android_update_sha256: String = ""
+var _android_update_size: int = 0
 
 
 func _ready() -> void:
@@ -31,6 +41,7 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	_update_windows_download_progress()
+	_update_android_download_progress()
 
 
 func is_web() -> bool:
@@ -243,11 +254,8 @@ func _store_version(version: String) -> void:
 # used. The player presses the button, so nothing changes while they play.
 func apply_update() -> void:
 	if not is_web():
-		if OS.has_feature("mobile"):
-			# Android will always ask the user to confirm an APK installation.
-			# Opening the APK URL lets Android/the browser hand that flow to the
-			# package installer instead of opening the website homepage.
-			OS.shell_open(SITE_URL + ANDROID_DOWNLOAD)
+		if _is_android():
+			_start_android_update()
 		else:
 			_start_windows_update()
 		return
@@ -270,6 +278,316 @@ func apply_update() -> void:
 	})();
 	"""
 	JavaScriptBridge.eval(js, true)
+
+
+func _is_android() -> bool:
+	return OS.get_name() == "Android"
+
+
+func _start_android_update() -> void:
+	if _android_download_request != null \
+			or (_android_download_dialog != null
+			and is_instance_valid(_android_download_dialog)):
+		return
+	_android_update_file = OS.get_user_data_dir().path_join(
+		ANDROID_UPDATE_DIRECTORY
+	).path_join(ANDROID_UPDATE_FILE)
+	var dialog_scene := preload("res://scenes/update_dialog.tscn")
+	var dialog := dialog_scene.instantiate()
+	dialog.process_mode = Node.PROCESS_MODE_ALWAYS
+	get_tree().current_scene.add_child(dialog)
+	_android_download_dialog = dialog
+	dialog.cancelled.connect(_cancel_android_download)
+	if _load_cached_android_update():
+		_show_android_update_ready()
+		return
+	_remove_android_download_part()
+	dialog.show_progress("Đang kiểm tra bản cập nhật...")
+
+	var request := HTTPRequest.new()
+	request.process_mode = Node.PROCESS_MODE_ALWAYS
+	request.timeout = 30.0
+	add_child(request)
+	_android_download_request = request
+	request.request_completed.connect(_on_android_manifest_received.bind(
+		dialog, request
+	))
+	var error := request.request(SITE_URL + ANDROID_UPDATE_MANIFEST
+		+ "?t=" + str(Time.get_unix_time_from_system()))
+	if error != OK:
+		_finish_android_download_error(
+			dialog, request,
+			"Không thể kiểm tra bản cập nhật. Hãy kiểm tra kết nối mạng rồi thử lại."
+		)
+
+
+func _on_android_manifest_received(result: int, response_code: int,
+		_headers: PackedStringArray, body: PackedByteArray,
+		dialog: Node, request: HTTPRequest) -> void:
+	if request != _android_download_request:
+		return
+	if result != HTTPRequest.RESULT_SUCCESS or response_code != 200:
+		_finish_android_download_error(
+			dialog, request,
+			"Không thể kiểm tra bản cập nhật. Hãy kiểm tra kết nối mạng rồi thử lại."
+		)
+		return
+	var parsed: Variant = JSON.parse_string(body.get_string_from_utf8())
+	if not _is_valid_android_manifest(parsed):
+		_finish_android_download_error(
+			dialog, request, "Thông tin bản cập nhật không hợp lệ."
+		)
+		return
+	_android_update_version = str(parsed["version"])
+	_android_update_sha256 = str(parsed["sha256"]).to_lower()
+	_android_update_size = int(parsed["size"])
+	if _verify_android_update_file():
+		_android_download_request = null
+		request.queue_free()
+		_show_android_update_ready()
+		return
+	var part_path := _android_update_file + ".part"
+	var directory_error := DirAccess.make_dir_recursive_absolute(
+		_android_update_file.get_base_dir()
+	)
+	if directory_error != OK and directory_error != ERR_ALREADY_EXISTS:
+		_finish_android_download_error(
+			dialog, request, "Không thể lưu bản cập nhật trên thiết bị."
+		)
+		return
+	var manifest_file := FileAccess.open(
+		_android_update_manifest_path(), FileAccess.WRITE
+	)
+	if manifest_file == null:
+		_finish_android_download_error(
+			dialog, request, "Không thể lưu thông tin xác minh bản cập nhật."
+		)
+		return
+	manifest_file.store_string(JSON.stringify(parsed))
+	manifest_file.close()
+	if FileAccess.file_exists(_android_update_file):
+		DirAccess.remove_absolute(_android_update_file)
+	dialog.set_progress(0.0, "Đang tải bản cập nhật...")
+	_android_download_request = null
+	request.queue_free()
+	_start_android_apk_download(dialog, part_path)
+
+
+func _is_valid_android_manifest(value: Variant) -> bool:
+	if not value is Dictionary:
+		return false
+	var manifest: Dictionary = value
+	var version := str(manifest.get("version", ""))
+	var digest := str(manifest.get("sha256", "")).to_lower()
+	var size_value: Variant = manifest.get("size", 0)
+	if version.is_empty() or not size_value is int or int(size_value) <= 0:
+		return false
+	if digest.length() != 64:
+		return false
+	for character in digest:
+		if not "0123456789abcdef".contains(character):
+			return false
+	return true
+
+
+func _start_android_apk_download(dialog: Node, part_path: String) -> void:
+	var request := HTTPRequest.new()
+	request.process_mode = Node.PROCESS_MODE_ALWAYS
+	request.timeout = 300.0
+	request.download_file = part_path
+	add_child(request)
+	_android_download_request = request
+	request.request_completed.connect(_on_android_apk_downloaded.bind(
+		dialog, request, part_path
+	))
+	var error := request.request(SITE_URL + ANDROID_DOWNLOAD
+		+ "?t=" + str(Time.get_unix_time_from_system()))
+	if error != OK:
+		_finish_android_download_error(
+			dialog, request,
+			"Không thể tải bản cập nhật. Hãy kiểm tra kết nối mạng rồi thử lại."
+		)
+
+
+func _update_android_download_progress() -> void:
+	var request := _android_download_request
+	var dialog := _android_download_dialog
+	if request == null or not is_instance_valid(request) \
+			or dialog == null or not is_instance_valid(dialog):
+		return
+	var downloaded := request.get_downloaded_bytes()
+	var total := request.get_body_size()
+	var locale := get_node_or_null("/root/Locale")
+	var is_vietnamese: bool = locale != null \
+		and str(locale.call("get_locale")) == "vi"
+	var downloaded_mb := float(downloaded) / 1048576.0
+	var text: String
+	if total > 0:
+		var total_mb := float(total) / 1048576.0
+		var template := "Đang tải bản cập nhật: %.1f / %.1f MB" if is_vietnamese \
+			else "Downloading update: %.1f / %.1f MB"
+		text = template % [downloaded_mb, total_mb]
+		dialog.set_progress(float(downloaded) * 100.0 / float(total), text)
+	else:
+		var template := "Đang tải bản cập nhật: %.1f MB" if is_vietnamese \
+			else "Downloading update: %.1f MB"
+		text = template % downloaded_mb
+		var pulse := absf(fposmod(float(Time.get_ticks_msec()) / 12.0, 180.0) - 90.0) + 5.0
+		dialog.set_progress(pulse, text, false)
+
+
+func _on_android_apk_downloaded(result: int, response_code: int,
+		_headers: PackedStringArray, _body: PackedByteArray,
+		dialog: Node, request: HTTPRequest, part_path: String) -> void:
+	if request != _android_download_request:
+		return
+	_android_download_request = null
+	request.queue_free()
+	if result != HTTPRequest.RESULT_SUCCESS or response_code != 200:
+		push_warning("Android update download failed (result=%d, HTTP=%d)" % [
+			result, response_code
+		])
+		_remove_android_download_part()
+		_show_android_download_error(
+			dialog,
+			"Không thể tải bản cập nhật. Hãy kiểm tra kết nối mạng rồi thử lại."
+		)
+		return
+	if not _verify_android_update_file(part_path):
+		_remove_android_download_part()
+		_show_android_download_error(
+			dialog, "Bản tải về bị thiếu hoặc không hợp lệ. Hãy thử tải lại."
+		)
+		return
+	var rename_error := DirAccess.rename_absolute(part_path, _android_update_file)
+	if rename_error != OK:
+		_remove_android_download_part()
+		_show_android_download_error(
+			dialog, "Không thể hoàn tất lưu bản cập nhật trên thiết bị."
+		)
+		return
+	_show_android_update_ready()
+
+
+func _verify_android_update_file(path: String = "") -> bool:
+	var file_path := path if path != "" else _android_update_file
+	if file_path == "" or not FileAccess.file_exists(file_path):
+		return false
+	var file := FileAccess.open(file_path, FileAccess.READ)
+	if file == null:
+		return false
+	if file.get_length() != _android_update_size:
+		file.close()
+		return false
+	var hashing := HashingContext.new()
+	var error := hashing.start(HashingContext.HASH_SHA256)
+	if error != OK:
+		file.close()
+		return false
+	while file.get_position() < file.get_length():
+		var chunk := file.get_buffer(65536)
+		if chunk.is_empty():
+			file.close()
+			return false
+		hashing.update(chunk)
+	file.close()
+	return hashing.finish().hex_encode().to_lower() == _android_update_sha256
+
+
+func _android_update_manifest_path() -> String:
+	return _android_update_file.get_base_dir().path_join("manifest.json")
+
+
+func _load_cached_android_update() -> bool:
+	var manifest_path := _android_update_manifest_path()
+	if not FileAccess.file_exists(manifest_path):
+		return false
+	var file := FileAccess.open(manifest_path, FileAccess.READ)
+	if file == null:
+		return false
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	file.close()
+	if not _is_valid_android_manifest(parsed):
+		return false
+	if available_version != "" and str(parsed["version"]) != available_version:
+		return false
+	_android_update_version = str(parsed["version"])
+	_android_update_sha256 = str(parsed["sha256"]).to_lower()
+	_android_update_size = int(parsed["size"])
+	return _verify_android_update_file()
+
+
+func _show_android_update_ready() -> void:
+	var dialog := _android_download_dialog
+	if dialog == null or not is_instance_valid(dialog):
+		return
+	_android_download_dialog = null
+	dialog.confirmed_launch.connect(_install_android_update.bind(dialog))
+	dialog.show_ready_to_launch(
+		"Đã tải và xác minh APK. Android sẽ yêu cầu bạn xác nhận cài đặt."
+	)
+
+
+func _install_android_update(dialog: Node) -> void:
+	if not _verify_android_update_file():
+		_android_update_version = ""
+		_android_update_sha256 = ""
+		_android_update_size = 0
+		if is_instance_valid(dialog):
+			dialog.queue_free()
+		_start_android_update()
+		return
+	if not Engine.has_singleton("MTSpaceAndroidUpdater"):
+		dialog.show_download_error(
+			"Không thể mở trình cài đặt Android. Hãy tải bản cập nhật từ trang web."
+		)
+		return
+	var updater: Object = Engine.get_singleton("MTSpaceAndroidUpdater")
+	if not bool(updater.call("canRequestInstallPackages")):
+		updater.call("openInstallPermissionSettings")
+		dialog.show_download_error(
+			"Android yêu cầu cho phép MT Space cài ứng dụng. Bật quyền này trong Cài đặt, quay lại game rồi bấm cập nhật lần nữa."
+		)
+		return
+	var install_error: Variant = updater.call("installApk", _android_update_file)
+	if str(install_error) != "":
+		dialog.show_download_error(
+			"Không thể mở trình cài đặt Android: " + str(install_error)
+		)
+		return
+	dialog.queue_free()
+	_android_download_dialog = null
+
+
+func _finish_android_download_error(
+		dialog: Node, request: HTTPRequest, message: String) -> void:
+	if request == _android_download_request:
+		_android_download_request = null
+	if is_instance_valid(request):
+		request.queue_free()
+	_show_android_download_error(dialog, message)
+
+
+func _show_android_download_error(dialog: Node, message: String) -> void:
+	_android_download_dialog = null
+	if is_instance_valid(dialog):
+		dialog.show_download_error(message)
+
+
+func _cancel_android_download() -> void:
+	var request := _android_download_request
+	_android_download_request = null
+	_android_download_dialog = null
+	if request != null and is_instance_valid(request):
+		request.cancel_request()
+		request.queue_free()
+	_remove_android_download_part()
+
+
+func _remove_android_download_part() -> void:
+	var part_path := _android_update_file + ".part"
+	if _android_update_file != "" and FileAccess.file_exists(part_path):
+		DirAccess.remove_absolute(part_path)
 
 
 # Download the update while the game is running. The helper only replaces the

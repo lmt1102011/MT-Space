@@ -53,6 +53,7 @@ func _ready() -> void:
 	add_to_group("boss")
 	collision_layer = 8
 	collision_mask = 13
+	Game.register_boss_spawn(get_instance_id())
 	_update_bar()
 
 
@@ -138,7 +139,10 @@ func _fire_fan(aim_angle: float) -> void:
 	var muzzle := global_position + direction * (radius * 0.82)
 	for spread: float in BARRAGE_SPREAD:
 		var shot_dir := direction.rotated(spread)
-		var bullet := ENEMY_BULLET.instantiate() as EnemyBullet
+		var bullet := Pool.acquire(ENEMY_BULLET,
+			get_tree().current_scene) as EnemyBullet
+		if bullet == null:
+			continue
 		bullet.global_position = muzzle
 		bullet.direction = shot_dir
 		bullet.speed = 380.0
@@ -146,7 +150,6 @@ func _fire_fan(aim_angle: float) -> void:
 		bullet.lifetime = 3.0
 		bullet.beam_length = 25.0
 		bullet.beam_width = 7.0
-		get_tree().current_scene.add_child(bullet)
 		Net.broadcast_enemy_bullet(bullet.global_position, bullet.direction,
 			bullet.speed, bullet.damage, bullet.burn, bullet.freeze,
 			bullet.lifetime, bullet.beam_length, bullet.beam_width)
@@ -157,14 +160,16 @@ func _fire_missile_pair(aim_angle: float) -> void:
 	for side: float in [-1.0, 1.0]:
 		var muzzle_offset := Vector2(-radius * 0.12, side * radius * 0.58).rotated(rotation)
 		var direction := Vector2.from_angle(aim_angle)
-		var missile := BOSS_MISSILE.instantiate() as BossMissile
+		var missile := Pool.acquire(BOSS_MISSILE,
+			get_tree().current_scene) as BossMissile
+		if missile == null:
+			continue
 		missile.global_position = global_position + muzzle_offset
 		missile.direction = direction
 		missile.speed = 195.0
 		missile.turn_rate = 0.85
 		missile.damage = 5 + _damage_bonus
 		missile.lifetime = 7.0
-		get_tree().current_scene.add_child(missile)
 		Net.broadcast_boss_missile(missile.global_position, direction,
 			missile.speed, missile.turn_rate, missile.lifetime)
 
@@ -191,6 +196,7 @@ func take_damage(amount: float, kind: String = "normal") -> void:
 		return
 	if _slow > 0.0:
 		amount *= 1.0 + 0.35 * float(Game.upg_brittle)
+	Game.record_damage(mini(maxi(int(round(amount)), 1), maxi(hp, 0)))
 	hp -= maxi(1, int(round(amount)))
 	_update_bar()
 	_spawn_damage_number(amount, kind)
@@ -199,7 +205,10 @@ func take_damage(amount: float, kind: String = "normal") -> void:
 
 
 func _spawn_damage_number(amount: float, kind: String) -> void:
-	var number := DAMAGE_NUMBER.instantiate() as DamageNumber
+	var number := Pool.acquire(DAMAGE_NUMBER,
+		get_tree().current_scene) as DamageNumber
+	if number == null:
+		return
 	number.global_position = global_position + Vector2(
 		randf_range(-radius * 0.4, radius * 0.4),
 		-radius - randf_range(12.0, 45.0)
@@ -211,7 +220,6 @@ func _spawn_damage_number(amount: float, kind: String) -> void:
 			number.setup(amount, Color(1.0, 0.55, 0.15), 22)
 		_:
 			number.setup(amount, Color(0.82, 0.85, 0.9), 30)
-	get_tree().current_scene.add_child(number)
 
 
 func apply_status(burn_stacks: int, freeze_stacks: int) -> void:
@@ -246,11 +254,12 @@ func _die() -> void:
 	if not _net_alive or NetEnemy.is_remote(self):
 		return
 	_net_alive = false
+	Game.record_boss_kill(get_instance_id())
+	Game.spawn_boss_death_effect(global_position, Color(1.0, 0.62, 0.25), 1.0)
+	Net.broadcast_boss_death_effect(global_position, Color(1.0, 0.62, 0.25), 1.0)
+	Game.combat_impact(1.0)
 	var xp_amount := 350
 	var drop_xp := NetEnemy.died(self, xp_amount)
-	var explosion := EXPLOSION_SCENE.instantiate() as Node2D
-	explosion.global_position = global_position
-	get_tree().current_scene.add_child(explosion)
 	Game.on_enemy_killed()
 	_drop_upgrade_card()
 	if drop_xp:

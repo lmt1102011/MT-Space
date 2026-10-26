@@ -14,8 +14,8 @@ config/name="MT Space"
 run/main_scene="res://scenes/menu.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
-version/name="1.8"
-version/code=9
+version/name="1.9"
+version/code=10
 
 [autoload]
 
@@ -23,7 +23,11 @@ Game="*res://scripts/game.gd"
 Net="*res://scripts/net.gd"
 Web="*res://scripts/web.gd"
 Locale="*res://scripts/locale.gd"
-CardQueue="*res://scripts/card_queue.gd"
+PoolRoot="*res://scripts/object_pool.gd"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/mt_space_android_updater/plugin.cfg")
 
 [display]
 

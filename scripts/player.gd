@@ -11,7 +11,10 @@ extends CharacterBody2D
 @export var push_force: float = 180.0
 
 const BULLET_SCENE := preload("res://scenes/bullet.tscn")
+const ENEMY_BULLET_SCENE := preload("res://scenes/enemy_bullet.tscn")
+const BOSS_MISSILE_SCENE := preload("res://scenes/boss_missile.tscn")
 const EXPLOSION_SCENE := preload("res://scenes/explosion.tscn")
+const ORB_PROJECTILE_SCENE := preload("res://scenes/orb_projectile.tscn")
 const STATUS_VISUAL := preload("res://scripts/status_effect_visual.gd")
 const DAMAGE_NUMBER := preload("res://scenes/damage_number.tscn")
 const MAX_BULLETS := 36          # hard cap on live player bullets
@@ -60,6 +63,7 @@ func _ready() -> void:
 	_base_bullet_speed = bullet_speed
 	_base_fire_cooldown = fire_cooldown
 	hp = max_hp
+	_prewarm_combat_pool.call_deferred()
 	_flame_out = _make_flame(5.0)
 	_flame_in = _make_flame(2.5)
 	_status_visual = STATUS_VISUAL.new()
@@ -73,6 +77,16 @@ func _ready() -> void:
 	# the on screen stick and fire button live in the game scene, the player
 	# only asks for them
 	_setup_touch.call_deferred()
+
+
+func _prewarm_combat_pool() -> void:
+	var world := get_tree().current_scene
+	Pool.prewarm(BULLET_SCENE, MAX_BULLETS, world)
+	Pool.prewarm(ENEMY_BULLET_SCENE, 24, world)
+	Pool.prewarm(BOSS_MISSILE_SCENE, 4, world)
+	Pool.prewarm(EXPLOSION_SCENE, 12, world)
+	Pool.prewarm(DAMAGE_NUMBER, 22, world)
+	Pool.prewarm(ORB_PROJECTILE_SCENE, 4, world)
 
 
 # The on screen sticks live in the game scene, the player only asks for them.
@@ -141,6 +155,7 @@ func max_hp_total() -> int:
 
 func heal(amount: int) -> void:
 	hp = mini(hp + amount, max_hp_total())
+	_refresh_hp_bar()
 
 
 func apply_status(burn: int, freeze: int) -> void:
@@ -168,6 +183,21 @@ func apply_knockback(impulse: Vector2, stun_time: float = 0.5) -> void:
 		return
 	_knock_vel = impulse
 	_stun_t = maxf(_stun_t, stun_time)
+
+
+func apply_hit(amount: float, burn: int = 0, freeze: int = 0,
+		knockback: Vector2 = Vector2.ZERO, stun_time: float = 0.0,
+		orb_damage: bool = false) -> void:
+	if orb_damage:
+		apply_orb_damage(amount)
+	else:
+		take_damage(amount)
+	if _dead:
+		return
+	if burn > 0 or freeze > 0:
+		apply_status(burn, freeze)
+	if stun_time > 0.0 or not knockback.is_zero_approx():
+		apply_knockback(knockback, stun_time)
 
 
 func _physics_process(delta: float) -> void:
@@ -342,7 +372,10 @@ func _shoot(delta: float) -> void:
 func _spawn_bullet(dir: Vector2, spd: float, dmg: float, burn: int, freeze: int,
 		_spread: float, offset: Vector2 = Vector2.ZERO, life_mult: float = 1.0,
 		pierce: int = 0, length: float = 26.0, width: float = 5.0, col: Color = Color(1.0, 0.9, 0.2)) -> void:
-	var bullet := BULLET_SCENE.instantiate()
+	_limit_bullets()
+	var bullet := Pool.acquire(BULLET_SCENE, get_tree().current_scene) as PlayerBullet
+	if bullet == null:
+		return
 	bullet.global_position = global_position + dir * 26.0 + offset
 	bullet.direction = dir.rotated(randf_range(-bullet_spread, bullet_spread))
 	bullet.speed = spd
@@ -370,8 +403,6 @@ func _spawn_bullet(dir: Vector2, spd: float, dmg: float, burn: int, freeze: int,
 	if Game.upg_momentum > 0 and velocity.length() >= _base_max_speed * 0.6:
 		bullet.damage *= 1.0 + 0.15 * float(Game.upg_momentum)
 	bullet.lifetime *= 1.0 + Game.upg_range
-	_limit_bullets()
-	get_tree().current_scene.add_child(bullet)
 	Net.broadcast_player_bullet(bullet.global_position, bullet.direction, bullet.speed,
 		bullet.lifetime, bullet.beam_length, bullet.beam_width, bullet.beam_color)
 	Game.sfx("shoot", -14.0, 0.97, 1.04)
@@ -391,7 +422,10 @@ func _limit_bullets() -> void:
 			best = lt
 			oldest = b
 	if oldest != null:
-		oldest.queue_free()
+		if oldest.has_method("recycle"):
+			oldest.call("recycle")
+		else:
+			oldest.queue_free()
 
 
 func _process(delta: float) -> void:
@@ -434,6 +468,7 @@ func _take_whole_damage(amount: int) -> void:
 	# Hull Plating: soften every incoming hit a little
 	amount = maxi(1, amount - Game.upg_plating)
 	hp -= amount
+	_refresh_hp_bar()
 	# Thorns: being hit hurts whatever is standing close
 	if Game.upg_thorns > 0:
 		_damage_nearby(float(amount) * 0.3, 80.0 + 15.0 * float(Game.upg_thorns))
@@ -445,19 +480,29 @@ func _take_whole_damage(amount: int) -> void:
 	tw.tween_property(_sprite, "modulate", Color.WHITE, 0.18)
 	if hp <= 0:
 		hp = 0
+		_refresh_hp_bar()
 		_die()
 
 
+func _refresh_hp_bar() -> void:
+	_hp_drawn = hp
+	queue_redraw()
+
+
 func _spawn_damage_number(amount: float, color: Color, font_size: int = 24) -> void:
-	var n := DAMAGE_NUMBER.instantiate() as DamageNumber
+	var n := Pool.acquire(DAMAGE_NUMBER, get_tree().current_scene) as DamageNumber
+	if n == null:
+		return
 	n.global_position = global_position + Vector2(randf_range(-26.0, 26.0), randf_range(-34.0, -12.0))
 	n.setup(amount, color, font_size)
-	get_tree().current_scene.add_child(n)
 
 
 func _damage_nearby(amount: float, radius: float) -> void:
+	const ENEMY_INDEX := preload("res://scripts/enemy_spatial_index.gd")
 	var r2 := radius * radius
-	for e in get_tree().get_nodes_in_group("enemy"):
+	var search := Rect2(global_position - Vector2.ONE * radius,
+		Vector2.ONE * radius * 2.0)
+	for e in ENEMY_INDEX.query_rect(get_tree(), search):
 		var n := e as Node2D
 		if n == null or not is_instance_valid(n):
 			continue
@@ -472,6 +517,7 @@ func _dot_damage(amount: float) -> void:
 		return
 	var dmg: float = ceilf(amount)
 	hp -= int(dmg)
+	_refresh_hp_bar()
 	_spawn_damage_number(dmg, Color(1.0, 0.6, 0.2), 18)
 	if hp <= 0:
 		hp = 0
@@ -485,10 +531,12 @@ func _die() -> void:
 		hp = maxi(1, int(round(float(max_hp_total()) * 0.5)))
 		invuln = 1.5
 		_shield_t = 1.2
+		_refresh_hp_bar()
 		Game.sfx("cardget", -8.0, 0.98, 1.05)
 		return
 	_dead = true
 	Game.player_dead = true
+	Game.finish_run()
 	Game.set_fire(false)
 	Net.send_player_death(Game.spectate_target if Game.spectate_mode else 0, Game.level)
 	# The physics loop stops below; send the death immediately instead of
@@ -501,10 +549,11 @@ func _die() -> void:
 	set_physics_process(false)
 	_shake_t = 1.0
 	await get_tree().create_timer(1.0).timeout
-	var boom := EXPLOSION_SCENE.instantiate() as Explosion
-	boom.setup(3.0)
-	boom.global_position = global_position
-	get_tree().current_scene.add_child(boom)
+	var boom := Pool.acquire(EXPLOSION_SCENE,
+		get_tree().current_scene) as Explosion
+	if boom != null:
+		boom.setup(3.0, Color(1.0, 0.42, 0.35))
+		boom.global_position = global_position
 	Game.sfx("boom_big", -8.0, 0.85, 1.02)
 	_sprite.visible = false
 	# the name under the ship is not needed while the ship is a ghost

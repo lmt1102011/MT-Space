@@ -36,11 +36,49 @@ var _shape_timer: float = 0.0
 
 
 func _ready() -> void:
+	Game.start_run()
 	# the host runs the waves, a client only follows what the host says
 	if _is_client():
 		return
 	await get_tree().create_timer(0.5).timeout
+	var gm = get_node_or_null("/root/Game")
+	if gm != null and bool(gm.get("test_mode")):
+		var td = gm.get("test_data")
+		if typeof(td) == TYPE_DICTIONARY and int(td.get("wave", 0)) > 0:
+			gm.wave = int(td.get("wave", 1)) - 1
 	_start_next_wave()
+
+# In test mode the wave spawns exactly what the test menu picked instead of
+# the normal wave composition, so a test run stays predictable.
+func _test_wave_spawns() -> Array:
+	if not Game.test_mode:
+		return []
+	var td: Dictionary = Game.test_data
+	var out: Array = []
+	var enemy := str(td.get("spawn_enemy", ""))
+	var boss := str(td.get("spawn_boss", ""))
+	if enemy != "":
+		for i in 3:
+			out.append(enemy)
+	if boss != "":
+		out.append(boss)
+	return out
+
+
+# Jump straight to a wave (used by the in-game TEST MENU).
+func test_jump_wave(n: int) -> void:
+	if _is_client():
+		return
+	Game.wave = maxi(n - 1, 0)
+	_spawn_queue.clear()
+	_start_next_wave()
+
+
+# Spawn one enemy right now (used by the in-game TEST MENU).
+func test_spawn_now(kind: String) -> void:
+	if _is_client():
+		return
+	_spawn_enemy(kind)
 
 
 # True when this machine is a client in a network game.
@@ -51,6 +89,18 @@ func _is_client() -> bool:
 func _process(delta: float) -> void:
 	# a client does not think for itself, the host tells it what to show
 	if _is_client():
+		return
+	if Game.test_mode:
+		if _phase == "spawning":
+			_spawn_timer -= delta
+			if _spawn_timer <= 0.0 and not _spawn_queue.is_empty():
+				_spawn_timer = spawn_interval
+				_spawn_from_queue()
+			if _spawn_queue.is_empty():
+				_phase = "clearing"
+		elif _phase == "clearing" \
+				and get_tree().get_nodes_in_group("monster").is_empty():
+			_phase = "test_idle"
 		return
 	# the swarm shapes keep coming on their own, they are not part of a wave
 	_spawn_shapes(delta)
@@ -83,6 +133,8 @@ func _process(delta: float) -> void:
 
 # Trickles in the ambient swarm shapes, up to the cap on how many are alive.
 func _spawn_shapes(delta: float) -> void:
+	if Game.test_mode:
+		return
 	if Game.wave > 0 and Game.wave % BOSS_WAVE_INTERVAL == 0:
 		return
 	_shape_timer -= delta
@@ -117,6 +169,7 @@ func _start_next_wave() -> void:
 	if world != null and world.has_method("revive_remote_players"):
 		world.call("revive_remote_players")
 	Game.wave += 1
+	Game.record_wave(Game.wave)
 	Game.wave_changed.emit(Game.wave)
 	Game.sfx("alert", -17.0, 0.97, 1.05)
 	_build_queue(Game.wave)
@@ -128,6 +181,9 @@ func _start_next_wave() -> void:
 
 func _build_queue(wave: int) -> int:
 	_spawn_queue.clear()
+	if Game.test_mode:
+		_spawn_queue.append_array(_test_wave_spawns())
+		return _spawn_queue.size()
 	if wave % 20 == 0:
 		for i in randi_range(1, 3):
 			_spawn_queue.append("boss2")
@@ -243,7 +299,7 @@ func _spawn_enemy(kind: String, boss_minion: bool = false) -> void:
 		var dist := randf_range(near, far)
 		pos = center + Vector2.from_angle(angle) * dist
 		pos = pos.clamp(Vector2(-2630, -1530), Vector2(2630, 1530))
-		if pos.distance_to(center) >= near:
+		if pos.distance_squared_to(center) >= near * near:
 			break
 
 	var speed_mult := Game.enemy_speed_mult()

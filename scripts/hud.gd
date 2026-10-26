@@ -3,6 +3,7 @@ extends CanvasLayer
 const CardScript := preload("res://scripts/card.gd")
 const NAME_PROMPT := preload("res://scenes/name_prompt.tscn")
 const SETTINGS_ICON := preload("res://assets/icons/settings.svg")
+const TEST_MENU := preload("res://scripts/test_menu.gd")
 
 @onready var _wave_label: Label = $WaveLabel
 @onready var _clear_label: Label = $WaveClear
@@ -58,6 +59,10 @@ func _ready() -> void:
 	_clear_label.visible = false
 	_countdown_label.visible = false
 	_setup_settings()
+	if Game.test_mode:
+		var test_menu: Control = TEST_MENU.new()
+		test_menu.name = "TestMenu"
+		add_child(test_menu)
 
 
 func _on_player_name_taken() -> void:
@@ -121,7 +126,10 @@ func _on_settings_quit() -> void:
 # Leaving a match goes back to the lobby, it does not close the whole game.
 func _leave_to_lobby() -> void:
 	Game.set_fire(false)
+	Game.finish_run()
 	Game.reset_run()
+	Game.test_mode = false
+	Game.test_data = {}
 	Net.leave()
 	call_deferred("_change_to_lobby")
 
@@ -152,11 +160,13 @@ func _on_spectate_changed(_target_id: int) -> void:
 
 # A new version is up there, the button shows up.
 func _on_update_available(_version: String) -> void:
-	if _update_btn:
+	if _update_btn and not Game.test_mode:
 		_update_btn.visible = true
 		var text := "NEW VERSION - UPDATE"
 		var locale := get_node_or_null("/root/Locale")
 		_update_btn.text = locale.translate_text(text) if locale else text
+	elif _update_btn:
+		_update_btn.visible = false
 	Web.hide_web_update_button()
 
 
@@ -306,47 +316,68 @@ func _on_game_over() -> void:
 	_game_over_layer.add_child(dim)
 
 	var title_label := Label.new()
-	title_label.text = "GAME OVER"
+	var locale := get_node_or_null("/root/Locale")
+	title_label.text = str(locale.call("translate_text", "GAME OVER")) \
+		if locale else "GAME OVER"
 	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	title_label.offset_left = -400.0
 	title_label.offset_right = 400.0
-	title_label.offset_top = 190.0
-	title_label.offset_bottom = 270.0
-	title_label.add_theme_font_size_override("font_size", 56)
+	title_label.offset_top = 90.0
+	title_label.offset_bottom = 160.0
+	title_label.add_theme_font_size_override("font_size", 52)
 	title_label.add_theme_color_override("font_color", Color(0.95, 0.35, 0.35))
 	title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_game_over_layer.add_child(title_label)
 
+	var summary_label := Label.new()
+	summary_label.text = _format_run_summary(Game.latest_run)
+	summary_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	summary_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	summary_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	summary_label.set_anchors_preset(Control.PRESET_CENTER)
+	summary_label.offset_left = -260.0
+	summary_label.offset_right = 260.0
+	summary_label.offset_top = -105.0
+	summary_label.offset_bottom = 5.0
+	summary_label.add_theme_font_size_override("font_size", 18)
+	summary_label.add_theme_color_override("font_color", Color(0.82, 0.9, 1.0))
+	summary_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_game_over_layer.add_child(summary_label)
+
 	_play_again_btn = Button.new()
-	_play_again_btn.text = "PLAY AGAIN"
+	_play_again_btn.text = str(locale.call("translate_text", "PLAY AGAIN")) \
+		if locale else "PLAY AGAIN"
 	_play_again_btn.set_anchors_preset(Control.PRESET_CENTER)
 	_play_again_btn.offset_left = -110.0
 	_play_again_btn.offset_right = 110.0
-	_play_again_btn.offset_top = -24.0
-	_play_again_btn.offset_bottom = 24.0
+	_play_again_btn.offset_top = 45.0
+	_play_again_btn.offset_bottom = 93.0
 	_play_again_btn.add_theme_font_size_override("font_size", 24)
 	_play_again_btn.pressed.connect(_on_play_again)
 	_game_over_layer.add_child(_play_again_btn)
 
 	_menu_btn = Button.new()
-	_menu_btn.text = "MAIN MENU"
+	_menu_btn.text = str(locale.call("translate_text", "MAIN MENU")) \
+		if locale else "MAIN MENU"
 	_menu_btn.set_anchors_preset(Control.PRESET_CENTER)
 	_menu_btn.offset_left = -110.0
 	_menu_btn.offset_right = 110.0
-	_menu_btn.offset_top = 34.0
-	_menu_btn.offset_bottom = 78.0
+	_menu_btn.offset_top = 103.0
+	_menu_btn.offset_bottom = 147.0
 	_menu_btn.add_theme_font_size_override("font_size", 18)
 	_menu_btn.pressed.connect(_on_main_menu)
 	_game_over_layer.add_child(_menu_btn)
 
 	dim.modulate.a = 0.0
 	title_label.modulate.a = 0.0
+	summary_label.modulate.a = 0.0
 	_play_again_btn.modulate.a = 0.0
 	_menu_btn.modulate.a = 0.0
 	var tw := create_tween()
 	tw.tween_property(dim, "modulate:a", 1.0, 0.6)
 	tw.parallel().tween_property(title_label, "modulate:a", 1.0, 0.8)
+	tw.parallel().tween_property(summary_label, "modulate:a", 1.0, 0.8)
 	tw.tween_interval(0.3)
 	tw.tween_property(_play_again_btn, "modulate:a", 1.0, 1.5)
 	tw.parallel().tween_property(_menu_btn, "modulate:a", 1.0, 1.5)
@@ -365,10 +396,68 @@ func _on_play_again() -> void:
 
 func _on_main_menu() -> void:
 	Game.sfx("click", -14.0, 0.95, 1.05)
+	Game.finish_run()
 	Game.reset_run()
+	Game.test_mode = false
+	Game.test_data = {}
 	Net.leave()
 	call_deferred("_change_to_menu")
 
 
 func _change_to_menu() -> void:
 	get_tree().change_scene_to_file("res://scenes/menu.tscn")
+
+
+func _format_run_summary(run: Dictionary) -> String:
+	if run.is_empty():
+		return ""
+	var locale := get_node_or_null("/root/Locale")
+	var wave_text := "WAVE %d" % int(run.get("wave", 0))
+	var bosses := "%s %d" % [
+		locale.translate_text("BOSSES") if locale else "BOSSES",
+		int(run.get("bosses", 0)),
+	]
+	var damage := "%s %d" % [
+		locale.translate_text("DAMAGE") if locale else "DAMAGE",
+		int(run.get("damage", 0)),
+	]
+	var seconds := int(run.get("seconds", 0.0))
+	var survived := "%s %02d:%02d" % [
+		locale.translate_text("SURVIVED") if locale else "SURVIVED",
+		seconds / 60,
+		seconds % 60,
+	]
+	var boss_kill_seconds := int(run.get("average_boss_kill_seconds", 0.0))
+	var boss_ttk := "%s %02d:%02d" % [
+		locale.call("translate_text", "BOSS TTK") if locale else "BOSS TTK",
+		boss_kill_seconds / 60,
+		boss_kill_seconds % 60,
+	]
+	var build: Array = run.get("build", [])
+	var shown_build := PackedStringArray()
+	for index in mini(build.size(), 3):
+		shown_build.append(Game.build_item_label(str(build[index])))
+	if build.size() > 3:
+		shown_build.append("+%d" % (build.size() - 3))
+	var build_text := ", ".join(shown_build)
+	var build_label := str(locale.call("translate_text", "BUILD")) \
+		if locale else "BUILD"
+	if locale:
+		wave_text = str(locale.call("translate_text", wave_text))
+		bosses = "%s %d" % [
+			locale.call("translate_text", "BOSSES"), int(run.get("bosses", 0))]
+		damage = "%s %d" % [
+			locale.call("translate_text", "DAMAGE"), int(run.get("damage", 0))]
+		survived = "%s %02d:%02d" % [
+			locale.call("translate_text", "SURVIVED"),
+			seconds / 60,
+			seconds % 60,
+		]
+		boss_ttk = "%s %02d:%02d" % [
+			locale.call("translate_text", "BOSS TTK"),
+			boss_kill_seconds / 60,
+			boss_kill_seconds % 60,
+		]
+	return "%s   %s\n%s   %s\n%s\n%s: %s" % [
+		wave_text, bosses, damage, survived, boss_ttk, build_label, build_text,
+	]

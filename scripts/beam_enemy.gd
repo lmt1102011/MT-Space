@@ -1,11 +1,13 @@
 extends CharacterBody2D
 
-@export var max_hp: int = 14
-@export var move_speed: float = 95.0
-@export var charge_time: float = 2.4
-@export var fire_cooldown: float = 3.4
-@export var beam_range: float = 1900.0
+@export var max_hp: int = 16
+@export var move_speed: float = 110.0
+@export var charge_time: float = 1.8
+@export var fire_cooldown: float = 2.7
+@export var beam_range: float = 2000.0
 @export var beam_damage: int = 4
+@export var beam_knockback: float = 430.0
+@export var enemy_scale: float = 1.15
 
 var hp: int = 14
 var net_id: int = 0
@@ -48,9 +50,9 @@ const BEAM_TEX := preload("res://assets/beam.svg")
 const BEAM_CORE_TEX := preload("res://assets/beam_core.svg")
 const STATUS_VISUAL := preload("res://scripts/status_effect_visual.gd")
 const MUZZLE := Vector2(30.0, 0.0)
-const BEAM_DURATION := 1.2
+const BEAM_DURATION := 1.4
 const BEAM_START_DELAY := 0.22
-const BEAM_TICK_INTERVAL := 0.125
+const BEAM_TICK_INTERVAL := 0.12
 const BEAM_DAMAGE_PER_TICK := 0.1
 
 @onready var _sprite: Sprite2D = $Sprite2D
@@ -65,9 +67,10 @@ func _ready() -> void:
 	collision_layer = 8
 	collision_mask = 13
 	hp = max_hp
+	scale = Vector2(enemy_scale, enemy_scale)
 	_build_attack_sprites()
 	_status_visual = STATUS_VISUAL.new()
-	_status_visual.set("radius", 30.0)
+	_status_visual.set("radius", 36.0)
 	_status_visual.z_index = 2
 	add_child(_status_visual)
 	_update_bar()
@@ -118,8 +121,9 @@ func setup(speed_mult: float = 1.0, dmg_bonus: int = 0,
 	move_speed *= speed_mult
 	beam_damage += dmg_bonus
 	fire_cooldown /= maxf(fire_mult, 0.1)
-	max_hp = int(round(float(max_hp) * hp_mult))
+	max_hp = int(round(float(max_hp) * hp_mult * 1.15))
 	hp = max_hp
+	scale = Vector2(enemy_scale, enemy_scale)
 	_update_bar()
 
 
@@ -147,7 +151,7 @@ func _physics_process(delta: float) -> void:
 		if _phase == "charge":
 			_phase_time += delta
 			if target != null:
-				_aim_at(target, delta, 3.0)
+				_aim_at(target, delta, 5.0)
 			_update_visuals("charge", clampf(_phase_time / charge_time, 0.0, 1.0))
 			if _phase_time >= charge_time:
 				_start_fire()
@@ -155,7 +159,8 @@ func _physics_process(delta: float) -> void:
 			_cooldown = maxf(_cooldown - delta, 0.0)
 			_update_visuals("move", 0.0)
 			if target != null and _cooldown <= 0.0 \
-					and global_position.distance_to(target.global_position) <= 900.0:
+					and global_position.distance_squared_to(target.global_position) \
+					<= 1100.0 * 1100.0:
 				_start_charge()
 	_bar.global_position = global_position + Vector2(0.0, 38.0)
 	_bar.global_rotation = 0.0
@@ -185,14 +190,16 @@ func _move_step(delta: float, target: Node2D) -> void:
 
 
 func _aim_at(target: Node2D, delta: float, turn_rate: float) -> void:
+	if target == null or not is_instance_valid(target):
+		return
 	var wanted := (target.global_position - global_position).angle()
-	rotation = lerp_angle(rotation, wanted, clampf(turn_rate * delta, 0.0, 1.0))
+	rotation = lerp_angle(rotation, wanted, clampf(turn_rate * delta * 2.0, 0.0, 1.0))
 
 
 func _start_charge() -> void:
 	_phase = "charge"
 	_phase_time = 0.0
-	Game.sfx("charge", -15.0, 0.9, 1.15)
+	Game.sfx("charge", -12.0, 0.9, 1.08)
 	Net.broadcast_enemy_attack_state(net_id, "charge", charge_time)
 
 
@@ -202,19 +209,14 @@ func _start_fire() -> void:
 	_fire_start_angle = rotation
 	_beam_hits.clear()
 	_beam_players = get_tree().get_nodes_in_group("player")
-	Game.sfx("laser", -9.0, 0.72, 0.82)
+	Game.sfx("laser", -9.0, 0.9, 1.0)
 	Net.broadcast_enemy_attack_state(net_id, "fire", BEAM_DURATION)
 
 
 func _fire_step(delta: float, target: Node2D) -> void:
 	_phase_time += delta
 	velocity = Vector2.ZERO
-	if _phase_time >= BEAM_START_DELAY and target != null:
-		var wanted := (target.global_position - global_position).angle()
-		var offset := clampf(angle_difference(_fire_start_angle, wanted), -0.65, 0.65)
-		var limited_angle := _fire_start_angle + offset
-		rotation = lerp_angle(rotation, limited_angle,
-			clampf(1.25 * delta, 0.0, 1.0))
+	# do not track during fire, keep locked aim from charge
 	if _phase_time >= BEAM_START_DELAY and _phase_time <= BEAM_DURATION:
 		_hit_players_with_beam()
 	_update_visuals("fire", _phase_time / BEAM_DURATION)
@@ -226,7 +228,7 @@ func _fire_step(delta: float, target: Node2D) -> void:
 
 func _hit_players_with_beam() -> void:
 	var direction := Vector2.RIGHT.rotated(rotation)
-	var origin := global_position + direction * MUZZLE.x
+	var origin := global_position + direction * MUZZLE.x * enemy_scale
 	for candidate in _beam_players:
 		var player := candidate as Node2D
 		if player == null or not is_instance_valid(player):
@@ -236,19 +238,30 @@ func _hit_players_with_beam() -> void:
 		var player_id := player.get_instance_id()
 		var offset := player.global_position - origin
 		var along := offset.dot(direction)
-		if along < 0.0 or along > beam_range:
+		if along < 0.0 or along > beam_range * enemy_scale:
 			continue
 		var lateral := absf(direction.cross(offset))
-		if lateral > 42.0:
+		if lateral > 48.0 * enemy_scale:
 			continue
 		var next_hit := float(_beam_hits.get(player_id, 0.0))
 		if _phase_time < next_hit:
 			continue
 		_beam_hits[player_id] = _phase_time + BEAM_TICK_INTERVAL
-		if player.has_method("apply_orb_damage"):
-			player.apply_orb_damage(BEAM_DAMAGE_PER_TICK)
-		elif player.has_method("take_damage"):
-			player.take_damage(BEAM_DAMAGE_PER_TICK)
+		var push_dir := (player.global_position - origin).normalized()
+		if player.has_method("apply_hit"):
+			player.call("apply_hit", BEAM_DAMAGE_PER_TICK, 0, 0,
+				push_dir * beam_knockback, 0.16, true)
+		else:
+			if player.has_method("apply_orb_damage"):
+				player.apply_orb_damage(BEAM_DAMAGE_PER_TICK)
+			elif player.has_method("take_damage"):
+				player.take_damage(BEAM_DAMAGE_PER_TICK)
+			if player.has_method("apply_knockback"):
+				player.apply_knockback(push_dir * beam_knockback, 0.16)
+
+
+func delta_scale() -> float:
+	return get_physics_process_delta_time() * 60.0
 
 
 func _update_visuals(phase: String, progress: float) -> void:
@@ -259,18 +272,24 @@ func _update_visuals(phase: String, progress: float) -> void:
 	_warning_line.visible = charging
 	_beam_outer.visible = firing
 	_beam_core.visible = firing
+	_warning_line.scale = Vector2(beam_range * enemy_scale / 64.0, 0.9)
+	_warning_line.position = Vector2(MUZZLE.x + beam_range * enemy_scale * 0.5, 0.0)
+	_beam_outer.position = _warning_line.position
+	_beam_outer.scale = Vector2(beam_range * enemy_scale / 64.0, 1.9)
+	_beam_core.position = _warning_line.position
+	_beam_core.scale = Vector2(beam_range * enemy_scale / 64.0, 0.95)
 	if charging:
-		var diameter := lerpf(8.0, 38.0, clampf(progress, 0.0, 1.0))
+		var diameter := lerpf(8.0, 34.0, clampf(progress, 0.0, 1.0))
 		_charge_ring.scale = Vector2.ONE * diameter / 120.0
-		_charge_ring.modulate.a = lerpf(0.25, 0.95, progress)
-		var orb_size := lerpf(0.18, 0.36, progress)
+		_charge_ring.modulate.a = lerpf(0.25, 0.9, progress)
+		var orb_size := lerpf(0.18, 0.32, progress)
 		_charge_orb.scale = Vector2.ONE * orb_size
-		_warning_line.modulate.a = lerpf(0.12, 0.55, progress)
+		_warning_line.modulate.a = lerpf(0.14, 0.48, progress)
 	if firing:
 		var fade_start := 1.0 - 0.25 / BEAM_DURATION
 		var fade := 1.0 - clampf((progress - fade_start) / (0.25 / BEAM_DURATION),
 			0.0, 1.0)
-		_beam_outer.modulate.a = 0.85 * fade
+		_beam_outer.modulate.a = 0.88 * fade
 		_beam_core.modulate.a = fade
 
 
@@ -288,6 +307,7 @@ func take_damage(amount: float, kind: String = "normal") -> void:
 		return
 	if _slow > 0.0:
 		amount *= 1.0 + 0.35 * float(Game.upg_brittle)
+	Game.record_damage(mini(maxi(int(round(amount)), 1), maxi(hp, 0)))
 	hp -= maxi(1, int(round(amount)))
 	_update_bar()
 	if hp <= 0:
@@ -335,9 +355,13 @@ func _die() -> void:
 	_net_alive = false
 	var xp := 25
 	var drop_xp := NetEnemy.died(self, xp)
-	var boom := EXPLOSION_SCENE.instantiate() as Node2D
+	var boom := Pool.acquire(EXPLOSION_SCENE,
+		get_tree().current_scene) as Explosion
+	if boom == null:
+		return
 	boom.global_position = global_position
-	get_tree().current_scene.add_child(boom)
+	boom.setup(1.1, Color(0.25, 0.45, 1.0))
+	Game.combat_impact(0.8)
 	Game.on_enemy_killed()
 	if drop_xp:
 		XP_DROP.drop(get_tree(), global_position, xp)

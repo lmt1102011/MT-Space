@@ -97,6 +97,7 @@ func take_damage(amount: float, kind: String = "normal") -> void:
 		return
 	if _slow > 0.0:
 		amount *= 1.0 + 0.35 * float(Game.upg_brittle)
+	Game.record_damage(mini(maxi(int(round(amount)), 1), maxi(hp, 0)))
 	hp -= maxi(1, int(round(amount)))
 	_update_bar()
 	_spawn_damage_number(amount)
@@ -151,28 +152,38 @@ func _detonate(hit_player: bool, shot_down: bool) -> void:
 			continue
 		if player.get("_dead") == true or player.get("net_alive") == false:
 			continue
-		var distance := player.global_position.distance_to(global_position)
-		if distance > blast_radius:
+		var distance_sq := player.global_position.distance_squared_to(global_position)
+		if distance_sq > blast_radius * blast_radius:
 			continue
-		var damage := 3 if hit_player and distance < 70.0 else 1
-		if player.has_method("take_damage"):
-			player.take_damage(damage)
-		if player.has_method("apply_knockback"):
-			var away := (player.global_position - global_position).normalized()
-			player.apply_knockback(away * 220.0, 0.35)
-	var explosion := EXPLOSION_SCENE.instantiate() as Node2D
+		var damage := 3 if hit_player and distance_sq < 70.0 * 70.0 else 1
+		var away := (player.global_position - global_position).normalized()
+		if player.has_method("apply_hit"):
+			player.call("apply_hit", float(damage), 0, 0,
+				away * 220.0, 0.35, true)
+		else:
+			if player.has_method("apply_orb_damage"):
+				player.apply_orb_damage(float(damage))
+			elif player.has_method("take_damage"):
+				player.take_damage(damage)
+			if player.has_method("apply_knockback"):
+				player.apply_knockback(away * 220.0, 0.35)
+	var explosion := Pool.acquire(EXPLOSION_SCENE,
+		get_tree().current_scene) as Explosion
+	if explosion == null:
+		return
 	explosion.global_position = global_position
-	explosion.call("setup", 1.8 if hit_player else 0.9)
-	get_tree().current_scene.add_child(explosion)
+	explosion.setup(1.8 if hit_player else 0.9)
 	Net.broadcast_boss_drone_explosion(global_position, hit_player)
 	queue_free()
 
 
 func _spawn_damage_number(amount: float) -> void:
-	var number := DAMAGE_NUMBER.instantiate()
+	var number := Pool.acquire(DAMAGE_NUMBER,
+		get_tree().current_scene) as DamageNumber
+	if number == null:
+		return
 	number.global_position = global_position + Vector2(0.0, -25.0)
 	number.setup(amount, Color(0.82, 0.85, 0.9), 20)
-	get_tree().current_scene.add_child(number)
 
 
 func _update_bar() -> void:

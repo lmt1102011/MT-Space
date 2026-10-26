@@ -142,7 +142,7 @@ func _update_bar() -> void:
 
 
 func _get_player() -> Node2D:
-	if not Net.is_host():
+	if Net.is_online() and not Net.is_host():
 		return null
 	_player = Net.target_player(global_position)
 	return _player
@@ -256,15 +256,23 @@ func _dash(delta: float) -> void:
 		var c := get_slide_collision(i)
 		var other := c.get_collider()
 		if other and other.is_in_group("player"):
-			if other.has_method("apply_knockback"):
-				other.apply_knockback(_dash_dir * knockback_force, stun_time)
-			if other.has_method("take_damage"):
-				other.take_damage(dash_damage)
+			_hit_player(other)
 	if _state_t >= dash_time:
 		_state = State.CHASE
 		_state_t = 0.0
 		_dash_cd = dash_cooldown
 		velocity = _dash_dir * 120.0
+
+
+func _hit_player(player: Node) -> void:
+	if player.has_method("apply_hit"):
+		player.call("apply_hit", dash_damage, 0, 0,
+			_dash_dir * knockback_force, stun_time)
+		return
+	if player.has_method("take_damage"):
+		player.take_damage(dash_damage)
+	if player.has_method("apply_knockback"):
+		player.apply_knockback(_dash_dir * knockback_force, stun_time)
 
 
 func _face(target: Node2D, delta: float) -> void:
@@ -316,7 +324,9 @@ func _tick_status(delta: float, apply_burn_damage: bool = true) -> void:
 
 
 func _spawn_damage_number(amount: float, kind: String) -> void:
-	var n := DAMAGE_NUMBER.instantiate() as DamageNumber
+	var n := Pool.acquire(DAMAGE_NUMBER, get_tree().current_scene) as DamageNumber
+	if n == null:
+		return
 	n.global_position = global_position + Vector2(randf_range(-24.0, 24.0), randf_range(-36.0, -12.0))
 	match kind:
 		"crit":
@@ -325,7 +335,6 @@ func _spawn_damage_number(amount: float, kind: String) -> void:
 			n.setup(amount, Color(1.0, 0.55, 0.15), 18)
 		_:
 			n.setup(amount, Color(0.82, 0.85, 0.9), 22)
-	get_tree().current_scene.add_child(n)
 
 
 func take_damage(amount: float, kind: String = "normal") -> void:
@@ -335,6 +344,7 @@ func take_damage(amount: float, kind: String = "normal") -> void:
 	# Brittle: frozen targets are softer
 	if _slow > 0.0:
 		amount *= 1.0 + 0.35 * float(Game.upg_brittle)
+	Game.record_damage(mini(maxi(int(round(amount)), 0), maxi(hp, 0)))
 	hp -= int(round(amount))
 	_update_bar()
 	_spawn_damage_number(amount, kind)
@@ -411,13 +421,17 @@ func _die() -> void:
 		return
 	var xp := 15
 	var drop := NetEnemy.died(self, xp)
-	var boom := preload("res://scenes/explosion.tscn").instantiate() as Explosion
+	var boom := Pool.acquire(preload("res://scenes/explosion.tscn"),
+		get_tree().current_scene) as Explosion
+	if boom == null:
+		return
 	boom.global_position = global_position
-	get_tree().current_scene.add_child(boom)
 	if Game.upg_lifesteal:
 		var pl := get_tree().get_first_node_in_group("player")
 		if pl and pl.has_method("heal"):
 			pl.heal(1)
+	boom.setup(1.0, Color(1.0, 0.75, 0.3))
+	Game.combat_impact(0.8)
 	Game.on_enemy_killed()
 	if elite:
 		drop_elite_card()

@@ -14,8 +14,12 @@ const MIN_GAP := {
 	"hit": 0.05,
 	"blip": 0.045,
 	"boom": 0.06,
+	"boom_big": 0.35,
 	"shatter": 0.06,
 	"crunch": 0.06,
+	"fanfare": 0.35,
+	"elite": 0.3,
+	"charge": 0.2,
 	"frost": 0.15,
 	"click": 0.08,
 }

@@ -4,8 +4,9 @@ extends CharacterBody2D
 @export var move_speed: float = 48.0
 @export var radius: float = 76.0
 @export var contact_damage: int = 3
-@export var wave_radius: float = 520.0
-@export var wave_duration: float = 0.85
+@export var wave_radius: float = 760.0
+@export var wave_duration: float = 0.38
+@export_range(1.0, 80.0) var wave_half_angle_degrees: float = 44.0
 @export var wave_damage: int = 3
 @export var wave_stun: float = 2.0
 @export var attack_cooldown: float = 7.0
@@ -32,7 +33,9 @@ var _warning_time: float = -1.0
 var _warning_center := Vector2.ZERO
 var _remote_warning_time: float = 0.0
 var _remote_warning_center := Vector2.ZERO
-var _warning_ring: Sprite2D
+var _warning_ring: Polygon2D
+var _cannon_glow: Polygon2D
+var _warning_direction := Vector2.RIGHT
 
 const NetEnemy := preload("res://scripts/net_enemy.gd")
 const XP_DROP := preload("res://scripts/xp_pickup.gd")
@@ -55,17 +58,19 @@ func _ready() -> void:
 	collision_layer = 8
 	collision_mask = 13
 	hp = max_hp
-	_warning_ring = Sprite2D.new()
-	_warning_ring.texture = WARNING_TEX
+	_warning_ring = Polygon2D.new()
+	_warning_ring.polygon = _sector_polygon(0.0)
 	_warning_ring.top_level = true
 	_warning_ring.z_index = -1
-	_warning_ring.modulate = Color(0.55, 0.8, 1.0, 0.3)
+	_warning_ring.color = Color(1.0, 0.08, 0.06, 0.32)
 	_warning_ring.visible = false
 	add_child(_warning_ring)
+	_add_sonic_cannon()
 	_status_visual = STATUS_VISUAL.new()
 	_status_visual.set("radius", radius)
 	_status_visual.z_index = 2
 	add_child(_status_visual)
+	Game.register_boss_spawn(get_instance_id())
 	_update_bar()
 
 
@@ -87,8 +92,12 @@ func _physics_process(delta: float) -> void:
 		NetEnemy.follow(self, delta)
 		_tick_status(delta, false)
 		_remote_warning_time = maxf(_remote_warning_time - delta, 0.0)
+		_warning_direction = (
+			_remote_warning_center - global_position
+		).normalized()
 		_update_warning(_remote_warning_time > 0.0,
-			1.0 - _remote_warning_time / 1.5, _remote_warning_center)
+			1.0 - _remote_warning_time / 1.5, _remote_warning_center,
+			_warning_direction)
 		_bar.global_position = global_position + Vector2(0.0, -82.0)
 		_bar.global_rotation = 0.0
 		return
@@ -96,18 +105,18 @@ func _physics_process(delta: float) -> void:
 		return
 
 	_tick_status(delta)
+	_ignore_own_drones()
 	var target := Net.target_player(global_position)
 	if _warning_time >= 0.0:
 		_warning_time += delta
-		if _warning_time < 0.5:
-			_move_step(delta, target)
-		else:
-			velocity = Vector2.ZERO
-			move_and_slide()
-		_update_warning(true, _warning_time / 1.5, _warning_center)
+		velocity = Vector2.ZERO
+		move_and_slide()
+		_update_warning(true, _warning_time / 1.5, _warning_center,
+			_warning_direction)
 		if _warning_time >= 1.5:
 			Game.sfx("boom", -14.0, 0.64, 0.78)
-			Net.spawn_boss_sonic_wave(_warning_center, wave_radius, wave_duration)
+			Net.spawn_boss_sonic_wave(_warning_center, wave_radius,
+				wave_duration, _warning_direction, wave_half_angle_degrees)
 			_warning_time = -1.0
 			_attack_timer = attack_cooldown
 			_update_warning(false, 0.0, Vector2.ZERO)
@@ -143,7 +152,7 @@ func _move_step(delta: float, target: Node2D) -> void:
 			desired = _brain.wander(move_speed * 0.5 * move_mult, 0.05)
 		_goal = desired + EnemyAI.steer(self, desired)
 	_push = _push.move_toward(Vector2.ZERO, 450.0 * delta)
-	velocity = velocity.lerp(_goal + _push, clampf(4.0 * delta, 0.0, 1.0))
+	velocity = velocity.move_toward(_goal + _push, 180.0 * delta)
 	move_and_slide()
 	for index in get_slide_collision_count():
 		var other := get_slide_collision(index).get_collider()
@@ -152,34 +161,103 @@ func _move_step(delta: float, target: Node2D) -> void:
 			other.take_damage(contact_damage)
 
 
+func _ignore_own_drones() -> void:
+	for candidate in get_tree().get_nodes_in_group("boss_drone"):
+		if not is_instance_valid(candidate) or not candidate is PhysicsBody2D:
+			continue
+		var drone := candidate as PhysicsBody2D
+		if not get_collision_exceptions().has(drone):
+			add_collision_exception_with(drone)
+		if not drone.get_collision_exceptions().has(self):
+			drone.add_collision_exception_with(self)
+
+
 func _start_warning(center: Vector2) -> void:
 	_warning_time = 0.0
-	_warning_center = center
-	_update_warning(true, 0.0, center)
-	Net.broadcast_enemy_attack_state(net_id, "boss2_warn", 1.5, center)
+	rotation = (center - global_position).angle()
+	_warning_direction = Vector2.RIGHT.rotated(rotation)
+	_warning_center = _cannon_muzzle_position()
+	_update_warning(true, 0.0, _warning_center, _warning_direction)
+	Net.broadcast_enemy_attack_state(net_id, "boss2_warn", 1.5, _warning_center)
 	Game.sfx("charge", -13.0, 0.68, 0.76)
 
 
-func _update_warning(active: bool, progress: float, center: Vector2) -> void:
+func _add_sonic_cannon() -> void:
+	var cannon := Node2D.new()
+	cannon.name = "SonicCannon"
+	cannon.position = Vector2(30.0, 0.0)
+	cannon.z_index = 1
+	add_child(cannon)
+
+	var body := Polygon2D.new()
+	body.color = Color(0.12, 0.16, 0.24)
+	body.polygon = PackedVector2Array([
+		Vector2(-12.0, -14.0), Vector2(18.0, -14.0),
+		Vector2(35.0, -9.0), Vector2(52.0, -7.0),
+		Vector2(52.0, 7.0), Vector2(35.0, 9.0),
+		Vector2(18.0, 14.0), Vector2(-12.0, 14.0),
+	])
+	cannon.add_child(body)
+
+	var barrel := Polygon2D.new()
+	barrel.color = Color(0.42, 0.53, 0.68)
+	barrel.polygon = PackedVector2Array([
+		Vector2(-2.0, -5.0), Vector2(45.0, -5.0),
+		Vector2(52.0, -3.0), Vector2(52.0, 3.0),
+		Vector2(45.0, 5.0), Vector2(-2.0, 5.0),
+	])
+	cannon.add_child(barrel)
+
+	_cannon_glow = Polygon2D.new()
+	_cannon_glow.name = "MuzzleGlow"
+	_cannon_glow.color = Color(0.35, 0.85, 1.0, 0.0)
+	_cannon_glow.polygon = PackedVector2Array([
+		Vector2(44.0, -9.0), Vector2(62.0, -6.0),
+		Vector2(62.0, 6.0), Vector2(44.0, 9.0),
+	])
+	cannon.add_child(_cannon_glow)
+
+
+func _cannon_muzzle_position() -> Vector2:
+	return to_global(Vector2(92.0, 0.0))
+
+
+func _sector_polygon(distance: float) -> PackedVector2Array:
+	var points := PackedVector2Array([Vector2.ZERO])
+	var half_angle := deg_to_rad(wave_half_angle_degrees)
+	for i in range(33):
+		var angle := lerpf(-half_angle, half_angle, float(i) / 32.0)
+		points.append(Vector2.RIGHT.rotated(angle) * distance)
+	return points
+
+
+func _update_warning(active: bool, progress: float, center: Vector2,
+		direction: Vector2 = Vector2.RIGHT) -> void:
 	if _warning_ring == null:
 		return
 	_warning_ring.visible = active
+	if _cannon_glow != null:
+		_cannon_glow.color = Color(1.0, 0.08, 0.06,
+			clampf(progress, 0.0, 1.0) * (0.9 if active else 0.0))
 	if not active:
 		return
 	_warning_ring.global_position = center
-	var diameter := lerpf(150.0, wave_radius * 2.0, clampf(progress, 0.0, 1.0))
-	_warning_ring.scale = Vector2.ONE * diameter / 120.0
-	_warning_ring.modulate.a = lerpf(0.2, 0.58, clampf(progress, 0.0, 1.0))
+	_warning_ring.global_rotation = direction.angle()
+	_warning_ring.polygon = _sector_polygon(
+		wave_radius * clampf(progress, 0.0, 1.0)
+	)
+	_warning_ring.color.a = lerpf(0.16, 0.4, clampf(progress, 0.0, 1.0))
 
 
 func apply_network_attack_state(state: String, duration: float,
 		point: Vector2 = Vector2.ZERO) -> void:
 	if state == "boss2_warn":
 		_remote_warning_center = point
+		_warning_direction = (point - global_position).normalized()
 		_remote_warning_time = duration
 	else:
 		_remote_warning_time = 0.0
-		_update_warning(false, 0.0, Vector2.ZERO)
+		_update_warning(false, 0.0, Vector2.ZERO, _warning_direction)
 
 
 func take_damage(amount: float, kind: String = "normal") -> void:
@@ -187,6 +265,7 @@ func take_damage(amount: float, kind: String = "normal") -> void:
 		return
 	if _slow > 0.0:
 		amount *= 1.0 + 0.35 * float(Game.upg_brittle)
+	Game.record_damage(mini(maxi(int(round(amount)), 1), maxi(hp, 0)))
 	hp -= maxi(1, int(round(amount)))
 	_update_bar()
 	_spawn_damage_number(amount, kind)
@@ -230,23 +309,25 @@ func _update_bar() -> void:
 
 
 func _spawn_damage_number(amount: float, kind: String) -> void:
-	var number := DAMAGE_NUMBER.instantiate()
+	var number := Pool.acquire(DAMAGE_NUMBER,
+		get_tree().current_scene) as DamageNumber
+	if number == null:
+		return
 	number.global_position = global_position + Vector2(randf_range(-36.0, 36.0), -92.0)
 	var color := Color(1.0, 0.85, 0.2) if kind == "crit" else Color(0.82, 0.85, 0.9)
 	number.setup(amount, color, 30)
-	get_tree().current_scene.add_child(number)
 
 
 func _die() -> void:
 	if not _net_alive or NetEnemy.is_remote(self):
 		return
 	_net_alive = false
-	Game.sfx("boom_big", -12.0, 0.72, 0.82)
+	Game.record_boss_kill(get_instance_id())
+	Game.spawn_boss_death_effect(global_position, Color(0.62, 0.42, 1.0), 1.25)
+	Net.broadcast_boss_death_effect(global_position, Color(0.62, 0.42, 1.0), 1.25)
+	Game.combat_impact(1.0)
 	var xp := 180
 	var drop_xp := NetEnemy.died(self, xp)
-	var explosion := EXPLOSION_SCENE.instantiate() as Node2D
-	explosion.global_position = global_position
-	get_tree().current_scene.add_child(explosion)
 	Game.on_enemy_killed()
 	_drop_upgrade_card()
 	if drop_xp:

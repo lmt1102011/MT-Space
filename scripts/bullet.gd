@@ -1,4 +1,5 @@
 extends Area2D
+class_name PlayerBullet
 
 @export var speed: float = 640.0
 @export var lifetime: float = 2.6
@@ -35,6 +36,8 @@ var _home_t: float = 0.0
 var _home_age: float = 0.0
 var _home_target: Node2D = null
 var _beam: Sprite2D = null
+var _beam_core: Sprite2D = null
+var _pooled: bool = false
 
 
 func _ready() -> void:
@@ -48,14 +51,52 @@ func _ready() -> void:
 	_beam.scale = Vector2(beam_length / BEAM_W, beam_width / BEAM_H)
 	add_child(_beam)
 	# bright core
-	var core := Sprite2D.new()
-	core.texture = BEAM_CORE_TEX
-	core.modulate = Color(1.0, 1.0, 0.85, 1.0)
-	core.scale = Vector2(beam_length / BEAM_W, beam_width * 0.4 / BEAM_H)
-	add_child(core)
+	_beam_core = Sprite2D.new()
+	_beam_core.texture = BEAM_CORE_TEX
+	_beam_core.modulate = Color(1.0, 1.0, 0.85, 1.0)
+	_beam_core.scale = Vector2(beam_length / BEAM_W,
+		beam_width * 0.4 / BEAM_H)
+	add_child(_beam_core)
+
+
+func pool_activate() -> void:
+	_pooled = false
+	speed = 640.0
+	lifetime = 2.6
+	damage = 1.0
+	burn = 0
+	freeze = 0
+	pierce = 0
+	crit = false
+	beam_length = 26.0
+	beam_width = 5.0
+	beam_color = Color(1.0, 0.9, 0.2)
+	direction = Vector2.RIGHT
+	network_visual = false
+	source_position = Vector2.ZERO
+	_hit.clear()
+	_home_t = 0.0
+	_home_age = 0.0
+	_home_target = null
+	rotation = 0.0
+	collision_layer = 2
+	collision_mask = 14
+	set_deferred("monitoring", true)
+	set_deferred("monitorable", true)
+	add_to_group("player_bullet")
+
+
+func pool_deactivate() -> void:
+	_pooled = true
+	remove_from_group("player_bullet")
+	_hit.clear()
+	_home_target = null
 
 
 func _physics_process(delta: float) -> void:
+	if _pooled:
+		return
+	_sync_beam_visuals()
 	_home(delta)
 	var previous := global_position
 	position += direction * speed * delta
@@ -63,6 +104,17 @@ func _physics_process(delta: float) -> void:
 	lifetime -= delta
 	if lifetime <= 0.0:
 		_detonate()
+
+
+func _sync_beam_visuals() -> void:
+	if _beam == null:
+		return
+	rotation = direction.angle()
+	_beam.modulate = beam_color
+	_beam.scale = Vector2(beam_length / BEAM_W, beam_width / BEAM_H)
+	if _beam_core != null:
+		_beam_core.scale = Vector2(beam_length / BEAM_W,
+			beam_width * 0.4 / BEAM_H)
 
 
 # --- homing ---------------------------------------------------------------
@@ -148,7 +200,13 @@ func _hurt(target: Node2D) -> void:
 	if Game.upg_elite_hunter > 0 and target.is_in_group("elite"):
 		dmg *= 1.0 + 0.5 * float(Game.upg_elite_hunter)
 	if target.has_method("take_damage"):
+		var impact_position := target.global_position
 		target.take_damage(dmg, "crit" if crit else "normal")
+		Game.spawn_hit_effect(
+			impact_position,
+			Color(1.0, 0.82, 0.38) if crit else Color(0.55, 0.82, 1.0)
+		)
+		Game.combat_impact(0.72 if crit else 0.42)
 		Game.sfx("hit", -20.0, 0.9, 1.2)
 	if target.has_method("apply_status"):
 		target.apply_status(burn, freeze)
@@ -177,6 +235,8 @@ func _splash(origin: Node2D, dmg: float) -> void:
 
 
 func _on_body_entered(body: Node2D) -> void:
+	if _pooled:
+		return
 	if network_visual:
 		_detonate()
 		return
@@ -220,16 +280,25 @@ func _check_swept_enemy_hits(from: Vector2, to: Vector2) -> void:
 			hit_radius += (shape.shape as CircleShape2D).radius * 0.6
 		if closest.distance_squared_to(target.global_position) <= hit_radius * hit_radius:
 			_on_body_entered(target)
-			if not is_instance_valid(self):
+			if not is_instance_valid(self) or _pooled:
 				return
+
+
+func recycle() -> void:
+	Pool.release(self)
+
+
 func _detonate() -> void:
+	if _pooled:
+		return
 	# Explosive Rounds: a small burst when the round dies
 	if Game.upg_explosive > 0:
 		_burst(global_position, damage * 0.3, 45.0 + 8.0 * float(Game.upg_explosive))
-	var boom := EXPLOSION_SCENE.instantiate() as Explosion
+	var boom := Pool.acquire(EXPLOSION_SCENE, get_tree().current_scene) as Explosion
+	if boom == null:
+		return
 	boom.global_position = global_position
-	get_tree().current_scene.add_child(boom)
-	queue_free()
+	Pool.release(self)
 
 
 # Damages every enemy inside the radius (used by Shatter and Explosive Rounds).

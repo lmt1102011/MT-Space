@@ -64,16 +64,40 @@ var weapon: String = "basic"          # chosen weapon archetype (from LV5 card)
 var weapon_chosen: bool = false
 var _burst_left: int = 0              # internal burst counter for player
 
+# --- test mode (set from the lobby TEST MENU) ---
+var test_mode: bool = false
+var test_data: Dictionary = {}
+
 # --- audio ---
 const SfxLib := preload("res://scripts/sfx.gd")
+const CARD_RECORDS := preload("res://scripts/card_db.gd")
 const FIRE_LOOP_PATH := "res://assets/sfx/fire_loop.mp3"
 var _sfx_players: Array[AudioStreamPlayer] = []
 var _fire_player: AudioStreamPlayer
 var _fire_on: bool = false
 
+# --- run records ---
+const RUN_RECORDS_PATH := "user://run_records.cfg"
+var latest_run: Dictionary = {}
+var best_run: Dictionary = {}
+var card_pick_counts: Dictionary = {}
+var _run_started_at_msec: int = 0
+var _run_damage: int = 0
+var _run_bosses_killed: int = 0
+var _run_boss_kill_times: Array[float] = []
+var _run_boss_started_at: Dictionary = {}
+var _run_max_wave: int = 0
+var _run_active: bool = false
+var _run_finished: bool = false
+var _impact_cooldown: float = 0.0
+var _camera_shake_time: float = 0.0
+var _camera_shake_strength: float = 0.0
+var _hitstop_active: bool = false
+
 
 func _ready() -> void:
 	_load_settings()
+	_load_run_records()
 	for i in SfxLib.POOL:
 		var p := AudioStreamPlayer.new()
 		# must keep playing while the tree is paused (card screen, game over)
@@ -92,10 +116,243 @@ func _ready() -> void:
 		add_child(_fire_player)
 
 
+func _process(delta: float) -> void:
+	_impact_cooldown = maxf(_impact_cooldown - delta, 0.0)
+	if _camera_shake_time <= 0.0:
+		return
+	_camera_shake_time = maxf(_camera_shake_time - delta, 0.0)
+	var viewport := get_viewport()
+	if viewport == null:
+		return
+	var camera := viewport.get_camera_2d()
+	if camera == null:
+		return
+	if _camera_shake_time <= 0.0:
+		camera.offset = Vector2.ZERO
+		return
+	var falloff := clampf(_camera_shake_time / 0.2, 0.0, 1.0)
+	camera.offset = Vector2(
+		randf_range(-_camera_shake_strength, _camera_shake_strength),
+		randf_range(-_camera_shake_strength, _camera_shake_strength)
+	) * falloff
+
+
 # Play a sound effect (see res://scripts/sfx.gd)
 func sfx(sound: String, volume_db: float = 0.0,
 		pitch_lo: float = 0.93, pitch_hi: float = 1.09) -> void:
 	SfxLib.play(sound, volume_db, pitch_lo, pitch_hi)
+
+
+func _load_run_records() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(RUN_RECORDS_PATH) != OK:
+		return
+	var latest: Variant = cfg.get_value("records", "latest_run", {})
+	var best: Variant = cfg.get_value("records", "best_run", {})
+	var picks: Variant = cfg.get_value("records", "card_pick_counts", {})
+	latest_run = latest if latest is Dictionary else {}
+	best_run = best if best is Dictionary else {}
+	card_pick_counts = picks if picks is Dictionary else {}
+
+
+func _save_run_records() -> void:
+	var cfg := ConfigFile.new()
+	cfg.set_value("records", "latest_run", latest_run)
+	cfg.set_value("records", "best_run", best_run)
+	cfg.set_value("records", "card_pick_counts", card_pick_counts)
+	var error := cfg.save(RUN_RECORDS_PATH)
+	if error != OK:
+		push_error("Could not save run records: %s" % error_string(error))
+
+
+func start_run() -> void:
+	if _run_active:
+		return
+	_run_active = true
+	_run_finished = false
+	_run_started_at_msec = Time.get_ticks_msec()
+	_run_damage = 0
+	_run_bosses_killed = 0
+	_run_boss_kill_times.clear()
+	_run_boss_started_at.clear()
+	_run_max_wave = maxi(wave, 0)
+
+
+func record_damage(amount: int) -> void:
+	if not _run_active or _run_finished or test_mode or amount <= 0:
+		return
+	_run_damage += amount
+
+
+func record_wave(wave_number: int) -> void:
+	if not _run_active or _run_finished or test_mode:
+		return
+	_run_max_wave = maxi(_run_max_wave, wave_number)
+
+
+func register_boss_spawn(boss_instance_id: int) -> void:
+	if not _run_active or _run_finished or test_mode:
+		return
+	if Net.is_online() and not Net.is_host():
+		return
+	_run_boss_started_at[boss_instance_id] = Time.get_ticks_msec()
+
+
+func record_boss_kill(boss_instance_id: int) -> void:
+	if not _run_active or _run_finished or test_mode:
+		return
+	_run_bosses_killed += 1
+	if not _run_boss_started_at.has(boss_instance_id):
+		return
+	var started_at := int(_run_boss_started_at[boss_instance_id])
+	_run_boss_started_at.erase(boss_instance_id)
+	_run_boss_kill_times.append(
+		maxf(float(Time.get_ticks_msec() - started_at) / 1000.0, 0.0)
+	)
+
+
+func finish_run() -> void:
+	if not _run_active or _run_finished:
+		return
+	_run_finished = true
+	_run_active = false
+	if test_mode:
+		return
+	var elapsed := maxf(
+		float(Time.get_ticks_msec() - _run_started_at_msec) / 1000.0, 0.0)
+	var build_ids: Array = upg_stacks.keys()
+	build_ids.sort()
+	var build: Array[String] = []
+	if not weapon.is_empty():
+		build.append("weapon_" + weapon)
+	var card_names: Dictionary = {}
+	for card: Dictionary in CARD_RECORDS.passives():
+		card_names[str(card.get("id", ""))] = str(card.get("name", ""))
+	for card_id: Variant in build_ids:
+		var count := int(upg_stacks[card_id])
+		var card_name := str(card_names.get(str(card_id), str(card_id)))
+		build.append("%s x%d" % [card_name, count])
+	var average_boss_kill_time := 0.0
+	if not _run_boss_kill_times.is_empty():
+		var total_boss_kill_time := 0.0
+		for kill_time in _run_boss_kill_times:
+			total_boss_kill_time += kill_time
+		average_boss_kill_time = total_boss_kill_time \
+			/ float(_run_boss_kill_times.size())
+	latest_run = {
+		"wave": _run_max_wave,
+		"bosses": _run_bosses_killed,
+		"boss_kill_times": _run_boss_kill_times.duplicate(),
+		"average_boss_kill_seconds": average_boss_kill_time,
+		"damage": _run_damage,
+		"seconds": elapsed,
+		"build": build,
+		"cards": upg_stacks.duplicate(true),
+	}
+	var latest_wave := int(latest_run.get("wave", 0))
+	var best_wave := int(best_run.get("wave", 0))
+	if latest_wave > best_wave \
+			or (latest_wave == best_wave
+				and elapsed > float(best_run.get("seconds", 0.0))):
+		best_run = latest_run.duplicate(true)
+	_save_run_records()
+
+
+func build_item_label(item: String) -> String:
+	var item_name := item
+	var count_suffix := ""
+	var count_separator := item.rfind(" x")
+	if count_separator > 0 and item.substr(count_separator + 2).is_valid_int():
+		item_name = item.substr(0, count_separator)
+		count_suffix = " x" + item.substr(count_separator + 2)
+	var resolved_name := ""
+	if item_name.begins_with("weapon_"):
+		for card: Dictionary in CARD_RECORDS.weapon_cards():
+			if str(card.get("id", "")) == item_name:
+				resolved_name = str(card.get("name", ""))
+				break
+	else:
+		for card: Dictionary in CARD_RECORDS.passives():
+			if str(card.get("name", "")) == item_name \
+					or str(card.get("id", "")) == item_name:
+				resolved_name = str(card.get("name", ""))
+				break
+	if resolved_name.is_empty():
+		resolved_name = item_name.replace("_", " ").capitalize()
+	var locale := get_node_or_null("/root/Locale")
+	if locale != null:
+		resolved_name = str(locale.call("translate_text", resolved_name))
+	return resolved_name + count_suffix
+
+
+func combat_impact(strength: float = 1.0) -> void:
+	if _impact_cooldown > 0.0:
+		return
+	var impact := clampf(strength, 0.0, 1.0)
+	if impact <= 0.0:
+		return
+	_impact_cooldown = lerpf(0.12, 0.075, impact)
+	_camera_shake_strength = maxf(_camera_shake_strength, impact * 2.2)
+	_camera_shake_time = maxf(_camera_shake_time, 0.16)
+	if _hitstop_active or impact < 0.9:
+		return
+	_hitstop_active = true
+	Engine.time_scale = 0.12
+	var timer := get_tree().create_timer(0.035, true, false, true)
+	timer.timeout.connect(_end_hitstop, CONNECT_ONE_SHOT)
+
+
+func _end_hitstop() -> void:
+	Engine.time_scale = 1.0
+	_hitstop_active = false
+
+
+func spawn_boss_death_effect(position: Vector2, tint: Color,
+		size_scale: float) -> void:
+	if not is_inside_tree():
+		return
+	var world := get_tree().current_scene
+	if world == null:
+		return
+	var burst_count := 5
+	for index in burst_count:
+		var timer := get_tree().create_timer(0.14 * float(index), true, false, true)
+		timer.timeout.connect(
+			_spawn_boss_death_burst.bind(position, tint, size_scale, index),
+			CONNECT_ONE_SHOT
+		)
+
+
+func _spawn_boss_death_burst(position: Vector2, tint: Color,
+		size_scale: float, index: int) -> void:
+	if not is_inside_tree():
+		return
+	var world := get_tree().current_scene
+	if world == null:
+		return
+	var burst_count := 5
+	var explosion := Pool.acquire(
+		preload("res://scenes/explosion.tscn"), world) as Explosion
+	if explosion != null:
+		var angle := TAU * float(index) / float(burst_count)
+		var radius := 22.0 + 18.0 * float(index)
+		explosion.global_position = position + Vector2.from_angle(angle) * radius
+		var scale := (0.8 if index < burst_count - 1 else 3.0) * size_scale
+		explosion.setup(scale, tint)
+	if index == burst_count - 1:
+		sfx("boom_big", -7.0, 0.78, 0.9)
+
+
+func spawn_hit_effect(position: Vector2, tint: Color) -> void:
+	var world := get_tree().current_scene
+	if world == null:
+		return
+	var effect := Pool.acquire(
+		preload("res://scenes/explosion.tscn"), world) as Explosion
+	if effect == null:
+		return
+	effect.global_position = position
+	effect.setup(0.32, tint)
 
 
 # The volume of the player, from 0 to 1.
@@ -236,6 +493,21 @@ func reset_run() -> void:
 	player_dead = false
 	spectate_mode = false
 	spectate_target = 0
+	_run_active = false
+	_run_finished = false
+	_run_started_at_msec = 0
+	_run_damage = 0
+	_run_bosses_killed = 0
+	_run_boss_kill_times.clear()
+	_run_boss_started_at.clear()
+	_run_max_wave = 0
+	Engine.time_scale = 1.0
+	_hitstop_active = false
+	_camera_shake_time = 0.0
+	_camera_shake_strength = 0.0
+	var camera := get_viewport().get_camera_2d()
+	if camera != null:
+		camera.offset = Vector2.ZERO
 
 
 func notify_player_died() -> void:
@@ -288,6 +560,8 @@ func grant_card(card: Dictionary) -> bool:
 	upg_stacks[id] = taken + 1
 	if card.has("apply"):
 		card.apply.call(self)
+	if _run_active and not _run_finished and not test_mode:
+		card_pick_counts[id] = int(card_pick_counts.get(id, 0)) + 1
 	return true
 
 
@@ -416,6 +690,7 @@ func on_enemy_killed() -> void:
 	var pl := get_tree().get_first_node_in_group("player")
 	if pl and pl.has_method("heal"):
 		pl.heal(1)
+
 
 signal request_upgrade_choice(level: int)
 

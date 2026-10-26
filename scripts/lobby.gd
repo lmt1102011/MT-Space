@@ -77,6 +77,7 @@ func _ready() -> void:
 	Net.session_failed.connect(_on_session_failed)
 	Net.player_name_taken.connect(_on_player_name_taken)
 	_refresh()
+	_set_localized(_header, "ROOM")
 	_refresh_web_mode()
 	if Net.name_change_required:
 		_on_player_name_taken()
@@ -408,11 +409,11 @@ func _on_start() -> void:
 func _on_back() -> void:
 	Game.sfx("click", -10.0, 0.95, 1.05)
 	Net.leave()
-	call_deferred("_change_to_menu")
+	call_deferred("_change_to_mode_lobby")
 
 
-func _change_to_menu() -> void:
-	get_tree().change_scene_to_file("res://scenes/menu.tscn")
+func _change_to_mode_lobby() -> void:
+	get_tree().change_scene_to_file("res://scenes/lobby.tscn")
 
 
 # --- net callbacks --------------------------------------------------------

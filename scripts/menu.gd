@@ -16,6 +16,8 @@ const PROMPT_SCENE := preload("res://scenes/name_prompt.tscn")
 @onready var _update_btn: Button = $UI/UpdateButton
 @onready var _version_label: Label = $UI/Version
 
+var _name_prompt: Control
+
 
 func _ready() -> void:
 	_play_btn.pressed.connect(_on_play)
@@ -66,14 +68,11 @@ func _check_for_updates() -> void:
 
 func _on_play() -> void:
 	Game.sfx("click", -10.0, 0.95, 1.05)
-	# if name already set, go directly to lobby
-	if Net.player_name != "":
-		call_deferred("_change_to_lobby")
+	if is_instance_valid(_name_prompt):
 		return
-	# ask for the name first, then go to the lobby
-	var prompt := PROMPT_SCENE.instantiate() as Control
-	add_child(prompt)
-	prompt.name_chosen.connect(_on_named)
+	_name_prompt = PROMPT_SCENE.instantiate() as Control
+	add_child(_name_prompt)
+	_name_prompt.name_chosen.connect(_on_named)
 
 
 # True when the address of the page asks for the game right away.
@@ -93,7 +92,7 @@ func _start_game() -> void:
 
 
 func _on_named(_name: String) -> void:
-	# defer the scene change so the prompt can be freed cleanly
+	_name_prompt = null
 	call_deferred("_change_to_lobby")
 
 

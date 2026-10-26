@@ -157,7 +157,7 @@ func _update_bar() -> void:
 
 
 func _get_player() -> Node2D:
-	if not Net.is_host():
+	if Net.is_online() and not Net.is_host():
 		return null
 	_player = Net.target_player(global_position)
 	return _player
@@ -223,7 +223,7 @@ func _fly_step(delta: float, target: Node2D) -> void:
 	# the expensive steering only runs at 20Hz, movement stays smooth
 	_ai_acc -= delta
 	if _ai_acc <= 0.0:
-		_ai_acc = 0.05
+		_ai_acc = 0.05 if _on_screen else 0.16
 		_update_goal(target, delta, move_mult)
 	velocity = velocity.lerp(_goal, clampf(6.0 * delta, 0.0, 1.0))
 	move_and_slide()
@@ -272,7 +272,10 @@ func _aim_at(target: Node2D, delta: float, turn: float) -> void:
 
 func _fire_laser() -> void:
 	var dir := Vector2.RIGHT.rotated(rotation)
-	var b := ENEMY_BULLET.instantiate() as EnemyBullet
+	var b := Pool.acquire(ENEMY_BULLET,
+		get_tree().current_scene) as EnemyBullet
+	if b == null:
+		return
 	b.global_position = global_position + dir * 50.0
 	b.direction = dir
 	b.speed = laser_speed
@@ -290,7 +293,6 @@ func _fire_laser() -> void:
 	cap.height = laser_length
 	cap.radius = maxf(laser_width * 0.5, 3.0)
 	cs.shape = cap
-	get_tree().current_scene.add_child(b)
 	Net.broadcast_enemy_bullet(b.global_position, b.direction, b.speed, b.damage,
 		b.burn, b.freeze, b.lifetime, b.beam_length, b.beam_width)
 	Game.sfx("laser", -8.0, 0.9, 1.1)
@@ -348,7 +350,9 @@ func _tick_status(delta: float, apply_burn_damage: bool = true) -> void:
 
 
 func _spawn_damage_number(amount: float, kind: String) -> void:
-	var n := DAMAGE_NUMBER.instantiate() as DamageNumber
+	var n := Pool.acquire(DAMAGE_NUMBER, get_tree().current_scene) as DamageNumber
+	if n == null:
+		return
 	n.global_position = global_position + Vector2(randf_range(-24.0, 24.0), randf_range(-36.0, -12.0))
 	match kind:
 		"crit":
@@ -357,13 +361,13 @@ func _spawn_damage_number(amount: float, kind: String) -> void:
 			n.setup(amount, Color(1.0, 0.55, 0.15), 18)
 		_:
 			n.setup(amount, Color(0.82, 0.85, 0.9), 22)
-	get_tree().current_scene.add_child(n)
 
 
 func take_damage(amount: float, kind: String = "normal") -> void:
 	# the host decides who dies, a client just reports the hit
 	if NetEnemy.report_hit(self, amount, kind):
 		return
+	Game.record_damage(mini(maxi(int(round(amount)), 0), maxi(hp, 0)))
 	hp -= int(round(amount))
 	_update_bar()
 	_spawn_damage_number(amount, kind)
@@ -442,9 +446,13 @@ func _die() -> void:
 		return
 	var xp := 15
 	var drop := NetEnemy.died(self, xp)
-	var boom := preload("res://scenes/explosion.tscn").instantiate() as Explosion
+	var boom := Pool.acquire(preload("res://scenes/explosion.tscn"),
+		get_tree().current_scene) as Explosion
+	if boom == null:
+		return
 	boom.global_position = global_position
-	get_tree().current_scene.add_child(boom)
+	boom.setup(1.0, Color(0.5, 0.75, 1.0))
+	Game.combat_impact(0.8)
 	Game.sfx("crunch", -15.0, 0.85, 1.18)
 	if Game.upg_lifesteal:
 		var pl := get_tree().get_first_node_in_group("player")
@@ -459,4 +467,3 @@ func _die() -> void:
 
 func drop_xp(amount: int) -> void:
 	XP_DROP.drop(get_tree(), global_position, amount)
-

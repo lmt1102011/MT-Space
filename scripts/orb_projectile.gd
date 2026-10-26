@@ -1,4 +1,5 @@
 extends Area2D
+class_name OrbProjectile
 
 # A large solid rolling orb. The host owns collision and damage; clients only
 # receive a visual copy so the hit cannot be applied twice.
@@ -15,8 +16,9 @@ var slow_duration: float = 0.5
 var network_visual: bool = false
 var _age: float = 0.0
 var _hit_timers: Dictionary = {}
-var _pull_timers: Dictionary = {}
 var _art: Sprite2D = null
+var _pooled: bool = false
+var _shape_radius: float = -1.0
 
 
 func _current_radius() -> float:
@@ -33,42 +35,76 @@ func _ready() -> void:
 	if shape != null and shape.shape != null:
 		shape.shape = shape.shape.duplicate()
 		(shape.shape as CircleShape2D).radius = radius
+		_shape_radius = radius
+
+
+func pool_activate() -> void:
+	_pooled = false
+	direction = Vector2.RIGHT
+	speed = 260.0
+	radius = 44.0
+	lifetime = 6.5
+	damage = 1.0
+	knockback = 360.0
+	slow_duration = 0.5
+	network_visual = false
+	_age = 0.0
+	_hit_timers.clear()
+	_shape_radius = -1.0
+	collision_layer = 0
+	collision_mask = 1
+	set_deferred("monitoring", true)
+	set_deferred("monitorable", true)
+	add_to_group("orb_projectile")
+	if _art != null:
+		_art.modulate.a = 1.0
+
+
+func pool_deactivate() -> void:
+	_pooled = true
+	remove_from_group("orb_projectile")
+	_hit_timers.clear()
 
 
 func _physics_process(delta: float) -> void:
+	if _pooled:
+		return
+	_sync_collision_radius()
 	_age += delta
 	if _age >= lifetime:
-		queue_free()
+		Pool.release(self)
 		return
 	global_position += direction.normalized() * speed * delta
-	for key in _hit_timers.keys():
-		_hit_timers[key] = float(_hit_timers[key]) - delta
-	for key in _pull_timers.keys():
-		_pull_timers[key] = float(_pull_timers[key]) - delta
+	for tracked_key in _hit_timers.keys():
+		_hit_timers[tracked_key] = float(_hit_timers[tracked_key]) - delta
 	if not network_visual:
 		# A fast Area2D can tunnel through a CharacterBody2D between physics
 		# frames. Distance testing makes contact reliable even at high speed.
 		var contact_radius := _current_radius() + PLAYER_RADIUS
-		for candidate in get_tree().get_nodes_in_group("player"):
+		for candidate in Net.players_for_physics_frame():
 			var body := candidate as Node2D
 			if body == null or not is_instance_valid(body):
 				continue
 			if body.get("_dead") == true or body.get("net_alive") == false:
 				continue
-			if global_position.distance_to(body.global_position) > contact_radius:
+			if global_position.distance_squared_to(body.global_position) \
+					> contact_radius * contact_radius:
 				continue
-			var key := body.get_instance_id()
-			# Apply the carrying force frequently while avoiding one RPC every
-			# render frame for remote players.
-			if float(_pull_timers.get(key, 0.0)) <= 0.0:
-				# One visible movement pulse per damage/stun beat. This makes the
-				# player advance in clear steps instead of being held stationary.
-				_pull_timers[key] = HIT_INTERVAL
-				_pull_player(body)
-			if float(_hit_timers.get(key, 0.0)) <= 0.0:
-				_hit_timers[key] = HIT_INTERVAL
+			var hit_key := body.get_instance_id()
+			if float(_hit_timers.get(hit_key, 0.0)) <= 0.0:
+				_hit_timers[hit_key] = HIT_INTERVAL
 				_damage_player(body)
 	_update_art()
+
+
+func _sync_collision_radius() -> void:
+	if is_equal_approx(_shape_radius, radius):
+		return
+	var shape := get_node_or_null("CollisionShape2D") as CollisionShape2D
+	if shape == null or not shape.shape is CircleShape2D:
+		return
+	(shape.shape as CircleShape2D).radius = radius
+	_shape_radius = radius
 
 
 func _update_art() -> void:
@@ -82,16 +118,17 @@ func _update_art() -> void:
 	_art.modulate.a = 1.0 - dissolve
 
 
-func _pull_player(body: Node2D) -> void:
-	if body.has_method("apply_knockback"):
-		body.apply_knockback(direction.normalized() * knockback, HIT_INTERVAL)
-
-
 func _damage_player(body: Node2D) -> void:
 	# One HP per contact pulse: this is deliberately not a one-hit attack.
-	if body.has_method("apply_orb_damage"):
-		body.apply_orb_damage(damage)
-	elif body.has_method("take_damage"):
-		body.take_damage(damage)
+	if body.has_method("apply_hit"):
+		body.call("apply_hit", damage, 0, 0,
+			direction.normalized() * knockback, HIT_INTERVAL, true)
+	else:
+		if body.has_method("apply_orb_damage"):
+			body.apply_orb_damage(damage)
+		elif body.has_method("take_damage"):
+			body.take_damage(damage)
+		if body.has_method("apply_knockback"):
+			body.apply_knockback(direction.normalized() * knockback, HIT_INTERVAL)
 	if body.has_method("apply_orb_slow"):
 		body.apply_orb_slow(slow_duration)

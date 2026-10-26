@@ -19,16 +19,37 @@ func _ready() -> void:
 	scale = Vector2(0.65, 0.65)
 	var live := get_tree().get_nodes_in_group("damage_number")
 	if live.size() > MAX_ALIVE:
-		live[0].queue_free()
+		Pool.release(live[0])
 
 
 func setup(value: float, color: Color, font_size: int = 22) -> void:
+	_time = 0.0
 	_value = _fmt(value)
 	_color = color
 	_size = font_size
 	# every number drifts a little on its own so stacked hits stay readable
 	_drift = Vector2(randf_range(-46.0, 46.0), randf_range(-16.0, 16.0))
 	_tilt = randf_range(-0.13, 0.13)
+	modulate.a = 1.0
+	scale = Vector2(0.65, 0.65)
+	queue_redraw()
+
+
+func pool_activate() -> void:
+	_time = 0.0
+	_value = ""
+	_color = Color.WHITE
+	_size = 22
+	_drift = Vector2.ZERO
+	_tilt = 0.0
+	add_to_group("damage_number")
+	modulate.a = 1.0
+	scale = Vector2(0.65, 0.65)
+	queue_redraw()
+
+
+func pool_deactivate() -> void:
+	remove_from_group("damage_number")
 
 
 # keep one decimal only when it matters, so 1.2 shows as "1.2" but 2.0 as "2"
@@ -47,7 +68,7 @@ func _process(delta: float) -> void:
 	scale = scale.lerp(Vector2.ONE, clampf(delta * 16.0, 0.0, 1.0))
 	modulate.a = clampf(1.0 - _time / LIFE, 0.0, 1.0)
 	if _time >= LIFE:
-		queue_free()
+		Pool.release(self)
 
 
 func _draw() -> void:

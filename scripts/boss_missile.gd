@@ -8,6 +8,7 @@ class_name BossMissile
 
 var direction := Vector2.RIGHT
 var network_visual := false
+var _pooled: bool = false
 
 const EXPLOSION_SCENE := preload("res://scenes/explosion.tscn")
 
@@ -20,7 +21,27 @@ func _ready() -> void:
 		collision_mask = 0
 
 
+func pool_activate() -> void:
+	_pooled = false
+	speed = 195.0
+	turn_rate = 0.85
+	lifetime = 7.0
+	damage = 5
+	direction = Vector2.RIGHT
+	network_visual = false
+	collision_layer = 16
+	collision_mask = 5
+	set_deferred("monitoring", true)
+	set_deferred("monitorable", true)
+
+
+func pool_deactivate() -> void:
+	_pooled = true
+
+
 func _physics_process(delta: float) -> void:
+	if _pooled:
+		return
 	var target := Net.target_player(global_position)
 	if target != null:
 		var to_target := target.global_position - global_position
@@ -39,6 +60,8 @@ func _physics_process(delta: float) -> void:
 
 
 func _on_body_entered(body: Node2D) -> void:
+	if _pooled:
+		return
 	if network_visual:
 		return
 	if body.is_in_group("player"):
@@ -50,7 +73,11 @@ func _on_body_entered(body: Node2D) -> void:
 
 
 func _detonate() -> void:
-	var explosion := EXPLOSION_SCENE.instantiate() as Node2D
+	if _pooled:
+		return
+	var explosion := Pool.acquire(EXPLOSION_SCENE,
+		get_tree().current_scene) as Explosion
+	if explosion == null:
+		return
 	explosion.global_position = global_position
-	get_tree().current_scene.add_child(explosion)
-	queue_free()
+	Pool.release(self)

@@ -138,6 +138,14 @@ func apply_knockback(impulse: Vector2, stun_time: float = 0.5) -> void:
 		Net.damage_remote_player_with_effect(net_id, 0, 0, 0, impulse, stun_time)
 
 
+func apply_hit(amount: float, burn: int = 0, freeze: int = 0,
+		knockback: Vector2 = Vector2.ZERO, stun_time: float = 0.0,
+		orb_damage: bool = false) -> void:
+	if Net.is_host():
+		Net.damage_remote_player_with_effect(
+			net_id, amount, burn, freeze, knockback, stun_time, orb_damage)
+
+
 func apply_orb_slow(duration: float = 0.5) -> void:
 	if Net.is_host():
 		Net.slow_remote_player(net_id, duration)

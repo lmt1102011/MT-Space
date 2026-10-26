@@ -815,7 +815,7 @@ func player_color_of(id: int) -> Color:
 func target_player(from_position: Vector2) -> Node2D:
 	var best: Node2D = null
 	var best_distance := INF
-	for candidate in _players_for_physics_frame():
+	for candidate in players_for_physics_frame():
 		var node := candidate as Node2D
 		if node == null or not is_instance_valid(node):
 			continue
@@ -829,7 +829,7 @@ func target_player(from_position: Vector2) -> Node2D:
 
 
 func any_player_alive() -> bool:
-	for candidate in _players_for_physics_frame():
+	for candidate in players_for_physics_frame():
 		var node := candidate as Node2D
 		if node == null or not is_instance_valid(node):
 			continue
@@ -839,7 +839,7 @@ func any_player_alive() -> bool:
 	return false
 
 
-func _players_for_physics_frame() -> Array:
+func players_for_physics_frame() -> Array:
 	var frame := Engine.get_physics_frames()
 	if frame != _player_nodes_cache_frame:
 		_player_nodes_cache = get_tree().get_nodes_in_group("player")
@@ -861,10 +861,11 @@ func damage_remote_player_orb(id: int, amount: float) -> void:
 
 func damage_remote_player_with_effect(id: int, amount: float, burn: int = 0,
 		freeze: int = 0, knockback: Vector2 = Vector2.ZERO,
-		stun_time: float = 0.0) -> void:
+		stun_time: float = 0.0, orb_damage: bool = false) -> void:
 	if not _hosting or id <= 1:
 		return
-	rpc_id(id, "_cli_damage_player", amount, burn, freeze, knockback, stun_time)
+	rpc_id(id, "_cli_damage_player", amount, burn, freeze, knockback,
+		stun_time, orb_damage)
 
 
 func slow_remote_player(id: int, duration: float = 0.5) -> void:
@@ -891,25 +892,33 @@ func broadcast_boss_missile(pos: Vector2, direction: Vector2, speed: float,
 		rpc_id(pid, "_cli_boss_missile", pos, direction, speed, turn_rate, lifetime)
 
 
-func spawn_boss_sonic_wave(pos: Vector2, max_radius: float, duration: float) -> void:
-	_create_boss_sonic_wave(pos, max_radius, duration, false)
+func spawn_boss_sonic_wave(pos: Vector2, max_radius: float, duration: float,
+		direction: Vector2, half_angle_degrees: float) -> void:
+	_create_boss_sonic_wave(pos, max_radius, duration, direction,
+		half_angle_degrees, false)
 	if not _hosting:
 		return
 	for pid in _client_ids():
-		rpc_id(pid, "_cli_boss_sonic_wave", pos, max_radius, duration)
+		rpc_id(pid, "_cli_boss_sonic_wave", pos, max_radius, duration,
+			direction, half_angle_degrees)
 
 
 @rpc("authority", "call_remote", "reliable", 0)
-func _cli_boss_sonic_wave(pos: Vector2, max_radius: float, duration: float) -> void:
-	_create_boss_sonic_wave(pos, max_radius, duration, true)
+func _cli_boss_sonic_wave(pos: Vector2, max_radius: float, duration: float,
+		direction: Vector2, half_angle_degrees: float) -> void:
+	_create_boss_sonic_wave(pos, max_radius, duration, direction,
+		half_angle_degrees, true)
 
 
 func _create_boss_sonic_wave(pos: Vector2, max_radius: float,
-		duration: float, visual_only: bool) -> void:
+		duration: float, direction: Vector2, half_angle_degrees: float,
+		visual_only: bool) -> void:
 	var wave := BOSS_SONIC_WAVE.instantiate()
 	wave.global_position = pos
 	wave.max_radius = max_radius
 	wave.duration = duration
+	wave.direction = direction
+	wave.half_angle_degrees = half_angle_degrees
 	wave.visual_only = visual_only
 	get_tree().current_scene.add_child(wave)
 
@@ -923,10 +932,12 @@ func broadcast_boss_drone_explosion(pos: Vector2, large: bool) -> void:
 
 @rpc("authority", "call_remote", "reliable", 0)
 func _cli_boss_drone_explosion(pos: Vector2, large: bool) -> void:
-	var explosion := EXPLOSION_SCENE.instantiate() as Explosion
+	var explosion := Pool.acquire(EXPLOSION_SCENE,
+		get_tree().current_scene) as Explosion
+	if explosion == null:
+		return
 	explosion.global_position = pos
 	explosion.setup(1.8 if large else 0.9)
-	get_tree().current_scene.add_child(explosion)
 
 
 func broadcast_orb(pos: Vector2, direction: Vector2, speed: float,
@@ -940,14 +951,16 @@ func broadcast_orb(pos: Vector2, direction: Vector2, speed: float,
 @rpc("authority", "call_remote", "unreliable_ordered", 1)
 func _cli_orb(pos: Vector2, direction: Vector2, speed: float,
 		radius: float, lifetime: float) -> void:
-	var orb := ORB_PROJECTILE.instantiate()
+	var orb := Pool.acquire(ORB_PROJECTILE,
+		get_tree().current_scene) as OrbProjectile
+	if orb == null:
+		return
 	orb.global_position = pos
 	orb.direction = direction
 	orb.speed = speed
 	orb.radius = radius
 	orb.lifetime = lifetime
 	orb.network_visual = true
-	get_tree().current_scene.add_child(orb)
 
 
 # Player bullets are simulated by their owner for damage. Other peers receive
@@ -1066,6 +1079,20 @@ func send_wave(wave: int) -> void:
 		rpc_id(pid, "_cli_wave", wave)
 
 
+func broadcast_boss_death_effect(position: Vector2, tint: Color,
+		size_scale: float) -> void:
+	if not _hosting:
+		return
+	for pid in _client_ids():
+		rpc_id(pid, "_cli_boss_death_effect", position, tint, size_scale)
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _cli_boss_death_effect(position: Vector2, tint: Color,
+		size_scale: float) -> void:
+	Game.spawn_boss_death_effect(position, tint, size_scale)
+
+
 @rpc("authority", "call_remote", "reliable", 0)
 func _cli_wave(wave: int) -> void:
 	if world != null and world.has_method("clear_host_ghost"):
@@ -1076,6 +1103,7 @@ func _cli_wave(wave: int) -> void:
 	if world != null and world.has_method("revive_remote_players"):
 		world.call("revive_remote_players")
 	Game.wave = wave
+	Game.record_wave(wave)
 	Game.wave_changed.emit(wave)
 
 
@@ -1405,14 +1433,19 @@ func _cli_clear_host_ghost() -> void:
 
 @rpc("authority", "call_remote", "reliable", 0)
 func _cli_damage_player(amount: float, burn: int, freeze: int,
-		knockback: Vector2 = Vector2.ZERO, stun_time: float = 0.0) -> void:
+		knockback: Vector2 = Vector2.ZERO, stun_time: float = 0.0,
+		orb_damage: bool = false) -> void:
 	var local_player := get_tree().current_scene.get_node_or_null("Player")
-	if local_player == null or not local_player.has_method("take_damage"):
+	if local_player == null:
 		return
-	local_player.take_damage(amount)
+	if orb_damage and local_player.has_method("apply_orb_damage"):
+		local_player.apply_orb_damage(amount)
+	elif local_player.has_method("take_damage"):
+		local_player.take_damage(amount)
 	if local_player.has_method("apply_status"):
 		local_player.apply_status(burn, freeze)
-	if stun_time > 0.0 and local_player.has_method("apply_knockback"):
+	if (stun_time > 0.0 or not knockback.is_zero_approx()) \
+			and local_player.has_method("apply_knockback"):
 		local_player.apply_knockback(knockback, stun_time)
 
 
@@ -1434,7 +1467,10 @@ func _cli_orb_slow(duration: float = 0.5) -> void:
 func _cli_enemy_bullet(pos: Vector2, direction: Vector2, speed: float,
 		damage: int, burn: int, freeze: int, lifetime: float,
 		beam_length: float, beam_width: float) -> void:
-	var bullet := ENEMY_BULLET.instantiate()
+	var bullet := Pool.acquire(ENEMY_BULLET,
+		get_tree().current_scene) as EnemyBullet
+	if bullet == null:
+		return
 	bullet.global_position = pos
 	bullet.direction = direction
 	bullet.speed = speed
@@ -1445,20 +1481,23 @@ func _cli_enemy_bullet(pos: Vector2, direction: Vector2, speed: float,
 	bullet.beam_length = beam_length
 	bullet.beam_width = beam_width
 	bullet.network_visual = true
-	get_tree().current_scene.add_child(bullet)
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 1)
 func _cli_boss_missile(pos: Vector2, direction: Vector2, speed: float,
 		turn_rate: float, lifetime: float) -> void:
-	var missile := BOSS_MISSILE.instantiate()
+	var missile := Pool.acquire(BOSS_MISSILE,
+		get_tree().current_scene) as BossMissile
+	if missile == null:
+		return
 	missile.global_position = pos
 	missile.direction = direction
 	missile.speed = speed
 	missile.turn_rate = turn_rate
 	missile.lifetime = lifetime
 	missile.network_visual = true
-	get_tree().current_scene.add_child(missile)
+	missile.collision_layer = 0
+	missile.collision_mask = 0
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered", 1)
@@ -1489,7 +1528,9 @@ func _add_network_player_bullet(pos: Vector2, direction: Vector2, speed: float,
 	var scene := load("res://scenes/bullet.tscn") as PackedScene
 	if scene == null or get_tree().current_scene == null:
 		return
-	var bullet := scene.instantiate()
+	var bullet := Pool.acquire(scene, get_tree().current_scene) as PlayerBullet
+	if bullet == null:
+		return
 	bullet.global_position = pos
 	bullet.direction = direction
 	bullet.speed = speed
@@ -1498,7 +1539,6 @@ func _add_network_player_bullet(pos: Vector2, direction: Vector2, speed: float,
 	bullet.beam_width = beam_width
 	bullet.beam_color = beam_color
 	bullet.network_visual = true
-	get_tree().current_scene.add_child(bullet)
 
 
 # --- session ----------------------------------------------------------------

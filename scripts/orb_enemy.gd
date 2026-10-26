@@ -145,7 +145,10 @@ func _handle_collisions() -> void:
 
 func _launch_orb(dir: Vector2) -> void:
 	Game.sfx("charge", -17.0, 0.68, 0.78)
-	var orb := ORB_PROJECTILE.instantiate()
+	var orb := Pool.acquire(ORB_PROJECTILE,
+		get_tree().current_scene) as OrbProjectile
+	if orb == null:
+		return
 	orb.global_position = global_position + dir * 30.0
 	orb.direction = dir
 	orb.speed = orb_speed
@@ -155,7 +158,6 @@ func _launch_orb(dir: Vector2) -> void:
 	# 0.1 every 0.25s instead of rounding every hit up to one HP.
 	orb.damage = 0.1 * (1.0 + 0.15 * float(maxi(Game.wave - 1, 0)))
 	orb.knockback = 360.0
-	get_tree().current_scene.add_child(orb)
 	if Net.is_online() and Net.is_host():
 		Net.broadcast_orb(global_position + dir * 30.0, dir, orb_speed,
 			orb_radius, orb_lifetime)
@@ -166,6 +168,7 @@ func take_damage(amount: float, kind: String = "normal") -> void:
 		return
 	if _slow > 0.0:
 		amount *= 1.0 + 0.35 * float(Game.upg_brittle)
+	Game.record_damage(mini(maxi(int(round(amount)), 1), maxi(hp, 0)))
 	hp -= maxi(1, int(round(amount)))
 	_update_bar()
 	_spawn_damage_number(amount, kind)
@@ -174,7 +177,10 @@ func take_damage(amount: float, kind: String = "normal") -> void:
 
 
 func _spawn_damage_number(amount: float, kind: String) -> void:
-	var number := DAMAGE_NUMBER.instantiate() as DamageNumber
+	var number := Pool.acquire(DAMAGE_NUMBER,
+		get_tree().current_scene) as DamageNumber
+	if number == null:
+		return
 	number.global_position = global_position + Vector2(
 		randf_range(-24.0, 24.0), -radius - randf_range(8.0, 34.0)
 	)
@@ -185,7 +191,6 @@ func _spawn_damage_number(amount: float, kind: String) -> void:
 			number.setup(amount, Color(1.0, 0.55, 0.15), 18)
 		_:
 			number.setup(amount, Color(0.82, 0.85, 0.9), 22)
-	get_tree().current_scene.add_child(number)
 
 
 func apply_status(burn_stacks: int, freeze_stacks: int) -> void:
@@ -234,9 +239,13 @@ func _die() -> void:
 	_net_alive = false
 	var xp := 20
 	var drop := NetEnemy.died(self, xp)
-	var boom := EXPLOSION_SCENE.instantiate()
+	var boom := Pool.acquire(EXPLOSION_SCENE,
+		get_tree().current_scene) as Explosion
+	if boom == null:
+		return
 	boom.global_position = global_position
-	get_tree().current_scene.add_child(boom)
+	boom.setup(1.0, Color(0.55, 1.0, 0.55))
+	Game.combat_impact(0.8)
 	Game.on_enemy_killed()
 	if drop:
 		XP_DROP.drop(get_tree(), global_position, xp)
