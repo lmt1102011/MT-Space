@@ -153,7 +153,7 @@ jobs:
           ANDROID_SDK_ROOT: ${{ runner.temp }}/android-sdk
         run: |
           mkdir -p build/web/downloads
-          godot --headless --path . --export-release "Android" build/web/downloads/mt-space-android.apk
+          godot --headless --path . --install-android-build-template --export-release "Android" build/web/downloads/mt-space-android.apk
           rm -f build/web/downloads/mt-space-android.apk.idsig
 
       - name: Verify and publish Android update metadata
