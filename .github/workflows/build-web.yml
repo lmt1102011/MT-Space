@@ -58,6 +58,7 @@ jobs:
       - name: Build the Android installer plugin
         env:
           ANDROID_HOME: ${{ runner.temp }}/android-sdk
+          ANDROID_SDK_ROOT: ${{ runner.temp }}/android-sdk
         run: |
           cd addons/mt_space_android_updater
           gradle --no-daemon :plugin:assembleDebug :plugin:assembleRelease
@@ -149,6 +150,7 @@ jobs:
       - name: Build the game for Android
         env:
           ANDROID_HOME: ${{ runner.temp }}/android-sdk
+          ANDROID_SDK_ROOT: ${{ runner.temp }}/android-sdk
         run: |
           mkdir -p build/web/downloads
           godot --headless --path . --export-release "Android" build/web/downloads/mt-space-android.apk
