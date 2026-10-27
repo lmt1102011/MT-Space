@@ -332,15 +332,18 @@ func _on_android_manifest_received(result: int, response_code: int,
 			"Không thể kiểm tra bản cập nhật. Hãy kiểm tra kết nối mạng rồi thử lại."
 		)
 		return
-	var parsed: Variant = JSON.parse_string(body.get_string_from_utf8())
-	if not _is_valid_android_manifest(parsed):
+	var manifest_text := body.get_string_from_utf8()
+	var parsed: Variant = JSON.parse_string(manifest_text)
+	if not _is_valid_android_manifest(parsed, manifest_text):
 		_finish_android_download_error(
 			dialog, request, "Thông tin bản cập nhật không hợp lệ."
 		)
 		return
+	var manifest: Dictionary = parsed
 	_android_update_version = str(parsed["version"])
 	_android_update_sha256 = str(parsed["sha256"]).to_lower()
-	_android_update_size = int(parsed["size"])
+	_android_update_size = _android_manifest_size(manifest, manifest_text)
+	manifest["size"] = _android_update_size
 	if _verify_android_update_file():
 		_android_download_request = null
 		request.queue_free()
@@ -363,7 +366,7 @@ func _on_android_manifest_received(result: int, response_code: int,
 			dialog, request, "Không thể lưu thông tin xác minh bản cập nhật."
 		)
 		return
-	manifest_file.store_string(JSON.stringify(parsed))
+	manifest_file.store_string(JSON.stringify(manifest))
 	manifest_file.close()
 	if FileAccess.file_exists(_android_update_file):
 		DirAccess.remove_absolute(_android_update_file)
@@ -373,14 +376,13 @@ func _on_android_manifest_received(result: int, response_code: int,
 	_start_android_apk_download(dialog, part_path)
 
 
-func _is_valid_android_manifest(value: Variant) -> bool:
+func _is_valid_android_manifest(value: Variant, raw_json: String = "") -> bool:
 	if not value is Dictionary:
 		return false
 	var manifest: Dictionary = value
 	var version := str(manifest.get("version", ""))
 	var digest := str(manifest.get("sha256", "")).to_lower()
-	var size_value: Variant = manifest.get("size", 0)
-	if version.is_empty() or not size_value is int or int(size_value) <= 0:
+	if version.is_empty() or _android_manifest_size(manifest, raw_json) <= 0:
 		return false
 	if digest.length() != 64:
 		return false
@@ -388,6 +390,31 @@ func _is_valid_android_manifest(value: Variant) -> bool:
 		if not "0123456789abcdef".contains(character):
 			return false
 	return true
+
+
+func _android_manifest_size(manifest: Dictionary, raw_json: String = "") -> int:
+	var size_value: Variant = manifest.get("size", 0)
+	if size_value is int:
+		return int(size_value)
+	if size_value is String:
+		var size_text := str(size_value)
+		return size_text.to_int() if size_text.is_valid_int() else -1
+	if not size_value is float or not is_finite(float(size_value)) \
+			or float(size_value) <= 0.0:
+		return -1
+	var size_pattern := RegEx.new()
+	var compile_error := size_pattern.compile("\"size\"\\s*:\\s*([0-9]+)")
+	if compile_error != OK:
+		push_error("Unable to compile Android manifest size pattern")
+		return -1
+	var size_match := size_pattern.search(raw_json)
+	if size_match == null:
+		return -1
+	var exact_size_text := size_match.get_string(1)
+	if not exact_size_text.is_valid_int() \
+			or float(exact_size_text) != float(size_value):
+		return -1
+	return exact_size_text.to_int()
 
 
 func _start_android_apk_download(dialog: Node, part_path: String) -> void:
@@ -505,15 +532,16 @@ func _load_cached_android_update() -> bool:
 	var file := FileAccess.open(manifest_path, FileAccess.READ)
 	if file == null:
 		return false
-	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	var manifest_text := file.get_as_text()
 	file.close()
-	if not _is_valid_android_manifest(parsed):
+	var parsed: Variant = JSON.parse_string(manifest_text)
+	if not _is_valid_android_manifest(parsed, manifest_text):
 		return false
 	if available_version != "" and str(parsed["version"]) != available_version:
 		return false
 	_android_update_version = str(parsed["version"])
 	_android_update_sha256 = str(parsed["sha256"]).to_lower()
-	_android_update_size = int(parsed["size"])
+	_android_update_size = _android_manifest_size(parsed, manifest_text)
 	return _verify_android_update_file()
 
 

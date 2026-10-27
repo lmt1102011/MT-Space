@@ -16,6 +16,22 @@ func _run() -> void:
 	}
 	_check(web.call("_is_valid_android_manifest", manifest),
 		"accepts a well-formed Android update manifest")
+	var published_manifest_text := \
+		"{\"version\":\"0f4b49298327969cc01ada647ac74e13ff306104\"," \
+		+ "\"version_code\":96,\"size\":153176721," \
+		+ "\"sha256\":\"a9aa6ce5d284a91105ce26b8c6183291fd062572b9b27b430e5449e8cc39cffc\"}"
+	var published_manifest: Variant = JSON.parse_string(published_manifest_text)
+	_check(published_manifest is Dictionary
+		and published_manifest.get("size") is float
+		and web.call("_is_valid_android_manifest",
+			published_manifest, published_manifest_text)
+		and int(web.call("_android_manifest_size",
+			published_manifest, published_manifest_text)) == 153176721,
+		"accepts and exactly parses the published large APK size despite Godot JSON precision loss")
+	published_manifest["size"] = "153176721"
+	_check(web.call("_is_valid_android_manifest", published_manifest)
+		and int(web.call("_android_manifest_size", published_manifest)) == 153176721,
+		"accepts an exact decimal string APK size for future update manifests")
 	manifest["sha256"] = "not-a-sha256"
 	_check(not web.call("_is_valid_android_manifest", manifest),
 		"rejects malformed Android update hashes")

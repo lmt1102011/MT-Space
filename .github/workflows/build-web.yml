@@ -94,7 +94,7 @@ jobs:
               "keystore/release_user": os.environ["ANDROID_KEY_ALIAS"],
               "keystore/release_password": os.environ["ANDROID_KEYSTORE_PASSWORD"],
               "version/code": str(int(os.environ["ANDROID_VERSION_CODE"]) + 9),
-              "version/name": f"2.0.{os.environ['ANDROID_VERSION_CODE']}",
+              "version/name": f"2.0.1.{os.environ['ANDROID_VERSION_CODE']}",
           }
           for key, value in values.items():
               content, count = re.subn(
@@ -174,7 +174,7 @@ jobs:
           metadata = {
               "version": os.environ["GITHUB_SHA"],
               "version_code": int(os.environ["GITHUB_RUN_NUMBER"]) + 9,
-              "size": apk.stat().st_size,
+              "size": str(apk.stat().st_size),
               "sha256": digest.hexdigest(),
           }
           Path("build/web/android-update.json").write_text(
