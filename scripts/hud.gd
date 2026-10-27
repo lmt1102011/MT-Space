@@ -363,7 +363,7 @@ func _on_game_over() -> void:
 	summary_label.add_theme_color_override("font_color", Color(0.57, 0.82, 0.93))
 	header.add_child(summary_label)
 
-	_game_over_scroll = ScrollContainer.new()
+	_game_over_scroll = TouchScrollContainer.new()
 	_game_over_scroll.name = "KillRewardScroll"
 	_game_over_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_game_over_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL

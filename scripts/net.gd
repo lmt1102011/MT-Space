@@ -33,9 +33,19 @@ const NET_TICK := 1.0 / 30.0
 const ENEMY_TICK := 1.0 / 30.0
 
 const PLAYER_COLORS := [
-	Color(0.45, 0.85, 1.0), Color(1.0, 0.6, 0.35),
-	Color(0.6, 1.0, 0.55), Color(1.0, 0.55, 0.9),
+	Color(0.28, 0.78, 1.0), Color(1.0, 0.52, 0.27),
+	Color(0.42, 0.92, 0.62), Color(0.88, 0.48, 1.0),
 ]
+const SHIP_COLOR_NAMES := ["AZURE", "EMBER", "MINT", "VIOLET"]
+const FLAME_COLORS := [
+	Color(1.0, 0.68, 0.28), Color(0.25, 0.78, 1.0),
+	Color(0.45, 1.0, 0.52), Color(1.0, 0.35, 0.42),
+	Color(0.80, 0.44, 1.0), Color(0.96, 0.93, 0.72),
+]
+const FLAME_COLOR_NAMES := [
+	"AMBER", "CYAN", "LIME", "RED", "VIOLET", "WHITE",
+]
+const IDENTITY_PATH := "user://pilot_identity.cfg"
 
 signal players_changed()
 signal room_joined()
@@ -46,7 +56,18 @@ signal player_name_taken()
 
 # --- local state ------------------------------------------------------------
 # the name of the local player, empty until they are asked for it
-var player_name: String = ""
+var player_name: String = "":
+	set(value):
+		player_name = value.strip_edges()
+		_save_identity()
+var player_ship_color_index: int = 0:
+	set(value):
+		player_ship_color_index = posmod(value, PLAYER_COLORS.size())
+		_save_identity()
+var player_flame_color_index: int = 0:
+	set(value):
+		player_flame_color_index = posmod(value, FLAME_COLORS.size())
+		_save_identity()
 var room_name: String = ""
 # the players of the current room: {id, name, color}
 var players: Array = []
@@ -93,10 +114,96 @@ const RECONNECT_WAIT := 3.0
 var _reconnect_timer: float = 0.0
 # true while the client is trying to get back into the room
 var _reconnecting: bool = false
+var _loading_identity := false
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	_load_identity()
+
+
+func _load_identity() -> void:
+	var config := ConfigFile.new()
+	var error := config.load(IDENTITY_PATH)
+	if error == ERR_FILE_NOT_FOUND:
+		return
+	if error != OK:
+		push_error("Unable to load pilot identity: %s" % error_string(error))
+		return
+	_loading_identity = true
+	player_name = str(config.get_value("pilot", "name", "")).strip_edges()
+	player_ship_color_index = posmod(
+		int(config.get_value("pilot", "ship_color", 0)),
+		PLAYER_COLORS.size()
+	)
+	player_flame_color_index = posmod(
+		int(config.get_value("pilot", "flame_color", 0)),
+		FLAME_COLORS.size()
+	)
+	_loading_identity = false
+
+
+func _save_identity() -> void:
+	if _loading_identity:
+		return
+	var config := ConfigFile.new()
+	var load_error := config.load(IDENTITY_PATH)
+	if load_error != OK and load_error != ERR_FILE_NOT_FOUND:
+		push_error("Unable to load pilot identity before saving: %s" \
+			% error_string(load_error))
+		return
+	config.set_value("pilot", "name", player_name)
+	config.set_value("pilot", "ship_color", player_ship_color_index)
+	config.set_value("pilot", "flame_color", player_flame_color_index)
+	var error := config.save(IDENTITY_PATH)
+	if error != OK:
+		push_error("Unable to save pilot identity: %s" % error_string(error))
+
+
+func get_player_ship_color() -> Color:
+	return PLAYER_COLORS[player_ship_color_index]
+
+
+func get_player_flame_color() -> Color:
+	return FLAME_COLORS[player_flame_color_index]
+
+
+func is_ship_color_available(color_index: int, except_player_id: int = -1) -> bool:
+	if color_index < 0 or color_index >= PLAYER_COLORS.size():
+		return false
+	for player: Dictionary in players:
+		if int(player.get("id", -1)) == except_player_id:
+			continue
+		if int(player.get("ship_color_index", -1)) == color_index:
+			return false
+	return true
+
+
+func set_player_colors(ship_color_index: int, flame_color_index: int) -> bool:
+	if ship_color_index < 0 or ship_color_index >= PLAYER_COLORS.size() \
+			or flame_color_index < 0 or flame_color_index >= FLAME_COLORS.size():
+		return false
+	if not is_ship_color_available(ship_color_index, my_id()):
+		return false
+	if _hosting:
+		var own_index := _find_player(my_id())
+		if own_index < 0:
+			return false
+		players[own_index]["ship_color_index"] = ship_color_index
+		players[own_index]["flame_color_index"] = flame_color_index
+		players[own_index]["color"] = PLAYER_COLORS[ship_color_index]
+		players[own_index]["flame_color"] = FLAME_COLORS[flame_color_index]
+		player_ship_color_index = ship_color_index
+		player_flame_color_index = flame_color_index
+		_broadcast_players()
+		players_changed.emit()
+	else:
+		player_ship_color_index = ship_color_index
+		player_flame_color_index = flame_color_index
+		if is_online():
+			rpc_id(1, "_srv_set_player_colors",
+				ship_color_index, flame_color_index)
+	return true
 
 
 # Puts the peer into the multiplayer api of the scene tree.
@@ -224,7 +331,14 @@ func host_room(room_title: String, port: int = DEFAULT_PORT, web_mode: bool = fa
 	_hosting = true
 	_new_api(peer)
 	room_name = room_title
-	players = [{"id": my_id(), "name": _my_name(), "color": _color_for(0)}]
+	players = [{
+		"id": my_id(),
+		"name": _my_name(),
+		"color": get_player_ship_color(),
+		"flame_color": get_player_flame_color(),
+		"ship_color_index": player_ship_color_index,
+		"flame_color_index": player_flame_color_index,
+	}]
 	_start_discovery(true)
 	room_joined.emit()
 	_broadcast_players()
@@ -634,10 +748,6 @@ func _deduplicate_rooms() -> void:
 
 
 # --- player registry --------------------------------------------------------
-func _color_for(slot: int) -> Color:
-	return PLAYER_COLORS[slot % PLAYER_COLORS.size()]
-
-
 func _on_peer_connected(_id: int) -> void:
 	# the new player sends their name right after connecting
 	pass
@@ -672,7 +782,8 @@ func _send_hello() -> void:
 		return
 	if _peer == null or _peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
 		return
-	rpc_id(1, "_srv_hello", _my_name())
+	rpc_id(1, "_srv_hello", _my_name(),
+		player_ship_color_index, player_flame_color_index)
 
 
 func retry_hello() -> void:
@@ -722,7 +833,9 @@ func _on_server_disconnected() -> void:
 
 
 @rpc("any_peer", "call_remote", "reliable", 0)
-func _srv_hello(requested_name: String) -> void:
+func _srv_hello(
+		requested_name: String, requested_ship_color: int,
+		requested_flame_color: int) -> void:
 	if not _hosting:
 		return
 	var id := _api.get_remote_sender_id()
@@ -731,9 +844,52 @@ func _srv_hello(requested_name: String) -> void:
 	if is_player_name_taken(requested_name):
 		rpc_id(id, "_cli_name_taken")
 		return
-	players.append({"id": id, "name": requested_name, "color": _color_for(players.size())})
+	var ship_color_index := requested_ship_color
+	if not is_ship_color_available(ship_color_index):
+		ship_color_index = -1
+		for color_index in PLAYER_COLORS.size():
+			if is_ship_color_available(color_index):
+				ship_color_index = color_index
+				break
+	if ship_color_index < 0:
+		rpc_id(id, "_cli_name_taken")
+		return
+	var flame_color_index := posmod(
+		requested_flame_color, FLAME_COLORS.size()
+	)
+	players.append({
+		"id": id,
+		"name": requested_name,
+		"color": PLAYER_COLORS[ship_color_index],
+		"flame_color": FLAME_COLORS[flame_color_index],
+		"ship_color_index": ship_color_index,
+		"flame_color_index": flame_color_index,
+	})
 	_broadcast_players()
 	_add_own_room()
+	players_changed.emit()
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func _srv_set_player_colors(ship_color_index: int,
+		flame_color_index: int) -> void:
+	if not _hosting or ship_color_index < 0 \
+			or ship_color_index >= PLAYER_COLORS.size() \
+			or flame_color_index < 0 \
+			or flame_color_index >= FLAME_COLORS.size():
+		return
+	var sender_id := _api.get_remote_sender_id()
+	var player_index := _find_player(sender_id)
+	if player_index < 0 or not is_ship_color_available(
+		ship_color_index, sender_id
+	):
+		_broadcast_players()
+		return
+	players[player_index]["ship_color_index"] = ship_color_index
+	players[player_index]["flame_color_index"] = flame_color_index
+	players[player_index]["color"] = PLAYER_COLORS[ship_color_index]
+	players[player_index]["flame_color"] = FLAME_COLORS[flame_color_index]
+	_broadcast_players()
 	players_changed.emit()
 
 
@@ -749,10 +905,14 @@ func _cli_name_taken() -> void:
 func _broadcast_players() -> void:
 	if not _hosting:
 		return
-	# the colours are looked up on the other side, so only the names travel
+	# Send palette indexes so every peer can resolve the same ship and flame colors.
 	var plain: Array = []
 	for p in players:
-		plain.append([int(p["id"]), str(p["name"])])
+		plain.append([
+			int(p["id"]), str(p["name"]),
+			int(p.get("ship_color_index", 0)),
+			int(p.get("flame_color_index", 0)),
+		])
 	for pid in _client_ids():
 		rpc_id(pid, "_cli_players", plain)
 
@@ -760,15 +920,33 @@ func _broadcast_players() -> void:
 @rpc("any_peer", "call_remote", "reliable", 0)
 func _cli_players(list: Array) -> void:
 	var out: Array = []
+	var local_player_in_room := false
 	for i in list.size():
 		var row: Array = list[i]
-		out.append({"id": int(row[0]), "name": str(row[1]),
-			"color": _color_for(i)})
+		var ship_color_index := posmod(int(row[2]), PLAYER_COLORS.size()) \
+			if row.size() > 2 else i % PLAYER_COLORS.size()
+		var flame_color_index := posmod(int(row[3]), FLAME_COLORS.size()) \
+			if row.size() > 3 else 0
+		var player_id := int(row[0])
+		out.append({
+			"id": player_id,
+			"name": str(row[1]),
+			"color": PLAYER_COLORS[ship_color_index],
+			"flame_color": FLAME_COLORS[flame_color_index],
+			"ship_color_index": ship_color_index,
+			"flame_color_index": flame_color_index,
+		})
+		if player_id == my_id():
+			local_player_in_room = true
+			player_ship_color_index = ship_color_index
+			player_flame_color_index = flame_color_index
 	players = out
 	# the host has us in the room now, the greetings can stop
 	_wait_for_hello = false
 	name_change_required = false
 	players_changed.emit()
+	if local_player_in_room:
+		room_joined.emit()
 
 
 # A client says hello every now and then, so the host knows it is still there.
@@ -808,6 +986,12 @@ func player_name_of(id: int) -> String:
 func player_color_of(id: int) -> Color:
 	var i := _find_player(id)
 	return players[i]["color"] if i >= 0 else Color.WHITE
+
+
+func player_flame_color_of(id: int) -> Color:
+	var i := _find_player(id)
+	return players[i].get("flame_color", get_player_flame_color()) \
+		if i >= 0 else get_player_flame_color()
 
 
 # The host chooses among the local player and the remote-player proxies. This

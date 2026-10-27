@@ -420,6 +420,7 @@ func _make_remote_player(id: int) -> Node2D:
 	p.set("net_id", id)
 	p.set("net_name", Net.player_name_of(id))
 	p.set("net_color", Net.player_color_of(id))
+	p.set("net_flame_color", Net.player_flame_color_of(id))
 	add_child(p)
 	return p
 
@@ -459,6 +460,7 @@ func _refresh_player_names() -> void:
 			continue
 		p.set("net_name", Net.player_name_of(int(id)))
 		p.set("net_color", Net.player_color_of(int(id)))
+		p.set("net_flame_color", Net.player_flame_color_of(int(id)))
 		p.call("_refresh_name")
 
 

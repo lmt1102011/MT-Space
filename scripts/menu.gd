@@ -17,6 +17,7 @@ const PROMPT_SCENE := preload("res://scenes/name_prompt.tscn")
 @onready var _version_label: Label = $UI/Version
 
 var _name_prompt: Control
+var _start_immediately_after_name := false
 
 
 func _ready() -> void:
@@ -71,6 +72,9 @@ func _on_play() -> void:
 	Game.sfx("click", -10.0, 0.95, 1.05)
 	if is_instance_valid(_name_prompt):
 		return
+	if not Net.player_name.strip_edges().is_empty():
+		_change_to_lobby()
+		return
 	_name_prompt = PROMPT_SCENE.instantiate() as Control
 	add_child(_name_prompt)
 	_name_prompt.name_chosen.connect(_on_named)
@@ -88,13 +92,26 @@ func _wants_to_play_now() -> bool:
 
 # Straight into the game, without asking for a name.
 func _start_game() -> void:
-	Net.player_name = "PLAYER"
-	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	if not Net.player_name.strip_edges().is_empty():
+		get_tree().change_scene_to_file("res://scenes/main.tscn")
+		return
+	_start_immediately_after_name = true
+	_name_prompt = PROMPT_SCENE.instantiate() as Control
+	add_child(_name_prompt)
+	_name_prompt.name_chosen.connect(_on_named)
 
 
 func _on_named(_name: String) -> void:
 	_name_prompt = null
-	call_deferred("_change_to_lobby")
+	if _start_immediately_after_name:
+		_start_immediately_after_name = false
+		call_deferred("_start_named_game")
+	else:
+		call_deferred("_change_to_lobby")
+
+
+func _start_named_game() -> void:
+	get_tree().change_scene_to_file("res://scenes/main.tscn")
 
 
 func _change_to_lobby() -> void:

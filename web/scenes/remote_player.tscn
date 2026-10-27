@@ -1,16 +1,16 @@
 [gd_scene load_steps=3 format=3 uid="uid://cremoteplayer1"]
 
 [ext_resource type="Script" path="res://scripts/remote_player.gd" id="1_remote"]
-[ext_resource type="Texture2D" path="res://assets/player.svg" id="2_ship"]
+[ext_resource type="Texture2D" path="res://assets/ships/phoenix.svg" id="2_ship"]
 
 [node name="RemotePlayer" type="Node2D"]
 script = ExtResource("1_remote")
 
 [node name="Ship" type="Sprite2D" parent="."]
-texture_filter = 2
+texture_filter = 4
 modulate = Color(1, 1, 1, 1)
 texture = ExtResource("2_ship")
-scale = Vector2(0.2, 0.2)
+scale = Vector2(0.6, 0.6)
 
 [node name="Name" type="Label" parent="."]
 offset_left = -60.0

@@ -1,7 +1,7 @@
 [gd_scene load_steps=6 format=3 uid="uid://clobby0001"]
 
 [ext_resource type="Script" path="res://scripts/lobby_new.gd" id="1_lobby_new"]
-[ext_resource type="Texture2D" path="res://assets/player.svg" id="2_player"]
+[ext_resource type="Texture2D" path="res://assets/ships/phoenix.svg" id="2_player"]
 [ext_resource type="Texture2D" path="res://assets/bg_star.svg" id="3_star"]
 [ext_resource type="Texture2D" path="res://assets/shape_3.svg" id="4_survival"]
 [ext_resource type="Texture2D" path="res://assets/railgun_enemy.svg" id="5_test"]
@@ -62,6 +62,7 @@ position = Vector2(420, 350)
 rotation = -0.698132
 
 [node name="Ship" type="Sprite2D" parent="UI/ShipAnchor"]
+texture_filter = 4
 texture = ExtResource("2_player")
 scale = Vector2(0.65, 0.65)
 

@@ -298,6 +298,8 @@ func _start_android_update() -> void:
 	get_tree().current_scene.add_child(dialog)
 	_android_download_dialog = dialog
 	dialog.cancelled.connect(_cancel_android_download)
+	if not _ensure_android_install_permission(dialog):
+		return
 	if _load_cached_android_update():
 		_show_android_update_ready()
 		return
@@ -565,18 +567,9 @@ func _install_android_update(dialog: Node) -> void:
 			dialog.queue_free()
 		_start_android_update()
 		return
-	if not Engine.has_singleton("MTSpaceAndroidUpdater"):
-		dialog.show_download_error(
-			"Không thể mở trình cài đặt Android. Hãy tải bản cập nhật từ trang web."
-		)
+	if not _ensure_android_install_permission(dialog):
 		return
 	var updater: Object = Engine.get_singleton("MTSpaceAndroidUpdater")
-	if not bool(updater.call("canRequestInstallPackages")):
-		updater.call("openInstallPermissionSettings")
-		dialog.show_download_error(
-			"Android yêu cầu cho phép MT Space cài ứng dụng. Bật quyền này trong Cài đặt, quay lại game rồi bấm cập nhật lần nữa."
-		)
-		return
 	var install_error: Variant = updater.call("installApk", _android_update_file)
 	if str(install_error) != "":
 		dialog.show_download_error(
@@ -585,6 +578,24 @@ func _install_android_update(dialog: Node) -> void:
 		return
 	dialog.queue_free()
 	_android_download_dialog = null
+
+
+func _ensure_android_install_permission(dialog: Node) -> bool:
+	if not Engine.has_singleton("MTSpaceAndroidUpdater"):
+		dialog.show_download_error(
+			"Không thể mở trình cài đặt Android. Hãy tải bản cập nhật từ trang web."
+		)
+		_android_download_dialog = null
+		return false
+	var updater: Object = Engine.get_singleton("MTSpaceAndroidUpdater")
+	if not bool(updater.call("canRequestInstallPackages")):
+		_android_download_dialog = null
+		dialog.show_permission_required(
+			"Android yêu cầu cho phép MT Space cài ứng dụng trước khi tải bản cập nhật. Bật quyền này trong Cài đặt, quay lại game rồi bấm cập nhật lần nữa."
+		)
+		updater.call("openInstallPermissionSettings")
+		return false
+	return true
 
 
 func _finish_android_download_error(

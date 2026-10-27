@@ -19,6 +19,13 @@ func show_name_taken() -> void:
 	_set_localized(_play_btn, "CHANGE NAME")
 
 
+func show_rename_mode() -> void:
+	_edit.text = Net.player_name
+	_set_localized(_title, "CHANGE PILOT NAME")
+	_set_localized(_hint, "your name is saved for future sessions")
+	_set_localized(_play_btn, "SAVE NAME")
+
+
 func _ready() -> void:
 	_play_btn.pressed.connect(_on_play)
 	_edit.text_submitted.connect(func(_t): _on_play())

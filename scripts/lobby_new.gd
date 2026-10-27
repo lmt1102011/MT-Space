@@ -8,25 +8,23 @@ const MENU_SCENE := "res://scenes/menu.tscn"
 const ChamferBox := preload("res://scripts/chamfer_box.gd")
 const CardDBScript := preload("res://scripts/card_db.gd")
 const PLAYER_SCENE := preload("res://scenes/player.tscn")
-const PLAYER_ICON := preload("res://assets/player.svg")
+const PLAYER_ICON := preload("res://assets/ships/phoenix.svg")
+const NAME_PROMPT := preload("res://scenes/name_prompt.tscn")
+const DropdownStyle := preload("res://scripts/dropdown_style.gd")
 const PAINT_SCHEMES := [
-	{"id": "aquila", "name": "STOCK", "color": Color(0.86, 0.94, 1.0)},
-	{"id": "viper", "name": "ION", "color": Color(0.40, 0.91, 1.0)},
-	{"id": "raven", "name": "NEBULA", "color": Color(0.75, 0.57, 1.0)},
-	{"id": "phoenix", "name": "SOLAR", "color": Color(1.0, 0.68, 0.37)},
-	{"id": "draco", "name": "JADE", "color": Color(0.46, 1.0, 0.68)},
-	{"id": "orion", "name": "CORAL", "color": Color(1.0, 0.48, 0.62)},
+	{"id": "phoenix", "name": "PHOENIX", "color": Color(1.0, 0.68, 0.37)},
 ]
 const PANEL_BG := Color(0.035, 0.065, 0.11, 0.96)
 const CYAN := Color(0.34, 0.84, 0.96)
 const MUTED := Color(0.63, 0.72, 0.84)
 const NAV_ICONS := {
-	"ships": "res://assets/player.svg",
+	"ships": "res://assets/ships/phoenix.svg",
 	"upgrades": "res://assets/icons/damage.svg",
-	"equipment": "res://assets/icons/backpack.svg",
+	"shop": "res://assets/icons/backpack.svg",
+	"store": "res://assets/icons/store.svg",
+	"home": "res://assets/ships/phoenix.svg",
 	"missions": "res://assets/xp_orb_gem.svg",
 	"achievements": "res://assets/icons/trophy.svg",
-	"store": "res://assets/icons/default.svg",
 	"events": "res://assets/icons/elite_hunter.svg",
 }
 
@@ -164,6 +162,10 @@ var _run_record_panel: Panel
 var _run_record_label: Label
 var _run_record_scroll: ScrollContainer
 var _run_record_close: Button
+var _profile_popup: Control
+var _profile_name_label: Label
+var _profile_stats: VBoxContainer
+var _profile_name_prompt: Control
 var _dashboard: Control
 var _dashboard_content: VBoxContainer
 var _desktop_row: HBoxContainer
@@ -176,6 +178,43 @@ var _page_popup_title: Label
 var _page_popup_content: VBoxContainer
 var _page_popup_scroll: ScrollContainer
 var _navigation_group: ButtonGroup
+var _current_page := "home"
+var _ship_fleet_grid: GridContainer
+var _fleet_active_horizontal: HBoxContainer
+var _fleet_active_vertical: VBoxContainer
+var _fleet_active_art_panel: Control
+var _fleet_active_stats_panel: Control
+var _shop_ship_grid: GridContainer
+var _shop_ship_cards: Array[Control] = []
+var _shop_search: LineEdit
+var _store_search: LineEdit
+var _store_items_grid: GridContainer
+var _store_category: String = "all"
+var _store_category_group: ButtonGroup
+var _equipment_slot_id := ""
+var _loadout_category := "overview"
+var _loadout_category_group: ButtonGroup
+var _loadout_search: LineEdit
+var _loadout_grid: GridContainer
+var _loadout_items_scroll: ScrollContainer
+var _loadout_count: Label
+var _loadout_hint: Label
+var _loadout_inventory_title: Label
+var _loadout_page_root: HBoxContainer
+var _loadout_stage: HBoxContainer
+var _loadout_item_popup: Control
+var _loadout_item_popup_panel: PanelContainer
+var _loadout_item_popup_title: Label
+var _loadout_item_popup_icon: TextureRect
+var _loadout_item_popup_description: Label
+var _loadout_item_popup_effect: Label
+var _loadout_item_popup_status: Label
+var _loadout_item_popup_action: Button
+var _loadout_selected_item_id := ""
+var _loadout_ship_selector: OptionButton
+var _ship_detail_dialog: ConfirmationDialog
+var _ship_detail_buy_button: Button
+var _selected_ship_detail_id := ""
 var _selected_play_mode: String = "solo"
 var _mode_summary: Label
 var _ship_stage: ShipStage
@@ -184,6 +223,7 @@ var _ship_preview_base_position := Vector2.ZERO
 var _preview_ship_index: int = 0
 var _ship_swipe_start := Vector2.ZERO
 var _ship_gesture_active: bool = false
+var _ship_gesture_triggered: bool = false
 var _ship_visual_tween: Tween
 var _ship_transition_ghost: TextureRect
 var _ship_transition_sweep: ColorRect
@@ -237,9 +277,12 @@ func _ready() -> void:
 				legacy_control.hide()
 	_create_run_record_panel()
 	_build_dashboard()
+	_create_ship_detail_dialog()
 	Game.lobby_profile_changed.connect(_refresh_dashboard)
 	get_viewport().size_changed.connect(_layout_dashboard)
 	_layout_dashboard()
+	_refresh_header_values()
+	call_deferred("_refresh_header_values")
 	_start_ani()
 
 
@@ -264,7 +307,7 @@ func _build_dashboard() -> void:
 	margin.add_child(page)
 	page.add_child(_build_header())
 
-	var scroll := ScrollContainer.new()
+	var scroll := TouchScrollContainer.new()
 	scroll.name = "LobbyScroll"
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -282,17 +325,19 @@ func _build_dashboard() -> void:
 	_desktop_row.add_theme_constant_override("separation", 12)
 	_dashboard_content.add_child(_desktop_row)
 
-	_mobile_nav_scroll = ScrollContainer.new()
+	_mobile_nav_scroll = TouchScrollContainer.new()
 	_mobile_nav_scroll.name = "MobileNavigation"
 	_mobile_nav_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	_mobile_nav_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_mobile_nav_scroll.custom_minimum_size.y = 54
+	_mobile_nav_scroll.visible = false
 	var mobile_nav := HBoxContainer.new()
 	mobile_nav.add_theme_constant_override("separation", 8)
 	_mobile_nav_scroll.add_child(mobile_nav)
+	_dashboard_content.add_child(_mobile_nav_scroll)
 
 	_navigation_group = ButtonGroup.new()
-	_navigation_group.allow_unpress = false
+	_navigation_group.allow_unpress = true
 	var nav := _build_navigation(true)
 	_desktop_row.add_child(nav)
 	_main_columns = _build_content_columns() as HBoxContainer
@@ -302,15 +347,75 @@ func _build_dashboard() -> void:
 	_main_columns_mobile.name = "MainColumnsMobile"
 	_main_columns_mobile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_main_columns_mobile.add_theme_constant_override("separation", 12)
+	_main_columns_mobile.visible = false
+	_dashboard_content.add_child(_main_columns_mobile)
 
 	_page_popup = _build_page_popup()
-	_dashboard.add_child(_page_popup)
+	ui.add_child(_page_popup)
 	_page_popup.hide()
-	_dashboard.get_node("PageBackdrop").hide()
 	_last_selected_ship_id = Game.selected_ship_id
 	_refresh_dashboard()
+	_refresh_header_values()
 	if _page_popup.visible and _page_popup_title.text == "SHIPS":
 		_open_page("ships")
+
+
+func _create_ship_detail_dialog() -> void:
+	_ship_detail_dialog = ConfirmationDialog.new()
+	_ship_detail_dialog.title = "FIGHTER DETAILS"
+	_ship_detail_dialog.dialog_text = ""
+	_ship_detail_dialog.get_ok_button().text = "CLOSE"
+	_ship_detail_dialog.get_cancel_button().hide()
+	_ship_detail_buy_button = _ship_detail_dialog.add_button(
+		"BUY", true, "buy_ship"
+	)
+	_ship_detail_buy_button.icon = load(
+		"res://assets/icons/gem.svg"
+	) as Texture2D
+	_ship_detail_buy_button.add_theme_constant_override("icon_max_width", 18)
+	_ship_detail_dialog.custom_action.connect(_on_ship_detail_action)
+	add_child(_ship_detail_dialog)
+
+
+func _show_ship_detail(ship_id: String) -> void:
+	var stats := Game.get_effective_ship_combat_stats(ship_id)
+	var cost := Game.get_ship_token_cost(ship_id)
+	var unlock_wave := Game.get_ship_unlock_wave(ship_id)
+	_selected_ship_detail_id = ship_id
+	_ship_detail_dialog.title = _translate("FIGHTER DETAILS")
+	_ship_detail_dialog.dialog_text = "%s\n\n%s %.2f×    %s %d    %s %d\n\n%s %d %s %d %s.\n%s: %d" % [
+		ship_id.to_upper(),
+		_translate("DMG"),
+		float(stats["damage_multiplier"]),
+		_translate("SPEED"),
+		roundi(float(stats["max_speed"])),
+		_translate("HULL"),
+		int(stats["max_hp"]),
+		_translate("UNLOCK BY REACHING WAVE"),
+		unlock_wave,
+		_translate("OR PURCHASE FOR"),
+		cost,
+		_translate("GEMS"),
+		_translate("BEST WAVE"),
+		int(Game.best_run.get("wave", 0)),
+	]
+	_ship_detail_buy_button.text = "%s  %d %s" % [
+		_translate("BUY"), cost, _translate("GEMS"),
+	]
+	_ship_detail_buy_button.disabled = Game.is_ship_unlocked(ship_id) \
+		or Game.pilot_tokens < cost
+	_ship_detail_dialog.popup_centered(Vector2i(440, 300))
+
+
+func _on_ship_detail_action(action: StringName) -> void:
+	if action != &"buy_ship" or _selected_ship_detail_id.is_empty():
+		return
+	var ship_id := _selected_ship_detail_id
+	if not Game.unlock_ship_with_tokens(ship_id):
+		return
+	_sfx()
+	_ship_detail_dialog.hide()
+	_open_page("ships")
 
 
 func _build_header() -> Control:
@@ -378,11 +483,16 @@ func _build_header() -> Control:
 	progress_row.add_theme_constant_override("separation", 6)
 	var level_label := Label.new()
 	level_label.name = "PilotLevelValue"
+	level_label.text = "LV %d" % Game.pilot_level
+	level_label.visible = true
 	level_label.add_theme_font_size_override("font_size", 10)
 	level_label.add_theme_color_override("font_color", Color(0.97, 0.78, 0.38))
 	progress_row.add_child(level_label)
 	var xp_label := Label.new()
 	xp_label.name = "PilotXPValue"
+	xp_label.text = "%d / %d XP" % [
+		Game.pilot_xp, Game.xp_needed_for(Game.pilot_level),
+	]
 	xp_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	xp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	xp_label.add_theme_font_size_override("font_size", 9)
@@ -391,6 +501,8 @@ func _build_header() -> Control:
 	profile.add_child(progress_row)
 	var xp_bar := ProgressBar.new()
 	xp_bar.name = "PilotXPBar"
+	xp_bar.max_value = maxf(1.0, float(Game.xp_needed_for(Game.pilot_level)))
+	xp_bar.value = Game.pilot_xp
 	xp_bar.custom_minimum_size.y = 5
 	xp_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	xp_bar.show_percentage = false
@@ -405,6 +517,20 @@ func _build_header() -> Control:
 	profile.add_child(xp_bar)
 	pilot_row.add_child(profile)
 	row.add_child(pilot_card)
+	var profile_hitbox := Button.new()
+	profile_hitbox.name = "PilotProfileHitbox"
+	profile_hitbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	profile_hitbox.focus_mode = Control.FOCUS_NONE
+	profile_hitbox.tooltip_text = "OPEN PILOT PROFILE"
+	profile_hitbox.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+	profile_hitbox.add_theme_stylebox_override("hover", StyleBoxEmpty.new())
+	profile_hitbox.add_theme_stylebox_override("pressed", StyleBoxEmpty.new())
+	profile_hitbox.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	profile_hitbox.pressed.connect(_show_profile_popup)
+	for descendant: Node in pilot_card.find_children("*", "Control", true, false):
+		(descendant as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pilot_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pilot_card.add_child(profile_hitbox)
 
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -429,13 +555,147 @@ func _pilot_initials() -> String:
 	return player_name.left(1).to_upper()
 
 
+func _ensure_profile_popup() -> void:
+	if is_instance_valid(_profile_popup):
+		return
+	_profile_popup = Control.new()
+	_profile_popup.name = "PilotProfilePopup"
+	_profile_popup.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_profile_popup.z_index = 80
+	_profile_popup.mouse_filter = Control.MOUSE_FILTER_STOP
+	_profile_popup.hide()
+	add_child(_profile_popup)
+	var dim := ColorRect.new()
+	dim.name = "ProfilePopupDim"
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.color = Color(0.005, 0.014, 0.03, 0.78)
+	_profile_popup.add_child(dim)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_profile_popup.add_child(center)
+	var panel := _new_panel()
+	panel.name = "PilotProfilePanel"
+	panel.custom_minimum_size = Vector2(460, 420)
+	center.add_child(panel)
+	var margin := MarginContainer.new()
+	for side in ["left", "top", "right", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 22)
+	panel.add_child(margin)
+	var layout := VBoxContainer.new()
+	layout.add_theme_constant_override("separation", 12)
+	margin.add_child(layout)
+	var heading := HBoxContainer.new()
+	layout.add_child(heading)
+	var heading_label := Label.new()
+	heading_label.text = "PILOT COMBAT PROFILE"
+	heading_label.add_theme_font_size_override("font_size", 18)
+	heading_label.add_theme_color_override("font_color", CYAN)
+	heading_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	heading.add_child(heading_label)
+	var close := _make_button("×", "profile_close")
+	close.custom_minimum_size = Vector2(40, 36)
+	close.pressed.connect(_profile_popup.hide)
+	heading.add_child(close)
+	_profile_name_label = Label.new()
+	_profile_name_label.name = "ProfilePilotName"
+	_profile_name_label.add_theme_font_size_override("font_size", 24)
+	_profile_name_label.add_theme_color_override("font_color", Color.WHITE)
+	layout.add_child(_profile_name_label)
+	var divider := ColorRect.new()
+	divider.custom_minimum_size.y = 1
+	divider.color = Color(CYAN, 0.4)
+	layout.add_child(divider)
+	_profile_stats = VBoxContainer.new()
+	_profile_stats.name = "ProfileCombatStats"
+	_profile_stats.add_theme_constant_override("separation", 8)
+	_profile_stats.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	layout.add_child(_profile_stats)
+	var rename := _make_button("CHANGE NAME", "profile_rename")
+	rename.name = "ProfileRenameButton"
+	rename.custom_minimum_size.y = 42
+	rename.pressed.connect(_begin_profile_rename)
+	layout.add_child(rename)
+
+
+func _show_profile_popup() -> void:
+	_ensure_profile_popup()
+	_refresh_profile_popup()
+	_profile_popup.show()
+
+
+func _refresh_profile_popup() -> void:
+	if _profile_stats == null:
+		return
+	var viewport_size := get_viewport().get_visible_rect().size
+	var profile_panel := _profile_popup.find_child(
+		"PilotProfilePanel", true, false
+	) as Control
+	if profile_panel != null:
+		profile_panel.custom_minimum_size = Vector2(
+			minf(460.0, maxf(280.0, viewport_size.x - 32.0)),
+			minf(420.0, maxf(280.0, viewport_size.y - 32.0))
+		)
+	var current_name := str(Net.player_name).strip_edges()
+	_profile_name_label.text = current_name if not current_name.is_empty() \
+		else "PILOT"
+	for child: Node in _profile_stats.get_children():
+		child.queue_free()
+	var best: Dictionary = Game.best_run
+	var latest: Dictionary = Game.latest_run
+	var total_kills := 0
+	for count: Variant in best.get("enemy_kills", {}).values():
+		total_kills += int(count)
+	var stats := [
+		["PILOT LEVEL", str(Game.pilot_level)],
+		["BEST WAVE", str(int(best.get("wave", 0)))],
+		["BEST-RUN KILLS", str(total_kills)],
+		["BOSSES DEFEATED", str(int(best.get("bosses", 0)))],
+		["DAMAGE DEALT", _format_count(int(best.get("damage", 0)))],
+		["LATEST RUN", "WAVE %d  /  %s" % [
+			int(latest.get("wave", 0)),
+			_format_time(float(latest.get("seconds", 0.0))),
+		]],
+	]
+	for stat: Array in stats:
+		var line := HBoxContainer.new()
+		var label := Label.new()
+		label.text = str(stat[0])
+		label.add_theme_font_size_override("font_size", 11)
+		label.add_theme_color_override("font_color", MUTED)
+		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var value := Label.new()
+		value.text = str(stat[1])
+		value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		value.add_theme_color_override("font_color", Color.WHITE)
+		line.add_child(label)
+		line.add_child(value)
+		_profile_stats.add_child(line)
+
+
+func _begin_profile_rename() -> void:
+	if is_instance_valid(_profile_name_prompt):
+		return
+	_profile_popup.hide()
+	_profile_name_prompt = NAME_PROMPT.instantiate() as Control
+	add_child(_profile_name_prompt)
+	_profile_name_prompt.call("show_rename_mode")
+	_profile_name_prompt.name_chosen.connect(_on_profile_name_changed)
+
+
+func _on_profile_name_changed(_new_name: String) -> void:
+	_profile_name_prompt = null
+	_refresh_dashboard()
+	_show_profile_popup()
+
+
 func _build_currency_cards() -> Control:
 	var cards := HBoxContainer.new()
 	cards.name = "CurrencyCards"
 	cards.size_flags_horizontal = Control.SIZE_SHRINK_END
 	cards.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	cards.add_theme_constant_override("separation", 7)
-	cards.add_child(_build_currency_card("cash", "0"))
+	cards.add_child(_build_currency_card("cash", str(Game.pilot_cash)))
 	cards.add_child(_build_currency_card("gem", str(Game.pilot_tokens)))
 	return cards
 
@@ -482,8 +742,8 @@ func _build_currency_card(currency: String, amount: String) -> PanelContainer:
 		symbol = cash_symbol
 	else:
 		var gem_symbol := TextureRect.new()
-		gem_symbol.texture = load("res://assets/xp_orb_gem.svg") as Texture2D
-		gem_symbol.modulate = Color(0.76, 0.70, 1.0)
+		gem_symbol.texture = load("res://assets/icons/gem.svg") as Texture2D
+		gem_symbol.modulate = Color(0.74, 0.94, 1.0)
 		gem_symbol.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		gem_symbol.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		symbol = gem_symbol
@@ -508,30 +768,40 @@ func _build_navigation(vertical: bool) -> Control:
 	var nav: Control = VBoxContainer.new() if vertical else HBoxContainer.new()
 	nav.name = "LobbyNavigation"
 	nav.add_theme_constant_override("separation", 7)
+	var nav_margin := MarginContainer.new()
+	nav_margin.name = "NavigationPadding"
+	nav_margin.add_theme_constant_override("margin_left", 8)
+	nav_margin.add_theme_constant_override("margin_top", 6)
+	nav_margin.add_theme_constant_override("margin_right", 8)
+	nav_margin.add_theme_constant_override("margin_bottom", 6)
+	nav_margin.add_child(nav)
 	if vertical:
-		nav.custom_minimum_size.x = 148
-		nav.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		nav_margin.custom_minimum_size.x = 148
+		nav_margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	else:
-		nav.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		nav_margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	for entry: Array in [
 		["SHIPS", "ships"], ["UPGRADES", "upgrades"],
-		["EQUIPMENT", "equipment"], ["MISSIONS", "missions"],
-		["ACHIEVEMENTS", "achievements"], ["STORE", "store"],
-		["EVENTS", "events"],
+		["SHOP", "shop"], ["STORE", "store"],
+		["MISSIONS", "missions"],
+		["ACHIEVEMENTS", "achievements"], ["EVENTS", "events"],
 	]:
 		var button := _make_button(str(entry[0]), str(entry[1]))
+		button.name = "LobbyNav_" + str(entry[1])
 		button.icon = load(str(NAV_ICONS[str(entry[1])])) as Texture2D
 		button.add_theme_constant_override("icon_max_width", 19)
+		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		button.add_theme_constant_override("h_separation", 10)
 		button.toggle_mode = true
 		button.button_group = _navigation_group
 		button.set_meta("lobby_page", str(entry[1]))
-		if str(entry[1]) == "ships":
+		if str(entry[1]) == _current_page:
 			button.button_pressed = true
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.custom_minimum_size = Vector2(0 if vertical else 124, 44)
 		button.pressed.connect(_open_page.bind(str(entry[1])))
 		nav.add_child(button)
-	return nav
+	return nav_margin
 
 
 func _build_content_columns() -> Control:
@@ -582,6 +852,7 @@ func _build_ship_preview() -> Control:
 	previous.name = "PreviousShipButton"
 	previous.custom_minimum_size = Vector2(48, 56)
 	previous.add_theme_font_size_override("font_size", 28)
+	previous.disabled = PAINT_SCHEMES.size() <= 1
 	previous.pressed.connect(_cycle_ship.bind(-1))
 	_ship_stage_row.add_child(previous)
 
@@ -619,6 +890,7 @@ func _build_ship_preview() -> Control:
 	_ship_preview.texture = PLAYER_ICON
 	_ship_preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_ship_preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_ship_preview.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	_ship_preview.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ship_stage.add_child(_ship_preview)
 	var locked_overlay := ColorRect.new()
@@ -664,6 +936,7 @@ func _build_ship_preview() -> Control:
 	next.name = "NextShipButton"
 	next.custom_minimum_size = Vector2(48, 56)
 	next.add_theme_font_size_override("font_size", 28)
+	next.disabled = PAINT_SCHEMES.size() <= 1
 	next.pressed.connect(_cycle_ship.bind(1))
 	_ship_stage_row.add_child(next)
 
@@ -694,6 +967,8 @@ func _build_ship_preview() -> Control:
 	_hero_content_stack.name = "HeroContentStack"
 	_hero_content_stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_hero_content_stack.add_theme_constant_override("separation", 10)
+	_hero_content_stack.visible = false
+	body.add_child(_hero_content_stack)
 	_update_ship_preview(false)
 	return section["panel"] as Control
 
@@ -775,7 +1050,7 @@ func _refresh_ship_stats(ship_id: String) -> void:
 			continue
 		_ship_stats.remove_child(child)
 		child.free()
-	var stats := Game.get_ship_combat_stats(ship_id)
+	var stats := Game.get_effective_ship_combat_stats(ship_id)
 	var damage := float(stats["damage_multiplier"])
 	var speed := float(stats["max_speed"])
 	var hp := float(stats["max_hp"])
@@ -854,7 +1129,14 @@ func _build_daily_panel() -> Control:
 	_daily_missions_box.name = "DailyMissionRows"
 	_daily_missions_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_daily_missions_box.add_theme_constant_override("separation", 6)
-	(section["body"] as VBoxContainer).add_child(_daily_missions_box)
+	var mission_scroll := TouchScrollContainer.new()
+	mission_scroll.name = "DailyMissionScroll"
+	mission_scroll.custom_minimum_size.y = 124
+	mission_scroll.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	mission_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	mission_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	mission_scroll.add_child(_daily_missions_box)
+	(section["body"] as VBoxContainer).add_child(mission_scroll)
 	var all := _make_button("VIEW ALL MISSIONS", "missions")
 	all.name = "ViewAllMissionsButton"
 	all.pressed.connect(_open_page.bind("missions"))
@@ -863,36 +1145,24 @@ func _build_daily_panel() -> Control:
 
 
 func _build_page_popup() -> PanelContainer:
-	var backdrop := ColorRect.new()
-	backdrop.name = "PageBackdrop"
-	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	backdrop.color = Color(0.005, 0.012, 0.025, 0.82)
-	backdrop.z_index = 19
-	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
-	_dashboard.add_child(backdrop)
 	var popup := PanelContainer.new()
-	popup.name = "PagePopup"
-	popup.z_index = 20
-	popup.set_anchors_preset(Control.PRESET_CENTER)
-	popup.offset_left = -280
-	popup.offset_top = -250
-	popup.offset_right = 280
-	popup.offset_bottom = 250
-	popup.custom_minimum_size = Vector2(320, 280)
+	popup.name = "LobbyPage"
+	popup.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	popup.clip_contents = true
+	popup.mouse_filter = Control.MOUSE_FILTER_STOP
+	popup.z_index = 40
 	var popup_style := StyleBoxFlat.new()
 	popup_style.bg_color = Color(0.025, 0.045, 0.095, 0.99)
 	popup_style.border_color = Color(0.30, 0.68, 0.88, 0.9)
 	popup_style.set_border_width_all(1)
-	popup_style.set_border_width(SIDE_LEFT, 3)
-	popup_style.set_corner_radius_all(14)
-	popup_style.shadow_color = Color(0.0, 0.02, 0.06, 0.72)
-	popup_style.shadow_size = 18
+	popup_style.set_corner_radius_all(0)
 	popup.add_theme_stylebox_override("panel", popup_style)
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 18)
-	margin.add_theme_constant_override("margin_top", 16)
-	margin.add_theme_constant_override("margin_right", 18)
-	margin.add_theme_constant_override("margin_bottom", 16)
+	margin.name = "PageMargin"
+	margin.add_theme_constant_override("margin_left", 28)
+	margin.add_theme_constant_override("margin_top", 22)
+	margin.add_theme_constant_override("margin_right", 28)
+	margin.add_theme_constant_override("margin_bottom", 22)
 	popup.add_child(margin)
 	var layout := VBoxContainer.new()
 	layout.add_theme_constant_override("separation", 10)
@@ -915,22 +1185,25 @@ func _build_page_popup() -> PanelContainer:
 	_page_popup_title.custom_minimum_size.y = 40
 	_page_popup_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	heading.add_child(_page_popup_title)
-	var close := _make_button("X", "close")
-	close.custom_minimum_size = Vector2(42, 38)
+	var close := _make_button("CLOSE", "close")
+	close.name = "ClosePageButton"
+	close.custom_minimum_size = Vector2(104, 40)
 	close.pressed.connect(_close_page_popup)
 	heading.add_child(close)
 	var accent := ColorRect.new()
 	accent.custom_minimum_size.y = 2
 	accent.color = Color(0.31, 0.77, 0.95, 0.84)
 	layout.add_child(accent)
-	_page_popup_scroll = ScrollContainer.new()
+	_page_popup_scroll = TouchScrollContainer.new()
 	_page_popup_scroll.name = "PagePopupScroll"
 	_page_popup_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_page_popup_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_page_popup_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	layout.add_child(_page_popup_scroll)
 	_page_popup_content = VBoxContainer.new()
 	_page_popup_content.name = "PagePopupContent"
 	_page_popup_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_page_popup_content.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_page_popup_content.add_theme_constant_override("separation", 8)
 	_page_popup_scroll.add_child(_page_popup_content)
 	popup.hide()
@@ -981,6 +1254,10 @@ func _new_panel() -> PanelContainer:
 	return panel
 
 
+func _style_loadout_ship_selector(selector: OptionButton) -> void:
+	DropdownStyle.apply(selector)
+
+
 func _make_button(text: String, action: String) -> Button:
 	var button := Button.new()
 	button.text = text
@@ -989,6 +1266,10 @@ func _make_button(text: String, action: String) -> Button:
 	var normal := StyleBoxFlat.new()
 	normal.bg_color = Color(0.055, 0.105, 0.16, 0.98)
 	normal.border_color = Color(0.20, 0.40, 0.57, 0.8)
+	normal.content_margin_left = 10
+	normal.content_margin_top = 5
+	normal.content_margin_right = 10
+	normal.content_margin_bottom = 5
 	normal.set_border_width_all(1)
 	normal.set_corner_radius_all(7)
 	var hover := normal.duplicate() as StyleBoxFlat
@@ -1029,43 +1310,48 @@ func _make_button(text: String, action: String) -> Button:
 func _layout_dashboard() -> void:
 	if _dashboard_content == null:
 		return
-	var viewport_size := get_viewport().get_visible_rect().size
+	var current_viewport := get_viewport()
+	if current_viewport == null:
+		return
+	var viewport_size := current_viewport.get_visible_rect().size
 	var narrow := viewport_size.x < 940.0 \
 		or viewport_size.x / maxf(viewport_size.y, 1.0) < 1.0
+	_scale_mobile_controls(_dashboard, narrow)
+	_scale_mobile_controls(_page_popup, narrow)
 	_layout_header(viewport_size.x < 430.0)
+	var page_margin := _page_popup.get_node_or_null("PageMargin") as MarginContainer
+	if page_margin != null:
+		var horizontal_margin := 12 if narrow else 28
+		var vertical_margin := 12 if narrow else 22
+		page_margin.add_theme_constant_override("margin_left", horizontal_margin)
+		page_margin.add_theme_constant_override("margin_right", horizontal_margin)
+		page_margin.add_theme_constant_override("margin_top", vertical_margin)
+		page_margin.add_theme_constant_override("margin_bottom", vertical_margin)
 	_set_hero_layout(narrow)
 	var mobile_nav := _mobile_nav_scroll
 	var mobile_columns := _main_columns_mobile
 	if narrow:
-		if _desktop_row.get_parent() == _dashboard_content:
-			_dashboard_content.remove_child(_desktop_row)
-		if mobile_nav.get_parent() != _dashboard_content:
-			_dashboard_content.add_child(mobile_nav)
-			_dashboard_content.move_child(mobile_nav, 0)
 		if _main_columns.get_parent() == _desktop_row:
 			_desktop_row.remove_child(_main_columns)
-		if mobile_columns.get_parent() != _dashboard_content:
-			_dashboard_content.add_child(mobile_columns)
 		while _main_columns.get_child_count() > 0:
 			var column := _main_columns.get_child(0)
 			_main_columns.remove_child(column)
 			_main_columns_mobile.add_child(column)
+		_dashboard_content.move_child(mobile_nav, 0)
+		_dashboard_content.move_child(mobile_columns, 1)
 	else:
-		if mobile_nav.get_parent() == _dashboard_content:
-			_dashboard_content.remove_child(mobile_nav)
-		if mobile_columns.get_parent() == _dashboard_content:
-			_dashboard_content.remove_child(mobile_columns)
 		while _main_columns_mobile.get_child_count() > 0:
 			var column := _main_columns_mobile.get_child(0)
 			_main_columns_mobile.remove_child(column)
 			_main_columns.add_child(column)
-		if _main_columns.get_parent() == null:
+		if _main_columns.get_parent() != _desktop_row:
 			_desktop_row.add_child(_main_columns)
-		if _desktop_row.get_parent() != _dashboard_content:
-			_dashboard_content.add_child(_desktop_row)
-			_dashboard_content.move_child(_desktop_row, 0)
+		_dashboard_content.move_child(_desktop_row, 0)
 	_main_columns.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_main_columns.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_dashboard_content.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_desktop_row.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_main_columns_mobile.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_main_columns.custom_minimum_size.x = 0
 	_main_columns.custom_minimum_size.y = 0
 	var operations: Node = _main_columns_mobile.get_child(1) if narrow \
@@ -1075,27 +1361,60 @@ func _layout_dashboard() -> void:
 	var nav := _desktop_row.get_node_or_null("LobbyNavigation") as Control
 	if nav != null:
 		nav.visible = not narrow
+	if _ship_fleet_grid != null:
+		_ship_fleet_grid.columns = 2 if narrow else 3
+		_layout_fleet_active_ship(narrow)
+	if _loadout_grid != null:
+		_loadout_grid.columns = _loadout_columns()
 	_mobile_nav_scroll.visible = narrow
-	_main_columns_mobile.visible = narrow
+	_main_columns.visible = _current_page == "home"
+	_main_columns_mobile.visible = narrow and _current_page == "home"
 	_desktop_row.visible = not narrow
+	_dashboard.visible = _current_page == "home"
 	if _page_popup != null:
-		var popup_size := Vector2(
-			minf(560.0, viewport_size.x - 32.0),
-			minf(500.0, viewport_size.y - 48.0)
-		)
-		_page_popup.custom_minimum_size = Vector2(
-			minf(320.0, popup_size.x), minf(280.0, popup_size.y)
-		)
-		_page_popup.offset_left = -popup_size.x * 0.5
-		_page_popup.offset_top = -popup_size.y * 0.5
-		_page_popup.offset_right = popup_size.x * 0.5
-		_page_popup.offset_bottom = popup_size.y * 0.5
+		_page_popup.visible = _current_page != "home"
 	_layout_run_record_panel()
+
+
+func _scale_mobile_controls(root_control: Control, mobile: bool) -> void:
+	if root_control == null:
+		return
+	for node: Node in root_control.find_children("*", "Control", true, false):
+		var control := node as Control
+		if control is Label or control is Button or control is LineEdit \
+				or control is OptionButton or control is TextEdit \
+				or control is RichTextLabel:
+			if not control.has_meta("mobile_base_font_size"):
+				control.set_meta(
+					"mobile_base_font_size",
+					control.get_theme_font_size("font_size")
+				)
+				control.set_meta(
+					"mobile_base_minimum_size", control.custom_minimum_size
+				)
+			var base_size := int(control.get_meta("mobile_base_font_size"))
+			var mobile_font_size := maxi(
+				1, base_size + (2 if mobile else 0)
+			)
+			control.set_meta("mobile_applied_font_size", mobile_font_size)
+			control.add_theme_font_size_override(
+				"font_size", mobile_font_size
+			)
+			var base_minimum_size: Vector2 = control.get_meta(
+				"mobile_base_minimum_size"
+			)
+			if mobile and control is Button:
+				control.custom_minimum_size.y = maxf(
+					control.custom_minimum_size.y, 48.0
+				)
+			elif not mobile:
+				control.custom_minimum_size = base_minimum_size
 
 
 func _layout_header(compact: bool) -> void:
 	if _dashboard == null:
 		return
+	var viewport_width := get_viewport().get_visible_rect().size.x
 	var brand := _dashboard.find_child("HeaderBrand", true, false) as Label
 	var settings := _dashboard.find_child(
 		"HeaderSettingsButton", true, false) as Button
@@ -1105,6 +1424,7 @@ func _layout_header(compact: bool) -> void:
 	var profile_card := _dashboard.find_child(
 		"PilotProfileCard", true, false) as PanelContainer
 	if brand != null:
+		brand.visible = not compact or viewport_width >= 380.0
 		brand.text = "MT" if compact else "MT SPACE"
 		brand.add_theme_font_size_override("font_size", 14 if compact else 22)
 	if settings != null:
@@ -1116,7 +1436,9 @@ func _layout_header(compact: bool) -> void:
 	if row != null:
 		row.add_theme_constant_override("separation", 4 if compact else 12)
 	if profile_card != null:
-		profile_card.custom_minimum_size.x = 86.0 if compact else 220.0
+		profile_card.custom_minimum_size.x = (
+			116.0 if viewport_width < 380.0 else 132.0
+		) if compact else 220.0
 	var pilot_name := _dashboard.find_child("PilotName", true, false) as Label
 	if pilot_name != null:
 		var full_name := str(Net.get("player_name")).strip_edges()
@@ -1125,6 +1447,20 @@ func _layout_header(compact: bool) -> void:
 	var avatar := _dashboard.find_child("PilotAvatar", true, false) as Control
 	if avatar != null:
 		avatar.custom_minimum_size = Vector2(34, 34) if compact else Vector2(44, 44)
+	var level_label := _dashboard.find_child(
+		"PilotLevelValue", true, false
+	) as Label
+	var xp_label := _dashboard.find_child(
+		"PilotXPValue", true, false
+	) as Label
+	var xp_bar := _dashboard.find_child("PilotXPBar", true, false) as ProgressBar
+	if level_label != null:
+		level_label.visible = true
+		level_label.custom_minimum_size.x = 42.0
+	if xp_label != null:
+		xp_label.visible = not compact
+	if xp_bar != null:
+		xp_bar.visible = not compact
 	for currency in ["Cash", "Gem"]:
 		var currency_card := _dashboard.find_child(
 			"CurrencyCard_" + currency, true, false) as PanelContainer
@@ -1147,20 +1483,20 @@ func _set_hero_layout(narrow: bool) -> void:
 		hero_body = _hero_content_stack.get_parent() as Container
 	if hero_body == null:
 		return
-	if narrow and _hero_content_row.get_parent() == hero_body:
+	if narrow and _ship_stage_row.get_parent() == _hero_content_row:
 		_hero_content_row.remove_child(_ship_stage_row)
 		_hero_content_row.remove_child(_ship_stats.get_parent().get_parent())
-		hero_body.remove_child(_hero_content_row)
-		hero_body.add_child(_hero_content_stack)
 		_hero_content_stack.add_child(_ship_stage_row)
 		_hero_content_stack.add_child(_ship_stats.get_parent().get_parent())
-	elif not narrow and _hero_content_stack.get_parent() == hero_body:
+		_hero_content_row.visible = false
+		_hero_content_stack.visible = true
+	elif not narrow and _ship_stage_row.get_parent() == _hero_content_stack:
 		_hero_content_stack.remove_child(_ship_stage_row)
 		_hero_content_stack.remove_child(_ship_stats.get_parent().get_parent())
-		hero_body.remove_child(_hero_content_stack)
-		hero_body.add_child(_hero_content_row)
 		_hero_content_row.add_child(_ship_stage_row)
 		_hero_content_row.add_child(_ship_stats.get_parent().get_parent())
+		_hero_content_stack.visible = false
+		_hero_content_row.visible = true
 	_ship_stage.custom_minimum_size = Vector2(
 		0.0 if narrow else 340.0,
 		210.0 if narrow else 250.0
@@ -1174,26 +1510,15 @@ func _set_hero_layout(narrow: bool) -> void:
 
 
 func _close_page_popup() -> void:
-	_page_popup.hide()
-	_dashboard.get_node("PageBackdrop").hide()
+	_open_page("home")
 
 
 func _open_page_popup() -> void:
-	var backdrop := _dashboard.get_node("PageBackdrop") as ColorRect
-	backdrop.show()
-	backdrop.modulate.a = 0.0
 	_page_popup.show()
+	_dashboard.hide()
 	_page_popup.modulate.a = 0.0
-	_page_popup.scale = Vector2(0.97, 0.97)
-	_page_popup.pivot_offset = _page_popup.size * 0.5
-	_page_popup.move_to_front()
-	var tween := create_tween()
-	tween.set_parallel(true)
-	tween.tween_property(backdrop, "modulate:a", 1.0, 0.16)
-	tween.tween_property(_page_popup, "modulate:a", 1.0, 0.18)
-	tween.tween_property(
-		_page_popup, "scale", Vector2.ONE, 0.18
-	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	call_deferred("_layout_dashboard")
+	create_tween().tween_property(_page_popup, "modulate:a", 1.0, 0.18)
 
 
 func _refresh_dashboard() -> void:
@@ -1223,20 +1548,40 @@ func _refresh_dashboard() -> void:
 func _refresh_header_values() -> void:
 	if _dashboard == null:
 		return
+	var pilot_name_label := _dashboard.find_child(
+		"PilotName", true, false
+	) as Label
+	if pilot_name_label != null:
+		var pilot_name := str(Net.player_name).strip_edges()
+		if pilot_name.is_empty():
+			pilot_name = "PILOT"
+		pilot_name_label.text = pilot_name
+		pilot_name_label.set_meta("locale_source_text", pilot_name)
+	var initials_label := _dashboard.find_child(
+		"PilotAvatar", true, false
+	)
+	if initials_label != null:
+		var initials := initials_label.get_child(0) as Label \
+			if initials_label.get_child_count() > 0 else null
+		if initials != null:
+			initials.text = _pilot_initials()
 	var cash_label := _dashboard.find_child(
 		"CurrencyValue_Cash", true, false) as Label
 	if cash_label != null:
 		cash_label.text = str(Game.pilot_cash)
+		cash_label.visible = true
 	var gem_label := _dashboard.find_child(
 		"CurrencyValue_Gem", true, false) as Label
 	if gem_label != null:
 		gem_label.text = str(Game.pilot_tokens)
+		gem_label.visible = true
 	var level_label := _dashboard.find_child(
 		"PilotLevelValue", true, false) as Label
 	var xp_label := _dashboard.find_child("PilotXPValue", true, false) as Label
 	var xp_bar := _dashboard.find_child("PilotXPBar", true, false) as ProgressBar
 	if level_label != null:
 		level_label.text = "LV %d" % Game.pilot_level
+		level_label.visible = true
 	if xp_label != null:
 		xp_label.text = "%d / %d XP" % [
 			Game.pilot_xp, Game.xp_needed_for(Game.pilot_level),
@@ -1253,15 +1598,43 @@ func _paint_index(ship_id: String) -> int:
 	return -1
 
 
+func _sorted_ship_schemes() -> Array[Dictionary]:
+	var ships: Array[Dictionary] = []
+	for paint: Dictionary in PAINT_SCHEMES:
+		ships.append(paint.duplicate(true))
+	ships.sort_custom(func(first: Dictionary, second: Dictionary) -> bool:
+		var first_id := str(first["id"])
+		var second_id := str(second["id"])
+		var first_rank := 0 if first_id == Game.selected_ship_id \
+			else (1 if Game.is_ship_unlocked(first_id) else 2)
+		var second_rank := 0 if second_id == Game.selected_ship_id \
+			else (1 if Game.is_ship_unlocked(second_id) else 2)
+		if first_rank != second_rank:
+			return first_rank < second_rank
+		return _paint_index(first_id) < _paint_index(second_id)
+	)
+	return ships
+
+
 func _add_mission_row(parent: VBoxContainer, mission: Dictionary) -> void:
 	var row := HBoxContainer.new()
+	row.name = "Mission_" + str(mission["id"])
+	row.custom_minimum_size.y = 68
 	row.add_theme_constant_override("separation", 8)
 	var detail := VBoxContainer.new()
 	detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	detail.add_theme_constant_override("separation", 2)
 	var title := Label.new()
 	title.text = str(mission["title"])
 	title.add_theme_font_size_override("font_size", 12)
 	detail.add_child(title)
+	var description := Label.new()
+	description.text = str(mission.get("description", ""))
+	description.add_theme_font_size_override("font_size", 10)
+	description.add_theme_color_override("font_color", MUTED)
+	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	description.clip_text = true
+	detail.add_child(description)
 	var progress := Label.new()
 	progress.text = "%d / %d" % [
 		int(mission["progress"]), int(mission["target"])
@@ -1316,7 +1689,7 @@ func _add_mission_row(parent: VBoxContainer, mission: Dictionary) -> void:
 
 func _select_ship(ship_id: String) -> void:
 	if not Game.is_ship_unlocked(ship_id):
-		_open_page("store")
+		_show_ship_detail(ship_id)
 		return
 	if ship_id == Game.selected_ship_id:
 		var selected_index := _paint_index(ship_id)
@@ -1327,10 +1700,12 @@ func _select_ship(ship_id: String) -> void:
 	if not Game.set_selected_ship(ship_id):
 		return
 	_sfx()
+	if _current_page == "ships":
+		_open_page("ships")
 
 
 func _cycle_ship(direction: int) -> void:
-	if PAINT_SCHEMES.is_empty():
+	if PAINT_SCHEMES.size() <= 1:
 		return
 	var travel_direction := signi(direction)
 	if travel_direction == 0:
@@ -1356,13 +1731,20 @@ func _on_ship_stage_input(event: InputEvent) -> void:
 		if event.pressed:
 			_ship_swipe_start = event.position
 			_ship_gesture_active = true
+			_ship_gesture_triggered = false
 		elif _ship_gesture_active:
 			var travel: float = event.position.x - _ship_swipe_start.x
+			_finish_ship_gesture(travel)
+	elif event is InputEventScreenDrag and _ship_gesture_active:
+		var travel: float = event.position.x - _ship_swipe_start.x
+		if absf(travel) >= 40.0 and not _ship_gesture_triggered:
+			_ship_gesture_triggered = true
 			_finish_ship_gesture(travel)
 	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
 			_ship_swipe_start = event.position
 			_ship_gesture_active = true
+			_ship_gesture_triggered = false
 		elif _ship_gesture_active:
 			var travel: float = event.position.x - _ship_swipe_start.x
 			_finish_ship_gesture(travel)
@@ -1370,6 +1752,7 @@ func _on_ship_stage_input(event: InputEvent) -> void:
 
 func _finish_ship_gesture(travel: float) -> void:
 	_ship_gesture_active = false
+	_ship_gesture_triggered = true
 	_ship_swipe_start = Vector2.ZERO
 	if absf(travel) >= 40.0:
 		_cycle_ship(-1 if travel > 0.0 else 1)
@@ -1539,6 +1922,8 @@ func _open_mode_selector() -> void:
 
 
 func _show_mode_selector() -> void:
+	_current_page = "mode"
+	_set_navigation_page("home")
 	_page_popup_title.text = "CHOOSE MODE"
 	for child: Node in _page_popup_content.get_children():
 		child.queue_free()
@@ -1559,6 +1944,8 @@ func _show_mode_selector() -> void:
 		"test"
 	)
 	_translate_subtree(_page_popup)
+	_set_page_visibility(true)
+	_layout_dashboard()
 	_open_page_popup()
 
 
@@ -1625,54 +2012,156 @@ func _select_play_mode(mode_id: String) -> void:
 
 
 func _open_page(page: String) -> void:
-	if page == "achievements":
-		_toggle_run_record_popup()
-		return
+	if page == "equipment":
+		page = "ships"
 	if _run_record_panel != null:
 		_run_record_panel.hide()
+	if is_instance_valid(_loadout_item_popup):
+		_loadout_item_popup.hide()
+	_current_page = page
+	_set_navigation_page(page)
+	_shop_ship_grid = null
+	_shop_ship_cards.clear()
+	_shop_search = null
+	_store_search = null
+	_store_items_grid = null
+	_ship_fleet_grid = null
+	_loadout_search = null
+	_loadout_grid = null
+	_loadout_items_scroll = null
+	_loadout_count = null
+	_loadout_hint = null
+	_loadout_inventory_title = null
+	_loadout_page_root = null
+	_loadout_stage = null
+	_loadout_category_group = null
+	_loadout_ship_selector = null
+	_fleet_active_horizontal = null
+	_fleet_active_vertical = null
+	_fleet_active_art_panel = null
+	_fleet_active_stats_panel = null
 	_page_popup_title.text = page.to_upper()
 	for child: Node in _page_popup_content.get_children():
 		child.queue_free()
 	match page:
+		"home":
+			_set_page_visibility(false)
+			return
 		"ships":
-			_add_page_text("Distinct fighter frames with different combat stats. Choose one that matches your play style.")
-			for paint: Dictionary in PAINT_SCHEMES:
-				_add_paint_option(paint)
+			_loadout_category = "overview"
+			_page_popup_content.add_child(_build_ship_loadout_page())
 		"missions":
-			_add_page_text("Complete objectives during regular runs. Progress is saved locally and resets each day.")
+			_add_page_text("DAILY MISSIONS / Progress and rewards are saved with your pilot profile.")
 			for mission: Dictionary in Game.get_daily_missions():
 				_add_mission_row(_page_popup_content, mission)
+		"achievements":
+			_refresh_run_record()
+			_add_page_text("PILOT CAREER / Your latest and best run records.")
+			_add_page_text(_run_record_label.text if _run_record_label != null
+				else "NO RUNS RECORDED")
 		"upgrades":
-			_add_page_text("These are in-run cards; choose them when leveling up during a run.")
-			for card: Dictionary in CardDBScript.all_cards():
-				_add_page_text("%s — %s" % [
-					str(card.get("name", "Upgrade")),
-					str(card.get("desc", "")),
-				])
-		"equipment":
-			_add_page_text("Your weapon and passive upgrades are selected during a run. Last recorded weapon: %s." % str(Game.weapon))
-			_add_page_text("Use the Upgrades section to review the available cards.")
-		"store":
+			_add_page_text("PERMANENT SHIP SYSTEMS / Upgrade levels apply to the pilot's ship in future runs.")
+			var upgrade_layout: BoxContainer = HBoxContainer.new() \
+				if get_viewport().get_visible_rect().size.x >= 940.0 \
+				else VBoxContainer.new()
+			upgrade_layout.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			upgrade_layout.size_flags_vertical = Control.SIZE_EXPAND_FILL
+			upgrade_layout.add_theme_constant_override("separation", 12)
+			var showcase := _build_ship_showcase()
+			showcase.custom_minimum_size = Vector2(
+				260.0 if upgrade_layout is HBoxContainer else 0.0, 210.0
+			)
+			upgrade_layout.add_child(showcase)
+			var upgrade_list := VBoxContainer.new()
+			upgrade_list.name = "PilotUpgradeList"
+			upgrade_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			upgrade_list.add_theme_constant_override("separation", 8)
+			for definition: Dictionary in Game.get_pilot_upgrade_definitions():
+				_add_pilot_upgrade_row(definition, upgrade_list)
+			upgrade_layout.add_child(upgrade_list)
+			_page_popup_content.add_child(upgrade_layout)
+		"shop":
 			var balance := HBoxContainer.new()
 			var balance_title := Label.new()
 			balance_title.text = "GEMS"
 			balance.add_child(balance_title)
+			var balance_icon := TextureRect.new()
+			balance_icon.texture = load("res://assets/icons/gem.svg") as Texture2D
+			balance_icon.custom_minimum_size = Vector2(18, 18)
+			balance_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			balance_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			balance.add_child(balance_icon)
 			var balance_value := Label.new()
 			balance_value.text = str(Game.pilot_tokens)
 			balance_value.add_theme_color_override("font_color", CYAN)
 			balance.add_child(balance_value)
 			_page_popup_content.add_child(balance)
-			_add_page_text("Gems come from daily mission rewards. Spend them to unlock fighters early; reaching the listed best wave also unlocks one for free.")
+			_add_page_text("SHIP UNLOCKS / Unlock fighters with gems or earn them by reaching their best-wave requirement.")
+			_shop_search = LineEdit.new()
+			_shop_search.name = "ShopShipSearch"
+			_shop_search.placeholder_text = "SEARCH FIGHTERS"
+			_shop_search.set_meta("locale_source_placeholder", "SEARCH FIGHTERS")
+			_shop_search.clear_button_enabled = true
+			_shop_search.custom_minimum_size.y = 40
+			_shop_search.text_changed.connect(_filter_shop_ships)
+			_page_popup_content.add_child(_shop_search)
+			_shop_ship_grid = GridContainer.new()
+			_shop_ship_grid.name = "ShopShipGrid"
+			_shop_ship_grid.columns = 1 \
+				if get_viewport().get_visible_rect().size.x < 700.0 else 2
+			_shop_ship_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			_shop_ship_grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
+			_shop_ship_grid.add_theme_constant_override("h_separation", 10)
+			_shop_ship_grid.add_theme_constant_override("v_separation", 10)
+			_page_popup_content.add_child(_shop_ship_grid)
+			var ship_offers := 0
 			for paint: Dictionary in PAINT_SCHEMES:
 				var ship_id := str(paint["id"])
-				if ship_id == "aquila":
+				if Game.is_ship_unlocked(ship_id):
 					continue
 				_add_store_ship(paint)
+				ship_offers += 1
+			if ship_offers == 0:
+				_add_page_text(
+					"PHOENIX IS YOUR ACTIVE SHIP. NO OTHER SHIPS ARE AVAILABLE."
+				)
+		"store":
+			_build_store_page()
 		"settings":
 			_add_settings_controls()
 		_:
 			_add_page_text("No active limited-time event is running. Daily missions are available in Pilot Services.")
+	if page == "shop":
+		var current_stats: Dictionary = Game.get_effective_ship_combat_stats()
+		_add_page_text("%s: %s   /   %s %.2f×   /   %s %d   /   %s %d" % [
+			_translate("ACTIVE SHIP"),
+			Game.selected_ship_id.to_upper(),
+			_translate("DMG"),
+			float(current_stats["damage_multiplier"]),
+			_translate("SPEED"),
+			roundi(float(current_stats["max_speed"])),
+			_translate("HULL"),
+			int(current_stats["max_hp"]),
+		])
+	_translate_subtree(_page_popup)
+	_set_page_visibility(true)
 	_open_page_popup()
+
+
+func _set_navigation_page(page: String) -> void:
+	for node: Node in _dashboard.find_children("*", "Button", true, false):
+		var button := node as Button
+		if button.has_meta("lobby_page"):
+			button.button_pressed = str(button.get_meta("lobby_page")) == page
+
+
+func _set_page_visibility(show_page: bool) -> void:
+	if _page_popup == null:
+		return
+	_page_popup.visible = show_page
+	_dashboard.visible = not show_page
+	_main_columns.visible = not show_page
+	_main_columns_mobile.visible = not show_page
 
 
 func _add_page_text(text: String) -> void:
@@ -1684,49 +2173,1304 @@ func _add_page_text(text: String) -> void:
 	_page_popup_content.add_child(label)
 
 
+func _build_store_page() -> void:
+	var header := HBoxContainer.new()
+	header.name = "StoreBalance"
+	header.add_theme_constant_override("separation", 6)
+	var heading := Label.new()
+	heading.text = "CREDITS"
+	header.add_child(heading)
+	var balance_icon := Label.new()
+	balance_icon.text = "$"
+	balance_icon.add_theme_color_override("font_color", CYAN)
+	header.add_child(balance_icon)
+	var amount := Label.new()
+	amount.name = "StoreCashValue"
+	amount.text = str(Game.pilot_cash)
+	amount.add_theme_color_override("font_color", CYAN)
+	header.add_child(amount)
+	_page_popup_content.add_child(header)
+	_add_page_text("BUY EQUIPMENT WITH CREDITS / Owned items can be equipped from Equipment.")
+
+	var store_layout: BoxContainer = HBoxContainer.new() \
+		if get_viewport().get_visible_rect().size.x >= 900.0 \
+		else VBoxContainer.new()
+	store_layout.name = "StoreLayout"
+	store_layout.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	store_layout.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	store_layout.add_theme_constant_override("separation", 12)
+	_page_popup_content.add_child(store_layout)
+
+	var category_panel := _new_panel()
+	category_panel.name = "StoreCategories"
+	category_panel.custom_minimum_size.x = 170.0 if store_layout is HBoxContainer else 0.0
+	store_layout.add_child(category_panel)
+	var category_margin := MarginContainer.new()
+	for side in ["left", "top", "right", "bottom"]:
+		category_margin.add_theme_constant_override("margin_" + side, 10)
+	category_panel.add_child(category_margin)
+	var category_content := VBoxContainer.new()
+	category_content.add_theme_constant_override("separation", 8)
+	category_margin.add_child(category_content)
+	var category_list: Control = GridContainer.new() \
+		if store_layout is VBoxContainer else VBoxContainer.new()
+	if category_list is GridContainer:
+		(category_list as GridContainer).columns = 2
+	category_list.add_theme_constant_override("separation", 6)
+	category_content.add_child(category_list)
+	var category_title := Label.new()
+	category_title.text = "CATEGORIES"
+	category_title.add_theme_color_override("font_color", CYAN)
+	category_content.add_child(category_title)
+	category_content.move_child(category_title, 0)
+	_store_category_group = ButtonGroup.new()
+	var categories := [
+		["ALL ITEMS", "all"], ["ARMOR", "armor"],
+		["ATTACK DRONES", "attack"], ["REPAIR", "repair"],
+		["DEFENSE", "defense"], ["SUPPORT", "support"],
+	]
+	for entry: Array in categories:
+		var category_button := _make_button(
+			str(entry[0]), "store_category"
+		)
+		category_button.name = "StoreCategory_" + str(entry[1])
+		category_button.toggle_mode = true
+		category_button.button_group = _store_category_group
+		category_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		category_button.button_pressed = str(entry[1]) == _store_category
+		category_button.pressed.connect(
+			_select_store_category.bind(str(entry[1]))
+		)
+		category_list.add_child(category_button)
+
+	var item_column := VBoxContainer.new()
+	item_column.name = "StoreItemColumn"
+	item_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	item_column.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	item_column.add_theme_constant_override("separation", 8)
+	store_layout.add_child(item_column)
+	_store_search = LineEdit.new()
+	_store_search.name = "StoreSearch"
+	_store_search.placeholder_text = "SEARCH EQUIPMENT"
+	_store_search.clear_button_enabled = true
+	_store_search.custom_minimum_size.y = 38
+	_store_search.text_changed.connect(_refresh_store_items)
+	item_column.add_child(_store_search)
+	_store_items_grid = GridContainer.new()
+	_store_items_grid.name = "StoreItemsGrid"
+	_store_items_grid.columns = 1 \
+		if get_viewport().get_visible_rect().size.x < 700.0 else 2
+	_store_items_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_store_items_grid.add_theme_constant_override("h_separation", 10)
+	_store_items_grid.add_theme_constant_override("v_separation", 10)
+	item_column.add_child(_store_items_grid)
+	_refresh_store_items()
+
+
+func _select_store_category(category: String) -> void:
+	_store_category = category
+	_refresh_store_items()
+
+
+func _refresh_store_items(_query: String = "") -> void:
+	if _store_items_grid == null or not is_instance_valid(_store_items_grid):
+		return
+	for child in _store_items_grid.get_children():
+		_store_items_grid.remove_child(child)
+		child.free()
+	var search := _store_search.text.strip_edges().to_lower() \
+		if _store_search != null else ""
+	var count := 0
+	for item: Dictionary in Game.get_store_items():
+		var item_id := str(item["id"])
+		var searchable := ("%s %s %s" % [
+			item["name"], item["description"], item["category"],
+		]).to_lower()
+		if _store_category != "all" \
+				and str(item["category"]) != _store_category:
+			continue
+		if not search.is_empty() and not searchable.contains(search):
+			continue
+		_add_store_item_card(item)
+		count += 1
+	if count == 0:
+		var empty := Label.new()
+		empty.text = "NO MATCHING EQUIPMENT"
+		empty.add_theme_color_override("font_color", MUTED)
+		_store_items_grid.add_child(empty)
+	_translate_subtree(_store_items_grid)
+
+
+func _add_store_item_card(item: Dictionary) -> void:
+	var item_id := str(item["id"])
+	var item_slot := str(item["slot"])
+	var owned := Game.owns_store_item(item_id)
+	var equipped_id := Game.get_equipped_store_item(item_slot)
+	var equipped := equipped_id == item_id
+	var card := _new_panel()
+	card.name = "StoreItem_" + item_id
+	card.custom_minimum_size = Vector2(210, 218)
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var margin := MarginContainer.new()
+	for side in ["left", "top", "right", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 10)
+	card.add_child(margin)
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 5)
+	margin.add_child(content)
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 9)
+	content.add_child(top)
+	var icon := TextureRect.new()
+	icon.texture = load("res://assets/icons/%s.svg" % str(item["icon"])) \
+		as Texture2D
+	icon.custom_minimum_size = Vector2(40, 40)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	top.add_child(icon)
+	var name_label := Label.new()
+	name_label.text = str(item["name"])
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	name_label.add_theme_color_override("font_color", Color.WHITE)
+	top.add_child(name_label)
+	var description := Label.new()
+	description.text = str(item["description"])
+	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	description.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	description.add_theme_font_size_override("font_size", 11)
+	description.add_theme_color_override("font_color", MUTED)
+	content.add_child(description)
+	var effect := Label.new()
+	effect.text = str(item["effect"])
+	effect.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	effect.add_theme_font_size_override("font_size", 10)
+	effect.add_theme_color_override("font_color", Color(0.54, 0.85, 0.91))
+	content.add_child(effect)
+	var action_text := "EQUIPPED" if equipped else (
+		"OWNED" if owned else "BUY  %d CREDITS" % int(item["price"])
+	)
+	var action := _make_button(action_text, "store_purchase")
+	action.name = "StoreAction_" + item_id
+	action.custom_minimum_size.y = 38
+	action.disabled = owned or Game.pilot_cash < int(item["price"])
+	if not owned:
+		action.pressed.connect(_store_item_action.bind(item_id))
+	content.add_child(action)
+	_store_items_grid.add_child(card)
+
+
+func _store_item_action(item_id: String) -> void:
+	var success := Game.purchase_store_item(item_id)
+	if success:
+		_sfx()
+	else:
+		push_warning("Store purchase failed for item: %s" % item_id)
+	_open_page("store")
+
+
+func _build_loadout_ship_panel() -> Control:
+	var panel := _new_panel()
+	panel.name = "LoadoutShipPanel"
+	panel.custom_minimum_size = Vector2(260, 205)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var margin := MarginContainer.new()
+	for side in ["left", "top", "right", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 12)
+	panel.add_child(margin)
+	var content := VBoxContainer.new()
+	content.alignment = BoxContainer.ALIGNMENT_CENTER
+	content.add_theme_constant_override("separation", 7)
+	margin.add_child(content)
+	var ship_selector := OptionButton.new()
+	ship_selector.name = "LoadoutShipSelector"
+	ship_selector.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_style_loadout_ship_selector(ship_selector)
+	var selected_index := 0
+	for paint: Dictionary in PAINT_SCHEMES:
+		var ship_id := str(paint["id"])
+		if not Game.is_ship_unlocked(ship_id):
+			continue
+		ship_selector.add_item(str(paint["name"]))
+		ship_selector.set_item_metadata(ship_selector.item_count - 1, ship_id)
+		if ship_id == Game.selected_ship_id:
+			selected_index = ship_selector.item_count - 1
+	ship_selector.select(selected_index)
+	ship_selector.item_selected.connect(_on_loadout_ship_selected)
+	_loadout_ship_selector = ship_selector
+	content.add_child(ship_selector)
+	var image_holder := CenterContainer.new()
+	image_holder.custom_minimum_size = Vector2(0, 112)
+	image_holder.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	content.add_child(image_holder)
+	var image := TextureRect.new()
+	image.name = "LoadoutShipImage"
+	image.texture = PLAYER_ICON
+	image.custom_minimum_size = Vector2(220, 132)
+	image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	image.modulate = Game.get_ship_tint(Game.selected_ship_id)
+	image_holder.add_child(image)
+	var stats := Game.get_effective_ship_combat_stats(Game.selected_ship_id)
+	var stats_label := Label.new()
+	stats_label.name = "LoadoutShipStats"
+	stats_label.text = "DMG %.2f×   /   SPEED %d   /   HULL %d" % [
+		float(stats["damage_multiplier"]),
+		roundi(float(stats["max_speed"])),
+		int(stats["max_hp"]),
+	]
+	stats_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	stats_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stats_label.add_theme_color_override("font_color", MUTED)
+	content.add_child(stats_label)
+	return panel
+
+
+func _build_ship_loadout_page() -> Control:
+	var root := HBoxContainer.new()
+	root.name = "ShipLoadoutPage"
+	root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	root.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	root.add_theme_constant_override("separation", 12)
+	_loadout_page_root = root
+
+	var sidebar := _new_panel()
+	sidebar.name = "LoadoutCategories"
+	sidebar.custom_minimum_size.x = 184
+	sidebar.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	root.add_child(sidebar)
+	var sidebar_margin := MarginContainer.new()
+	for side in ["left", "top", "right", "bottom"]:
+		sidebar_margin.add_theme_constant_override("margin_" + side, 10)
+	sidebar.add_child(sidebar_margin)
+	var sidebar_layout := VBoxContainer.new()
+	sidebar_layout.add_theme_constant_override("separation", 7)
+	sidebar_margin.add_child(sidebar_layout)
+	var sidebar_title := Label.new()
+	sidebar_title.text = "LOADOUT CATEGORIES"
+	sidebar_title.add_theme_font_size_override("font_size", 11)
+	sidebar_title.add_theme_color_override("font_color", CYAN)
+	sidebar_layout.add_child(sidebar_title)
+
+	_loadout_category_group = ButtonGroup.new()
+	_loadout_category_group.allow_unpress = false
+	var categories := [
+		["OVERVIEW", "overview", "res://assets/icons/backpack.svg"],
+		["ARMOR", "armor", "res://assets/icons/store_armor.svg"],
+		["DRONES", "drone", "res://assets/icons/store_defense_drone.svg"],
+		["WEAPONS", "weapon", "res://assets/icons/store_attack_drone.svg"],
+		["SUPPORT", "support", "res://assets/icons/store_reactor.svg"],
+	]
+	for category: Array in categories:
+		var category_button := _make_button(
+			str(category[0]), "loadout_category"
+		)
+		category_button.name = "LoadoutCategory_" + str(category[1])
+		category_button.icon = load(str(category[2])) as Texture2D
+		category_button.add_theme_constant_override("icon_max_width", 22)
+		category_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		category_button.toggle_mode = true
+		category_button.button_group = _loadout_category_group
+		category_button.button_pressed = str(category[1]) == _loadout_category
+		category_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		category_button.custom_minimum_size.y = 42
+		category_button.pressed.connect(
+			_select_loadout_category.bind(str(category[1]))
+		)
+		sidebar_layout.add_child(category_button)
+	var sidebar_spacer := Control.new()
+	sidebar_spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	sidebar_layout.add_child(sidebar_spacer)
+	var owned_count := 0
+	for item: Dictionary in Game.get_store_items():
+		if Game.owns_store_item(str(item["id"])):
+			owned_count += 1
+	var owned_summary := Label.new()
+	owned_summary.name = "LoadoutOwnedSummary"
+	owned_summary.text = "%d  /  %d OWNED" % [
+		owned_count, Game.get_store_items().size(),
+	]
+	owned_summary.add_theme_font_size_override("font_size", 10)
+	owned_summary.add_theme_color_override("font_color", MUTED)
+	owned_summary.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sidebar_layout.add_child(owned_summary)
+
+	var content := VBoxContainer.new()
+	content.name = "LoadoutMainContent"
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	content.add_theme_constant_override("separation", 10)
+	root.add_child(content)
+
+	var stage_panel := _new_panel()
+	stage_panel.name = "LoadoutShipStage"
+	stage_panel.custom_minimum_size.y = 218
+	stage_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content.add_child(stage_panel)
+	var stage_margin := MarginContainer.new()
+	for side in ["left", "top", "right", "bottom"]:
+		stage_margin.add_theme_constant_override("margin_" + side, 10)
+	stage_panel.add_child(stage_margin)
+	_loadout_stage = HBoxContainer.new()
+	_loadout_stage.add_theme_constant_override("separation", 10)
+	stage_margin.add_child(_loadout_stage)
+	_loadout_stage.add_child(_build_equipment_slot_card(
+		"armor", "ARMOR", "store_armor"
+	))
+	_loadout_stage.add_child(_build_loadout_ship_panel())
+	var drone_support := VBoxContainer.new()
+	drone_support.name = "LoadoutRightSlots"
+	drone_support.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	drone_support.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	drone_support.add_theme_constant_override("separation", 8)
+	_loadout_stage.add_child(drone_support)
+	drone_support.add_child(_build_equipment_slot_card(
+		"drone", "DRONE", "store_defense_drone"
+	))
+	drone_support.add_child(_build_equipment_slot_card(
+		"support", "SUPPORT", "store_reactor"
+	))
+
+	var inventory := _new_panel()
+	inventory.name = "LoadoutInventory"
+	inventory.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	inventory.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	content.add_child(inventory)
+	var inventory_margin := MarginContainer.new()
+	for side in ["left", "top", "right", "bottom"]:
+		inventory_margin.add_theme_constant_override("margin_" + side, 12)
+	inventory.add_child(inventory_margin)
+	var inventory_layout := VBoxContainer.new()
+	inventory_layout.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	inventory_layout.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	inventory_layout.add_theme_constant_override("separation", 7)
+	inventory_margin.add_child(inventory_layout)
+	var inventory_header := HBoxContainer.new()
+	inventory_header.add_theme_constant_override("separation", 10)
+	inventory_layout.add_child(inventory_header)
+	_loadout_inventory_title = Label.new()
+	_loadout_inventory_title.name = "LoadoutInventoryTitle"
+	_loadout_inventory_title.add_theme_font_size_override("font_size", 15)
+	_loadout_inventory_title.add_theme_color_override("font_color", Color.WHITE)
+	_loadout_inventory_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	inventory_header.add_child(_loadout_inventory_title)
+	_loadout_count = Label.new()
+	_loadout_count.name = "LoadoutItemCount"
+	_loadout_count.add_theme_font_size_override("font_size", 10)
+	_loadout_count.add_theme_color_override("font_color", MUTED)
+	_loadout_count.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	inventory_header.add_child(_loadout_count)
+	_loadout_search = LineEdit.new()
+	_loadout_search.name = "LoadoutSearch"
+	_loadout_search.placeholder_text = "SEARCH EQUIPMENT"
+	_loadout_search.set_meta("locale_source_placeholder", "SEARCH EQUIPMENT")
+	_loadout_search.custom_minimum_size = Vector2(220, 36)
+	_loadout_search.clear_button_enabled = true
+	_loadout_search.text_changed.connect(_refresh_loadout_items)
+	inventory_header.add_child(_loadout_search)
+	_loadout_hint = Label.new()
+	_loadout_hint.name = "LoadoutHint"
+	_loadout_hint.text = "SELECT A SLOT OR BROWSE YOUR EQUIPMENT"
+	_loadout_hint.add_theme_font_size_override("font_size", 10)
+	_loadout_hint.add_theme_color_override("font_color", MUTED)
+	inventory_layout.add_child(_loadout_hint)
+	_loadout_items_scroll = TouchScrollContainer.new()
+	_loadout_items_scroll.name = "LoadoutItemsScroll"
+	_loadout_items_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_loadout_items_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_loadout_items_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_loadout_items_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	inventory_layout.add_child(_loadout_items_scroll)
+	_loadout_grid = GridContainer.new()
+	_loadout_grid.name = "LoadoutItemsGrid"
+	_loadout_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_loadout_grid.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	_loadout_grid.add_theme_constant_override("h_separation", 9)
+	_loadout_grid.add_theme_constant_override("v_separation", 9)
+	_loadout_items_scroll.add_child(_loadout_grid)
+	_refresh_loadout_items()
+	_translate_subtree(root)
+	return root
+
+
+func _build_equipment_slot_card(slot: String, title: String, icon_name: String) -> Control:
+	var panel := _new_panel()
+	panel.name = "EquipmentSlot_" + slot
+	panel.custom_minimum_size = Vector2(150, 88)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var selected_style := panel.get_theme_stylebox("panel").duplicate() as StyleBoxFlat
+	if _equipment_slot_id == slot:
+		selected_style.bg_color = Color(0.065, 0.145, 0.205, 0.98)
+		selected_style.border_color = CYAN
+		selected_style.set_border_width_all(2)
+	panel.add_theme_stylebox_override("panel", selected_style)
+	var button := Button.new()
+	button.name = "EquipmentSlotButton_" + slot
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	button.flat = true
+	button.focus_mode = Control.FOCUS_NONE
+	button.pressed.connect(_show_equipment_slot.bind(slot))
+	button.tooltip_text = title
+	panel.add_child(button)
+	var margin := MarginContainer.new()
+	for side in ["left", "top", "right", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 8)
+	button.add_child(margin)
+	var content := HBoxContainer.new()
+	content.alignment = BoxContainer.ALIGNMENT_CENTER
+	content.add_theme_constant_override("separation", 9)
+	margin.add_child(content)
+	var icon := TextureRect.new()
+	icon.custom_minimum_size = Vector2(38, 38)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	var equipped_id := Game.get_equipped_store_item(slot)
+	var equipped_item := Game.get_store_item(equipped_id) if not equipped_id.is_empty() else {}
+	var displayed_icon := str(equipped_item.get("icon", icon_name))
+	icon.texture = load("res://assets/icons/%s.svg" % displayed_icon) as Texture2D
+	content.add_child(icon)
+	var details := VBoxContainer.new()
+	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	details.alignment = BoxContainer.ALIGNMENT_CENTER
+	details.add_theme_constant_override("separation", 3)
+	content.add_child(details)
+	var slot_title := Label.new()
+	slot_title.text = title
+	slot_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	slot_title.add_theme_color_override("font_color", CYAN)
+	details.add_child(slot_title)
+	var item_name := Label.new()
+	item_name.name = "EquipmentSlotItem_" + slot
+	item_name.text = str(equipped_item.get("name", "+"))
+	item_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	item_name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	item_name.clip_text = true
+	item_name.add_theme_color_override("font_color", Color.WHITE)
+	details.add_child(item_name)
+	return panel
+
+
+func _show_equipment_slot(slot: String) -> void:
+	_equipment_slot_id = slot
+	_loadout_category = "overview"
+	if _loadout_hint != null:
+		_loadout_hint.text = _translate(
+			"SELECT AN ITEM TO EQUIP IN THE %s SLOT" % slot.to_upper()
+		)
+	_refresh_loadout_slots()
+	_refresh_loadout_items()
+
+
+func _select_loadout_category(category: String) -> void:
+	_loadout_category = category
+	_equipment_slot_id = ""
+	if _loadout_hint != null:
+		_loadout_hint.text = _translate("SELECT A SLOT OR BROWSE YOUR EQUIPMENT")
+	_refresh_loadout_slots()
+	_refresh_loadout_items()
+
+
+func _on_loadout_ship_selected(index: int) -> void:
+	if _loadout_ship_selector == null or index < 0 \
+			or index >= _loadout_ship_selector.item_count:
+		return
+	var ship_id := str(_loadout_ship_selector.get_item_metadata(index))
+	if ship_id == Game.selected_ship_id:
+		return
+	if not Game.set_selected_ship(ship_id):
+		push_error("Unable to select ship for loadout: %s" % ship_id)
+		return
+	_equipment_slot_id = ""
+	_refresh_loadout_ship_details()
+	_refresh_loadout_slots()
+	_refresh_loadout_items()
+	_sfx()
+
+
+func _refresh_loadout_ship_details() -> void:
+	var image := _loadout_page_root.find_child(
+		"LoadoutShipImage", true, false
+	) as TextureRect if _loadout_page_root != null else null
+	if image != null:
+		image.modulate = Game.get_ship_tint(Game.selected_ship_id)
+	var stats_label := _loadout_page_root.find_child(
+		"LoadoutShipStats", true, false
+	) as Label if _loadout_page_root != null else null
+	if stats_label != null:
+		var stats := Game.get_effective_ship_combat_stats(Game.selected_ship_id)
+		stats_label.text = "DMG %.2f×   /   SPEED %d   /   HULL %d" % [
+			float(stats["damage_multiplier"]),
+			roundi(float(stats["max_speed"])),
+			int(stats["max_hp"]),
+		]
+
+
+func _refresh_loadout_slots() -> void:
+	if _loadout_stage == null:
+		return
+	for slot_data: Array in [
+		["armor", "ARMOR", "store_armor"],
+		["drone", "DRONE", "store_defense_drone"],
+		["support", "SUPPORT", "store_reactor"],
+	]:
+		var old_slot := _loadout_stage.find_child(
+			"EquipmentSlot_" + str(slot_data[0]), true, false
+		) as Control
+		if old_slot == null:
+			continue
+		var parent := old_slot.get_parent() as Container
+		if parent == null:
+			continue
+		var position := old_slot.get_index()
+		parent.remove_child(old_slot)
+		old_slot.free()
+		var new_slot := _build_equipment_slot_card(
+			str(slot_data[0]), str(slot_data[1]), str(slot_data[2])
+		)
+		parent.add_child(new_slot)
+		parent.move_child(new_slot, position)
+	_translate_subtree(_loadout_stage)
+
+
+func _loadout_item_matches_filters(item: Dictionary, query: String) -> bool:
+	var item_id := str(item.get("id", ""))
+	if not Game.owns_store_item(item_id):
+		return false
+	var slot := str(item.get("slot", ""))
+	if not _equipment_slot_id.is_empty() and slot != _equipment_slot_id:
+		return false
+	match _loadout_category:
+		"armor":
+			if slot != "armor":
+				return false
+		"drone":
+			if slot != "drone":
+				return false
+		"weapon":
+			if str(item.get("category", "")) != "attack":
+				return false
+		"support":
+			if slot != "support" and str(item.get("category", "")) != "defense":
+				return false
+	var searchable := ("%s %s %s %s" % [
+		item_id, item.get("name", ""), item.get("description", ""),
+		item.get("effect", ""),
+	]).to_lower()
+	return query.is_empty() or searchable.contains(query)
+
+
+func _refresh_loadout_items(_query: String = "") -> void:
+	if _loadout_grid == null or not is_instance_valid(_loadout_grid):
+		return
+	var previous_scroll := _loadout_items_scroll.scroll_vertical \
+		if _loadout_items_scroll != null else 0
+	for child: Node in _loadout_grid.get_children():
+		_loadout_grid.remove_child(child)
+		child.free()
+	var query := _loadout_search.text.strip_edges().to_lower() \
+		if _loadout_search != null else ""
+	var filtered: Array[Dictionary] = []
+	for item: Dictionary in Game.get_store_items():
+		if _loadout_item_matches_filters(item, query):
+			filtered.append(item)
+	_loadout_grid.columns = _loadout_columns()
+	for item: Dictionary in filtered:
+		_loadout_grid.add_child(_build_loadout_item_card(item))
+	if _loadout_inventory_title != null:
+		var title := "EQUIPMENT"
+		if not _equipment_slot_id.is_empty():
+			title = "%s SLOT" % _equipment_slot_id.to_upper()
+		else:
+			match _loadout_category:
+				"armor": title = "ARMOR"
+				"drone": title = "DRONES"
+				"weapon": title = "WEAPONS"
+				"support": title = "SUPPORT"
+				_: title = "EQUIPMENT"
+		_loadout_inventory_title.text = title
+	if _loadout_count != null:
+		_loadout_count.text = "%d ITEMS  /  %d OWNED" % [
+			filtered.size(), filtered.size(),
+		]
+	if filtered.is_empty():
+		var empty := Label.new()
+		empty.name = "LoadoutEmptyState"
+		empty.text = "NO OWNED ITEMS FOR THIS SLOT. VISIT STORE TO BUY EQUIPMENT."
+		empty.custom_minimum_size.y = 90
+		empty.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		empty.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		empty.add_theme_color_override("font_color", MUTED)
+		_loadout_grid.add_child(empty)
+	if _loadout_items_scroll != null:
+		_loadout_items_scroll.set_deferred("scroll_vertical", previous_scroll)
+	_translate_subtree(_loadout_grid)
+
+
+func _loadout_columns() -> int:
+	var width := _loadout_items_scroll.size.x \
+		if _loadout_items_scroll != null and _loadout_items_scroll.size.x > 0.0 \
+		else get_viewport().get_visible_rect().size.x - 240.0
+	if width >= 820.0:
+		return 3
+	if width >= 500.0:
+		return 2
+	return 1
+
+
+func _build_loadout_item_card(item: Dictionary) -> Control:
+	var item_id := str(item.get("id", ""))
+	var owned := Game.owns_store_item(item_id)
+	var equipped := Game.get_equipped_store_item(
+		str(item.get("slot", ""))
+	) == item_id
+	var card := Button.new()
+	card.name = "LoadoutItemCard_" + item_id
+	card.custom_minimum_size = Vector2(170, 116)
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	card.focus_mode = Control.FOCUS_NONE
+	card.tooltip_text = str(item.get("name", item_id))
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color(0.035, 0.075, 0.12, 0.98)
+	normal.border_color = Color(0.19, 0.38, 0.52, 0.75)
+	normal.set_border_width_all(1)
+	normal.set_corner_radius_all(8)
+	normal.content_margin_left = 9
+	normal.content_margin_top = 8
+	normal.content_margin_right = 9
+	normal.content_margin_bottom = 8
+	var hover := normal.duplicate() as StyleBoxFlat
+	hover.bg_color = Color(0.055, 0.12, 0.18, 1.0)
+	hover.border_color = CYAN
+	var pressed := normal.duplicate() as StyleBoxFlat
+	pressed.bg_color = Color(0.07, 0.16, 0.22, 1.0)
+	pressed.border_color = Color(CYAN, 0.95)
+	if equipped:
+		normal.border_color = Color(0.35, 0.82, 0.70, 0.95)
+	card.add_theme_stylebox_override("normal", normal)
+	card.add_theme_stylebox_override("hover", hover)
+	card.add_theme_stylebox_override("pressed", pressed)
+	card.add_theme_color_override("font_color", Color.WHITE)
+	card.pressed.connect(_show_loadout_item_detail.bind(item_id))
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 4)
+	margin.add_theme_constant_override("margin_top", 3)
+	margin.add_theme_constant_override("margin_right", 4)
+	margin.add_theme_constant_override("margin_bottom", 3)
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(margin)
+	var body := VBoxContainer.new()
+	body.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	body.add_theme_constant_override("separation", 4)
+	margin.add_child(body)
+	var header := HBoxContainer.new()
+	header.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	header.add_theme_constant_override("separation", 7)
+	body.add_child(header)
+	var icon := TextureRect.new()
+	icon.name = "LoadoutItemIcon_" + item_id
+	icon.texture = load("res://assets/icons/%s.svg" % str(item["icon"])) as Texture2D
+	icon.custom_minimum_size = Vector2(38, 38)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	header.add_child(icon)
+	var title := Label.new()
+	title.text = str(item.get("name", item_id))
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.add_theme_font_size_override("font_size", 11)
+	title.add_theme_color_override("font_color", Color.WHITE)
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	header.add_child(title)
+	var effect := Label.new()
+	effect.text = str(item.get("effect", ""))
+	effect.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	effect.add_theme_font_size_override("font_size", 9)
+	effect.add_theme_color_override("font_color", MUTED)
+	effect.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	effect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	body.add_child(effect)
+	var state := Label.new()
+	state.name = "LoadoutItemState_" + item_id
+	state.text = "EQUIPPED" if equipped else (
+		"OWNED" if owned else "LOCKED  /  $%d" % int(item.get("price", 0))
+	)
+	state.add_theme_font_size_override("font_size", 9)
+	state.add_theme_color_override(
+		"font_color",
+		Color(0.43, 0.88, 0.73) if equipped else (CYAN if owned else MUTED)
+	)
+	state.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	body.add_child(state)
+	return card
+
+
+func _ensure_loadout_item_popup() -> void:
+	if is_instance_valid(_loadout_item_popup):
+		return
+	_loadout_item_popup = Control.new()
+	_loadout_item_popup.name = "LoadoutItemDetailsPopup"
+	_loadout_item_popup.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_loadout_item_popup.mouse_filter = Control.MOUSE_FILTER_STOP
+	_loadout_item_popup.z_index = 50
+	_loadout_item_popup.hide()
+	add_child(_loadout_item_popup)
+	var dim := ColorRect.new()
+	dim.name = "LoadoutItemPopupDim"
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.color = Color(0.005, 0.014, 0.03, 0.78)
+	_loadout_item_popup.add_child(dim)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_loadout_item_popup.add_child(center)
+	var panel := PanelContainer.new()
+	panel.name = "LoadoutItemPopupPanel"
+	panel.custom_minimum_size = Vector2(480, 260)
+	_loadout_item_popup_panel = panel
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.025, 0.045, 0.095, 0.99)
+	style.border_color = Color(0.30, 0.68, 0.88, 0.9)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(10)
+	panel.add_theme_stylebox_override("panel", style)
+	center.add_child(panel)
+	var margin := MarginContainer.new()
+	for side in ["left", "top", "right", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 14)
+	panel.add_child(margin)
+	var layout := VBoxContainer.new()
+	layout.add_theme_constant_override("separation", 8)
+	margin.add_child(layout)
+	var main := HBoxContainer.new()
+	main.add_theme_constant_override("separation", 10)
+	layout.add_child(main)
+	var icon_panel := _new_panel()
+	icon_panel.custom_minimum_size = Vector2(88, 88)
+	var icon_center := CenterContainer.new()
+	icon_panel.add_child(icon_center)
+	_loadout_item_popup_icon = TextureRect.new()
+	_loadout_item_popup_icon.name = "LoadoutItemPopupIcon"
+	_loadout_item_popup_icon.custom_minimum_size = Vector2(56, 56)
+	_loadout_item_popup_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_loadout_item_popup_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon_center.add_child(_loadout_item_popup_icon)
+	main.add_child(icon_panel)
+	var details := VBoxContainer.new()
+	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	details.add_theme_constant_override("separation", 8)
+	main.add_child(details)
+	_loadout_item_popup_title = Label.new()
+	_loadout_item_popup_title.name = "LoadoutItemPopupTitle"
+	_loadout_item_popup_title.add_theme_font_size_override("font_size", 17)
+	_loadout_item_popup_title.add_theme_color_override("font_color", Color.WHITE)
+	details.add_child(_loadout_item_popup_title)
+	_loadout_item_popup_status = Label.new()
+	_loadout_item_popup_status.add_theme_font_size_override("font_size", 10)
+	_loadout_item_popup_status.add_theme_color_override("font_color", CYAN)
+	details.add_child(_loadout_item_popup_status)
+	_loadout_item_popup_description = Label.new()
+	_loadout_item_popup_description.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_loadout_item_popup_description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_loadout_item_popup_description.add_theme_color_override("font_color", Color(0.82, 0.89, 0.96))
+	details.add_child(_loadout_item_popup_description)
+	_loadout_item_popup_effect = Label.new()
+	_loadout_item_popup_effect.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_loadout_item_popup_effect.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_loadout_item_popup_effect.add_theme_color_override("font_color", Color(0.48, 0.83, 0.88))
+	details.add_child(_loadout_item_popup_effect)
+	var actions := HBoxContainer.new()
+	actions.alignment = BoxContainer.ALIGNMENT_END
+	actions.add_theme_constant_override("separation", 8)
+	layout.add_child(actions)
+	_loadout_item_popup_action = _make_button("EQUIP", "loadout_item_action")
+	_loadout_item_popup_action.name = "LoadoutItemPopupAction"
+	_loadout_item_popup_action.custom_minimum_size = Vector2(132, 36)
+	_loadout_item_popup_action.pressed.connect(_loadout_item_action)
+	actions.add_child(_loadout_item_popup_action)
+	var close := _make_button("CLOSE", "loadout_item_close")
+	close.custom_minimum_size = Vector2(84, 36)
+	close.pressed.connect(_loadout_item_popup.hide)
+	actions.add_child(close)
+
+
+func _show_loadout_item_detail(item_id: String) -> void:
+	var item := Game.get_store_item(item_id)
+	if item.is_empty():
+		push_warning("Loadout item does not exist: %s" % item_id)
+		return
+	_loadout_selected_item_id = item_id
+	_ensure_loadout_item_popup()
+	_loadout_item_popup_title.text = str(item["name"])
+	_loadout_item_popup_icon.texture = load(
+		"res://assets/icons/%s.svg" % str(item["icon"])
+	) as Texture2D
+	_loadout_item_popup_description.text = str(item["description"])
+	_loadout_item_popup_effect.text = str(item["effect"])
+	var slot := str(item["slot"])
+	var owned := Game.owns_store_item(item_id)
+	var equipped := Game.get_equipped_store_item(slot) == item_id
+	var slot_labels := {
+		"armor": "ARMOR SLOT",
+		"drone": "DRONE SLOT",
+		"support": "SUPPORT SLOT",
+	}
+	var status := "EQUIPPED" if equipped else ("OWNED" if owned else "NOT OWNED")
+	_loadout_item_popup_status.text = "%s  /  %s" % [
+		_translate(str(slot_labels.get(slot, "EQUIPMENT SLOT"))),
+		_translate(status),
+	]
+	var action_text: String
+	if equipped:
+		action_text = "UNEQUIP"
+		_loadout_item_popup_action.disabled = false
+	elif owned:
+		action_text = "EQUIP"
+		_loadout_item_popup_action.disabled = false
+	else:
+		action_text = "BUY  %d CREDITS" % int(item["price"])
+		_loadout_item_popup_action.disabled = Game.pilot_cash < int(item["price"])
+	_loadout_item_popup_action.text = action_text
+	_loadout_item_popup_action.set_meta("locale_source_text", action_text)
+	_translate_subtree(_loadout_item_popup)
+	var viewport_size := get_viewport().get_visible_rect().size
+	_loadout_item_popup_panel.custom_minimum_size = Vector2(
+		minf(480.0, maxf(200.0, viewport_size.x - 32.0)),
+		minf(260.0, maxf(180.0, viewport_size.y - 32.0))
+	)
+	_loadout_item_popup.show()
+
+
+func _loadout_item_action() -> void:
+	var item := Game.get_store_item(_loadout_selected_item_id)
+	if item.is_empty():
+		push_warning("Cannot apply missing loadout item: %s" % _loadout_selected_item_id)
+		return
+	var item_id := _loadout_selected_item_id
+	var slot := str(item["slot"])
+	var owned := Game.owns_store_item(item_id)
+	if not owned:
+		if not Game.purchase_store_item(item_id):
+			push_warning("Unable to purchase loadout item: %s" % item_id)
+			return
+		_sfx()
+		_refresh_loadout_items()
+		_show_loadout_item_detail(item_id)
+		return
+	if not _equipment_slot_id.is_empty() and _equipment_slot_id != slot:
+		push_warning("Loadout item is incompatible with selected slot: %s" % item_id)
+		return
+	if not Game.equip_store_item(item_id):
+		push_warning("Unable to equip loadout item: %s" % item_id)
+		return
+	_sfx()
+	_loadout_item_popup.hide()
+	_refresh_loadout_slots()
+	_refresh_loadout_items()
+
+
+func _build_ship_showcase() -> Control:
+	var panel := _new_panel()
+	panel.name = "ActiveShipShowcase"
+	panel.custom_minimum_size = Vector2(0, 205)
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 12)
+	margin.add_theme_constant_override("margin_top", 10)
+	margin.add_theme_constant_override("margin_right", 12)
+	margin.add_theme_constant_override("margin_bottom", 10)
+	panel.add_child(margin)
+	var layout := VBoxContainer.new()
+	layout.add_theme_constant_override("separation", 6)
+	margin.add_child(layout)
+	var ship_id := Game.selected_ship_id
+	var ship_name := Label.new()
+	ship_name.text = ship_id.to_upper()
+	ship_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ship_name.add_theme_font_size_override("font_size", 17)
+	ship_name.add_theme_color_override("font_color", Color.WHITE)
+	layout.add_child(ship_name)
+	var image_holder := CenterContainer.new()
+	image_holder.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	image_holder.custom_minimum_size.y = 96
+	layout.add_child(image_holder)
+	var image := TextureRect.new()
+	image.texture = PLAYER_ICON
+	image.custom_minimum_size = Vector2(150, 100)
+	image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	image.modulate = Game.get_ship_tint(ship_id)
+	image_holder.add_child(image)
+	var stats := Game.get_effective_ship_combat_stats(ship_id)
+	var stats_label := Label.new()
+	stats_label.text = "DMG %.2f×   /   SPEED %d   /   HULL %d" % [
+		float(stats["damage_multiplier"]),
+		roundi(float(stats["max_speed"])),
+		int(stats["max_hp"]),
+	]
+	stats_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stats_label.add_theme_font_size_override("font_size", 10)
+	stats_label.add_theme_color_override("font_color", MUTED)
+	layout.add_child(stats_label)
+	return panel
+
+
+func _build_fleet_active_ship() -> Control:
+	var panel := _new_panel()
+	panel.name = "FleetActiveShipPanel"
+	panel.custom_minimum_size.y = 220
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 16)
+	margin.add_theme_constant_override("margin_top", 14)
+	margin.add_theme_constant_override("margin_right", 16)
+	margin.add_theme_constant_override("margin_bottom", 14)
+	panel.add_child(margin)
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 10)
+	margin.add_child(content)
+	var heading := HBoxContainer.new()
+	heading.add_theme_constant_override("separation", 8)
+	content.add_child(heading)
+	var ship_id := Game.selected_ship_id
+	var title := Label.new()
+	title.name = "FleetActiveShipName"
+	title.text = ship_id.to_upper()
+	title.add_theme_font_size_override("font_size", 20)
+	title.add_theme_color_override("font_color", Color.WHITE)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	heading.add_child(title)
+	var equipped := Label.new()
+	equipped.name = "FleetActiveShipStatus"
+	equipped.text = "CURRENTLY EQUIPPED"
+	equipped.add_theme_font_size_override("font_size", 10)
+	equipped.add_theme_color_override("font_color", CYAN)
+	equipped.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	heading.add_child(equipped)
+
+	_fleet_active_horizontal = HBoxContainer.new()
+	_fleet_active_horizontal.name = "FleetActiveShipDetailsWide"
+	_fleet_active_horizontal.add_theme_constant_override("separation", 14)
+	content.add_child(_fleet_active_horizontal)
+	_fleet_active_vertical = VBoxContainer.new()
+	_fleet_active_vertical.name = "FleetActiveShipDetailsCompact"
+	_fleet_active_vertical.add_theme_constant_override("separation", 10)
+	content.add_child(_fleet_active_vertical)
+
+	_fleet_active_art_panel = PanelContainer.new()
+	_fleet_active_art_panel.name = "FleetActiveShipArt"
+	_fleet_active_art_panel.custom_minimum_size = Vector2(280, 150)
+	var art_style := StyleBoxFlat.new()
+	art_style.bg_color = Color(0.018, 0.045, 0.085, 0.96)
+	art_style.border_color = Color(0.30, 0.68, 0.88, 0.38)
+	art_style.set_border_width_all(1)
+	art_style.set_corner_radius_all(10)
+	_fleet_active_art_panel.add_theme_stylebox_override("panel", art_style)
+	var art_center := CenterContainer.new()
+	art_center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_fleet_active_art_panel.add_child(art_center)
+	var image := TextureRect.new()
+	image.name = "FleetActiveShipImage"
+	image.texture = PLAYER_ICON
+	image.custom_minimum_size = Vector2(220, 132)
+	image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	image.modulate = Game.get_ship_tint(ship_id)
+	art_center.add_child(image)
+
+	_fleet_active_stats_panel = _new_panel()
+	_fleet_active_stats_panel.name = "FleetActiveShipStats"
+	_fleet_active_stats_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var stats_margin := MarginContainer.new()
+	stats_margin.add_theme_constant_override("margin_left", 14)
+	stats_margin.add_theme_constant_override("margin_top", 12)
+	stats_margin.add_theme_constant_override("margin_right", 14)
+	stats_margin.add_theme_constant_override("margin_bottom", 12)
+	_fleet_active_stats_panel.add_child(stats_margin)
+	var stats_column := VBoxContainer.new()
+	stats_column.add_theme_constant_override("separation", 8)
+	stats_margin.add_child(stats_column)
+	var stats_title := Label.new()
+	stats_title.name = "FleetStatsTitle"
+	stats_title.text = "FRAME SYSTEMS"
+	stats_title.add_theme_font_size_override("font_size", 11)
+	stats_title.add_theme_color_override("font_color", CYAN)
+	stats_column.add_child(stats_title)
+	var stats := Game.get_effective_ship_combat_stats(ship_id)
+	_add_ship_stat(
+		stats_column, "DAMAGE",
+		float(stats["damage_multiplier"]), 1.25,
+		"%.2f×" % float(stats["damage_multiplier"]), CYAN
+	)
+	_add_ship_stat(
+		stats_column, "SPEED",
+		float(stats["max_speed"]), 450.0,
+		"%d" % roundi(float(stats["max_speed"])),
+		Color(0.36, 0.72, 1.0)
+	)
+	_add_ship_stat(
+		stats_column, "HP",
+		float(stats["max_hp"]), 16.0,
+		"%d" % int(stats["max_hp"]), Color(0.47, 0.89, 0.70)
+	)
+	_add_ship_stat(
+		stats_column, "BULLET SPEED",
+		float(stats["bullet_speed"]), 750.0,
+		"%d" % roundi(float(stats["bullet_speed"])),
+		Color(0.95, 0.72, 0.39)
+	)
+
+	_layout_fleet_active_ship(
+		get_viewport().get_visible_rect().size.x < 940.0
+	)
+	return panel
+
+
+func _layout_fleet_active_ship(narrow: bool) -> void:
+	if _fleet_active_horizontal == null or _fleet_active_vertical == null \
+			or _fleet_active_art_panel == null \
+			or _fleet_active_stats_panel == null:
+		return
+	var target: BoxContainer = _fleet_active_vertical \
+		if narrow else _fleet_active_horizontal
+	for section: Control in [
+		_fleet_active_art_panel, _fleet_active_stats_panel,
+	]:
+		if section.get_parent() != target:
+			var previous_parent := section.get_parent() as Container
+			if previous_parent != null:
+				previous_parent.remove_child(section)
+			target.add_child(section)
+	_fleet_active_horizontal.visible = not narrow
+	_fleet_active_vertical.visible = narrow
+	_fleet_active_stats_panel.custom_minimum_size.x = 0.0 if narrow else 300.0
+	if narrow:
+		_fleet_active_art_panel.custom_minimum_size = Vector2(0, 144)
+		_fleet_active_art_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	else:
+		_fleet_active_art_panel.custom_minimum_size = Vector2(280, 150)
+		_fleet_active_art_panel.size_flags_horizontal = Control.SIZE_FILL
+
+
+func _add_pilot_upgrade_row(
+		definition: Dictionary, parent: VBoxContainer) -> void:
+	var upgrade_id := str(definition["id"])
+	var level := Game.get_pilot_upgrade_level(upgrade_id)
+	var cost := Game.get_pilot_upgrade_cost(upgrade_id)
+	var item := _new_panel()
+	item.name = "PilotUpgrade_" + upgrade_id
+	item.custom_minimum_size.y = 112
+	var margin := MarginContainer.new()
+	for side in ["left", "top", "right", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 10)
+	item.add_child(margin)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	margin.add_child(row)
+	var icon := TextureRect.new()
+	icon.texture = load(
+		"res://assets/icons/%s.svg" % str(definition["icon"])
+	) as Texture2D
+	icon.custom_minimum_size = Vector2(38, 38)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.modulate = CYAN
+	row.add_child(icon)
+	var details := VBoxContainer.new()
+	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	details.add_theme_constant_override("separation", 3)
+	var name := Label.new()
+	name.text = "%s  /  %s %d/5" % [
+		_translate(str(definition["name"])), _translate("LEVEL"), level,
+	]
+	name.add_theme_color_override("font_color", Color.WHITE)
+	details.add_child(name)
+	var description := Label.new()
+	description.text = str(definition["description"])
+	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	description.add_theme_font_size_override("font_size", 11)
+	description.add_theme_color_override("font_color", MUTED)
+	details.add_child(description)
+	var segments := HBoxContainer.new()
+	segments.name = "UpgradeSegments"
+	segments.add_theme_constant_override("separation", 4)
+	for index in 5:
+		var segment := ColorRect.new()
+		segment.custom_minimum_size = Vector2(0, 6)
+		segment.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		segment.color = CYAN if index < level else Color(0.12, 0.20, 0.28)
+		segments.add_child(segment)
+	details.add_child(segments)
+	var next_level := mini(level + 1, 5)
+	var current_value := _pilot_upgrade_value(upgrade_id, level)
+	var next_value := _pilot_upgrade_value(upgrade_id, next_level)
+	var stat := Label.new()
+	stat.text = "%s %s   →   %s %s" % [
+		_translate("CURRENT"), current_value, _translate("NEXT"), next_value,
+	]
+	stat.add_theme_font_size_override("font_size", 10)
+	stat.add_theme_color_override("font_color", Color(0.78, 0.89, 0.97))
+	details.add_child(stat)
+	row.add_child(details)
+	var purchase := _make_button(
+		_translate("MAX") if level >= 5
+		else "%s  %d" % [_translate("UPGRADE"), cost],
+		"upgrade_purchase"
+	)
+	if level < 5:
+		purchase.icon = load("res://assets/icons/gem.svg") as Texture2D
+		purchase.add_theme_constant_override("icon_max_width", 18)
+	purchase.custom_minimum_size = Vector2(142, 42)
+	purchase.disabled = level >= 5 or Game.pilot_tokens < cost
+	purchase.tooltip_text = _translate("NOT ENOUGH GEMS") \
+		if level < 5 and Game.pilot_tokens < cost else ""
+	purchase.pressed.connect(_buy_pilot_upgrade.bind(upgrade_id))
+	row.add_child(purchase)
+	parent.add_child(item)
+
+
+func _filter_shop_ships(query: String) -> void:
+	var search := query.strip_edges().to_lower()
+	for card: Control in _shop_ship_cards:
+		card.visible = search.is_empty() \
+			or str(card.get_meta("ship_search_text", "")).contains(search)
+
+
+func _pilot_upgrade_value(upgrade_id: String, level: int) -> String:
+	for definition: Dictionary in Game.get_pilot_upgrade_definitions():
+		if str(definition["id"]) != upgrade_id:
+			continue
+		var amount := Game.get_pilot_upgrade_effect(upgrade_id) \
+			* float(level)
+		var stats := Game.get_ship_combat_stats()
+		match str(definition.get("stat", "")):
+			"max_speed":
+				return "%d %s" % [
+					roundi(float(stats["max_speed"]) * (1.0 + amount)),
+					_translate("SPEED"),
+				]
+			"damage_multiplier":
+				return "%.2f× %s" % [
+					float(stats["damage_multiplier"]) * (1.0 + amount),
+					_translate("DMG"),
+				]
+			"fire_rate_multiplier":
+				return "%.0f%% %s" % [
+					100.0 + amount * 100.0, _translate("RATE"),
+				]
+			"bullet_speed_multiplier":
+				return "%d %s" % [
+					roundi(float(stats["bullet_speed"])
+						* (1.0 + amount)),
+					_translate("BULLET SPEED"),
+				]
+			"crit_chance":
+				return "%.1f%% %s" % [
+					amount * 100.0, _translate("CRIT"),
+				]
+			"pierce_bonus":
+				return "%d %s" % [roundi(amount), _translate("PIERCE")]
+			"burn_bonus":
+				return "%d %s" % [roundi(amount), _translate("BURN")]
+			"max_hp":
+				return "%d %s" % [
+					int(stats["max_hp"]) + roundi(amount),
+					_translate("HP"),
+				]
+	return "—"
+
+
+func _buy_pilot_upgrade(upgrade_id: String) -> void:
+	if Game.purchase_pilot_upgrade(upgrade_id):
+		_sfx()
+		_open_page("upgrades")
+
+
 func _add_paint_option(paint: Dictionary) -> void:
 	var paint_id := str(paint["id"])
 	var unlocked := Game.is_ship_unlocked(paint_id)
 	var item := _new_panel()
-	item.custom_minimum_size.y = 92
-	var surface := Control.new()
-	surface.custom_minimum_size.y = 92
-	item.add_child(surface)
+	item.name = "ShipCard_" + paint_id
+	item.custom_minimum_size = Vector2(160, 194)
+	item.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	margin.add_theme_constant_override("margin_left", 10)
-	margin.add_theme_constant_override("margin_top", 7)
+	margin.add_theme_constant_override("margin_top", 10)
 	margin.add_theme_constant_override("margin_right", 10)
-	margin.add_theme_constant_override("margin_bottom", 7)
-	surface.add_child(margin)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
-	margin.add_child(row)
+	margin.add_theme_constant_override("margin_bottom", 10)
+	item.add_child(margin)
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 6)
+	margin.add_child(content)
+	var image_frame := PanelContainer.new()
+	image_frame.name = "ShipCardImageFrame"
+	image_frame.custom_minimum_size.y = 88
+	var frame_style := StyleBoxFlat.new()
+	frame_style.bg_color = Color(0.018, 0.045, 0.085, 0.96)
+	frame_style.border_color = Color(0.30, 0.68, 0.88, 0.38)
+	frame_style.set_border_width_all(1)
+	frame_style.set_corner_radius_all(8)
+	image_frame.add_theme_stylebox_override("panel", frame_style)
+	content.add_child(image_frame)
+	var image_surface := Control.new()
+	image_surface.custom_minimum_size.y = 86
+	image_frame.add_child(image_surface)
 	var image := TextureRect.new()
+	image.name = "ShipCardImage"
 	image.texture = PLAYER_ICON
-	image.custom_minimum_size = Vector2(86, 70)
+	image.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	image.modulate = paint["color"] if unlocked else Color(0.32, 0.40, 0.48)
-	row.add_child(image)
+	image.modulate = paint["color"] if unlocked else Color(0.54, 0.62, 0.70)
+	image_surface.add_child(image)
+	if not unlocked:
+		var shade := ColorRect.new()
+		shade.name = "ShipCardLockShade"
+		shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		shade.color = Color(0.01, 0.025, 0.045, 0.38)
+		shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		image_surface.add_child(shade)
+		var lock := LockGlyph.new()
+		lock.name = "ShipCardLockIcon"
+		lock.custom_minimum_size = Vector2(30, 30)
+		lock.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+		lock.offset_left = -15
+		lock.offset_top = -15
+		lock.offset_right = 15
+		lock.offset_bottom = 15
+		lock.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		image_surface.add_child(lock)
+
 	var details := VBoxContainer.new()
-	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	details.add_theme_constant_override("separation", 3)
+	content.add_child(details)
 	var name_label := Label.new()
+	name_label.name = "ShipCardName"
 	name_label.text = str(paint["name"])
-	name_label.add_theme_font_size_override("font_size", 15)
+	name_label.add_theme_font_size_override("font_size", 14)
+	name_label.add_theme_color_override("font_color", Color.WHITE)
+	name_label.clip_text = true
 	details.add_child(name_label)
 	var state := Label.new()
+	state.name = "ShipCardState"
 	state.text = "CURRENTLY EQUIPPED" \
 		if paint_id == Game.selected_ship_id \
 		else ("OWNED" if unlocked else "BEST WAVE %d OR %d GEMS" % [
 			Game.get_ship_unlock_wave(paint_id),
 			Game.get_ship_token_cost(paint_id),
 		])
-	state.add_theme_font_size_override("font_size", 10)
+	state.add_theme_font_size_override("font_size", 9)
 	state.add_theme_color_override("font_color", CYAN if unlocked else MUTED)
+	state.clip_text = true
 	details.add_child(state)
-	var stats := Game.get_ship_combat_stats(paint_id)
+	var stats := Game.get_effective_ship_combat_stats(paint_id)
 	var combat_stats := Label.new()
+	combat_stats.name = "ShipCardStats"
 	combat_stats.text = "DMG %.2f×   SPD %d   HP %d" % [
 		float(stats["damage_multiplier"]),
 		roundi(float(stats["max_speed"])),
@@ -1735,19 +3479,22 @@ func _add_paint_option(paint: Dictionary) -> void:
 	combat_stats.add_theme_font_size_override("font_size", 9)
 	combat_stats.add_theme_color_override("font_color", MUTED)
 	details.add_child(combat_stats)
-	row.add_child(details)
+
 	var select := Button.new()
 	select.name = "PaintCardSelect_" + paint_id
 	select.flat = true
 	select.focus_mode = Control.FOCUS_NONE
 	select.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	select.tooltip_text = "SELECT PAINT" if unlocked else "OPEN STORE"
+	select.tooltip_text = "SELECT SHIP" if unlocked else "VIEW SHIP"
 	if unlocked:
 		select.pressed.connect(_select_ship.bind(paint_id))
 	else:
-		select.pressed.connect(_open_page.bind("store"))
-	surface.add_child(select)
-	_page_popup_content.add_child(item)
+		select.pressed.connect(_show_ship_detail.bind(paint_id))
+	item.add_child(select)
+	if _ship_fleet_grid != null:
+		_ship_fleet_grid.add_child(item)
+	else:
+		_page_popup_content.add_child(item)
 
 
 func _translate_subtree(node: Node) -> void:
@@ -1759,6 +3506,13 @@ func _translate_subtree(node: Node) -> void:
 func _add_store_ship(ship: Dictionary) -> void:
 	var ship_id := str(ship["id"])
 	var item := _new_panel()
+	item.name = "ShopShip_" + ship_id
+	item.custom_minimum_size.y = 142
+	item.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	item.set_meta(
+		"ship_search_text",
+		("%s %s" % [ship_id, str(ship["name"])]).to_lower()
+	)
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 8)
 	margin.add_theme_constant_override("margin_top", 6)
@@ -1780,9 +3534,12 @@ func _add_store_ship(ship: Dictionary) -> void:
 	var amount := Label.new()
 	amount.text = str(Game.get_ship_token_cost(ship_id))
 	details.add_child(amount)
-	var token_unit := Label.new()
-	token_unit.text = "GEMS"
-	details.add_child(token_unit)
+	var token_icon := TextureRect.new()
+	token_icon.texture = load("res://assets/icons/gem.svg") as Texture2D
+	token_icon.custom_minimum_size = Vector2(16, 16)
+	token_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	token_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	details.add_child(token_icon)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	details.add_child(spacer)
@@ -1801,13 +3558,17 @@ func _add_store_ship(ship: Dictionary) -> void:
 		or Game.pilot_tokens < Game.get_ship_token_cost(ship_id)
 	buy.pressed.connect(_buy_ship.bind(ship_id))
 	layout.add_child(buy)
-	_page_popup_content.add_child(item)
+	if _shop_ship_grid != null:
+		_shop_ship_grid.add_child(item)
+		_shop_ship_cards.append(item)
+	else:
+		_page_popup_content.add_child(item)
 
 
 func _buy_ship(ship_id: String) -> void:
 	if Game.unlock_ship_with_tokens(ship_id):
 		_sfx()
-		_open_page("store")
+		_open_page("shop")
 
 
 func _add_settings_controls() -> void:
@@ -1877,6 +3638,14 @@ func _format_count(value: int) -> String:
 	return str(value)
 
 
+func _format_time(seconds: float) -> String:
+	var total_seconds := maxi(0, roundi(seconds))
+	return "%02d:%02d" % [
+		total_seconds / 60,
+		total_seconds % 60,
+	]
+
+
 func _create_run_record_panel() -> void:
 	var ui := get_node_or_null("UI") as Control
 	if ui == null:
@@ -1925,6 +3694,9 @@ func _create_run_record_panel() -> void:
 	_run_record_panel.add_child(_run_record_close)
 
 	_run_record_scroll = ScrollContainer.new()
+	_run_record_scroll.set_script(
+		load("res://scripts/touch_scroll_container.gd")
+	)
 	_run_record_scroll.name = "RunRecordScroll"
 	_run_record_scroll.mouse_filter = Control.MOUSE_FILTER_PASS
 	_run_record_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -1954,10 +3726,13 @@ func _toggle_run_record_popup() -> void:
 	if _run_record_panel.visible:
 		if _page_popup != null:
 			_page_popup.hide()
-			_dashboard.get_node("PageBackdrop").hide()
+			_main_columns.visible = true
+			_main_columns_mobile.visible = true
 		_run_record_panel.z_index = 30
 		_run_record_panel.move_to_front()
 		_run_record_close.move_to_front()
+	else:
+		_set_navigation_page("home")
 
 
 func _free_ship_transition_ghost() -> void:

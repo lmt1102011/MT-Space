@@ -66,6 +66,8 @@ func _ready() -> void:
 func setup(p_sides: int, p_radius: float, speed_mult: float = 1.0, dmg_bonus: int = 0) -> void:
 	sides = p_sides
 	radius = p_radius
+	if _status_visual != null:
+		_status_visual.call("set_radius", radius)
 	var edge_hp: int = maxi(p_sides - 2, 1)
 	var size_hp: int = int(round(radius / 12.0))
 	max_hp = edge_hp + size_hp

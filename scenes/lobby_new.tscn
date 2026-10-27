@@ -1,7 +1,7 @@
 [gd_scene load_steps=4 format=3 uid="uid://dlobby_new"]
 
 [ext_resource type="Script" path="res://scripts/lobby_new.gd" id="1_lobby_new"]
-[ext_resource type="Texture2D" path="res://assets/player.svg" id="2_player"]
+[ext_resource type="Texture2D" path="res://assets/ships/phoenix.svg" id="2_player"]
 [ext_resource type="Texture2D" path="res://assets/bg_star.svg" id="3_star"]
 
 [node name="LobbyNew" type="CanvasLayer"]

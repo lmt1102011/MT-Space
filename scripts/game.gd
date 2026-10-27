@@ -82,30 +82,26 @@ const RUN_RECORDS_PATH := "user://run_records.cfg"
 const PILOT_PROFILE_PATH := "user://pilot_profile.cfg"
 const CASH_PER_WAVE := 10
 const XP_PER_WAVE := 10
+const SHIP_UPGRADE_DEFINITIONS := {
+	"phoenix": [
+		{"id": "afterburner", "name": "AFTERBURNER", "icon": "move_speed", "description": "+5% ship movement speed per level", "stat": "max_speed", "base_cost": 58, "cost_step": 39, "effect_step": 0.05, "unit": "%"},
+		{"id": "plasma_core", "name": "PLASMA CORE", "icon": "damage", "description": "+8% weapon damage per level", "stat": "damage_multiplier", "base_cost": 68, "cost_step": 44, "effect_step": 0.08, "unit": "%"},
+		{"id": "ignition_array", "name": "IGNITION ARRAY", "icon": "fire_rate", "description": "+6% firing rate per level", "stat": "fire_rate_multiplier", "base_cost": 63, "cost_step": 41, "effect_step": 0.06, "unit": "%"},
+		{"id": "ember_matrix", "name": "EMBER MATRIX", "icon": "inferno", "description": "+1 burn stack per level", "stat": "burn_bonus", "base_cost": 73, "cost_step": 49, "effect_step": 1.0, "unit": ""},
+	],
+}
+const STORE_ITEMS := [
+	{"id": "reinforced_armor", "name": "REINFORCED ARMOR", "category": "armor", "slot": "armor", "price": 220, "icon": "store_armor", "description": "+3 maximum hull points while equipped.", "effect": "Adds 3 maximum HP."},
+	{"id": "strike_drone", "name": "STRIKE DRONE", "category": "attack", "slot": "drone", "price": 340, "icon": "store_attack_drone", "description": "Autonomously fires at nearby enemies.", "effect": "Fires a support shot about every 1.4 seconds."},
+	{"id": "repair_drone", "name": "REPAIR DRONE", "category": "repair", "slot": "drone", "price": 300, "icon": "store_repair_drone", "description": "Repairs one hull point during combat.", "effect": "Restores 1 HP every 6 seconds."},
+	{"id": "hex_guard_drone", "name": "HEX GUARD DRONE", "category": "defense", "slot": "drone", "price": 420, "icon": "store_defense_drone", "description": "Generates a segmented hex shield around the ship.", "effect": "Blocks 3 hits; one charge returns every 8 seconds."},
+	{"id": "reactor_tuner", "name": "REACTOR TUNER", "category": "support", "slot": "support", "price": 260, "icon": "store_reactor", "description": "Optimizes the ship's firing cycle.", "effect": "+8% firing rate while equipped."},
+	{"id": "targeting_servo", "name": "TARGETING SERVO", "category": "support", "slot": "support", "price": 280, "icon": "store_targeting", "description": "Improves weapon targeting efficiency.", "effect": "+10% weapon damage while equipped."},
+]
 const SHIP_COMBAT_STATS := {
-	"aquila": {
-		"max_speed": 340.0, "max_hp": 10, "bullet_speed": 640.0,
-		"damage_multiplier": 1.0,
-	},
-	"viper": {
-		"max_speed": 390.0, "max_hp": 8, "bullet_speed": 680.0,
-		"damage_multiplier": 0.9,
-	},
-	"raven": {
-		"max_speed": 315.0, "max_hp": 12, "bullet_speed": 610.0,
-		"damage_multiplier": 1.1,
-	},
 	"phoenix": {
-		"max_speed": 330.0, "max_hp": 9, "bullet_speed": 720.0,
-		"damage_multiplier": 1.15,
-	},
-	"draco": {
-		"max_speed": 300.0, "max_hp": 14, "bullet_speed": 600.0,
+		"max_speed": 380.0, "max_hp": 6, "bullet_speed": 720.0,
 		"damage_multiplier": 1.0,
-	},
-	"orion": {
-		"max_speed": 365.0, "max_hp": 9, "bullet_speed": 660.0,
-		"damage_multiplier": 1.05,
 	},
 }
 const ENEMY_CASH_REWARDS := [
@@ -130,8 +126,11 @@ var pilot_tokens: int = 0
 var pilot_cash: int = 0
 var pilot_level: int = 1
 var pilot_xp: int = 0
-var selected_ship_id: String = "aquila"
-var unlocked_ship_ids: Array[String] = ["aquila"]
+var pilot_upgrade_levels: Dictionary = {}
+var selected_ship_id: String = "phoenix"
+var unlocked_ship_ids: Array[String] = ["phoenix"]
+var owned_store_item_ids: Array[String] = []
+var ship_store_loadouts: Dictionary = {}
 var _daily_mission_progress: Dictionary = {}
 var _daily_mission_claimed: Dictionary = {}
 var _daily_mission_date: String = ""
@@ -151,6 +150,7 @@ var _hitstop_active: bool = false
 
 
 func _ready() -> void:
+	get_tree().node_added.connect(_on_tree_node_added)
 	_load_settings()
 	_load_run_records()
 	_load_pilot_profile()
@@ -170,6 +170,18 @@ func _ready() -> void:
 		_fire_player.stream = loop_stream
 		_fire_player.volume_db = -80.0
 		add_child(_fire_player)
+
+
+func _on_tree_node_added(node: Node) -> void:
+	if not node is BaseButton \
+			or node.has_meta("ui_click_sound_connected"):
+		return
+	node.set_meta("ui_click_sound_connected", true)
+	(node as BaseButton).pressed.connect(_play_ui_click)
+
+
+func _play_ui_click() -> void:
+	sfx("click", -12.0, 0.95, 1.05)
 
 
 func _process(delta: float) -> void:
@@ -422,6 +434,156 @@ func claim_daily_mission(mission_id: String) -> bool:
 	return false
 
 
+func get_pilot_upgrade_definitions(ship_id: String = "") -> Array[Dictionary]:
+	var requested_ship := selected_ship_id if ship_id.is_empty() else ship_id
+	var source: Array = SHIP_UPGRADE_DEFINITIONS.get(
+		requested_ship, SHIP_UPGRADE_DEFINITIONS["phoenix"]
+	)
+	var definitions: Array[Dictionary] = []
+	for definition: Dictionary in source:
+		definitions.append(definition.duplicate(true))
+	return definitions
+
+
+func get_pilot_upgrade_level(upgrade_id: String, ship_id: String = "") -> int:
+	var requested_ship := selected_ship_id if ship_id.is_empty() else ship_id
+	var ship_levels: Variant = pilot_upgrade_levels.get(requested_ship, {})
+	if ship_levels is Dictionary and ship_levels.has(upgrade_id):
+		return clampi(int(ship_levels.get(upgrade_id, 0)), 0, 5)
+	return 0
+
+
+func get_pilot_upgrade_effect(upgrade_id: String, ship_id: String = "") -> float:
+	for definition: Dictionary in get_pilot_upgrade_definitions(ship_id):
+		if str(definition["id"]) == upgrade_id:
+			return float(definition["effect_step"])
+	return 0.0
+
+
+func get_pilot_upgrade_cost(upgrade_id: String, ship_id: String = "") -> int:
+	var requested_ship := selected_ship_id if ship_id.is_empty() else ship_id
+	for definition: Dictionary in get_pilot_upgrade_definitions(requested_ship):
+		if str(definition["id"]) == upgrade_id:
+			var level := get_pilot_upgrade_level(upgrade_id, requested_ship)
+			return int(definition["base_cost"]) \
+				+ int(definition["cost_step"]) * level
+	return -1
+
+
+func purchase_pilot_upgrade(upgrade_id: String, ship_id: String = "") -> bool:
+	var requested_ship := selected_ship_id if ship_id.is_empty() else ship_id
+	if not SHIP_UPGRADE_DEFINITIONS.has(requested_ship) \
+			or not is_ship_unlocked(requested_ship):
+		return false
+	var cost := get_pilot_upgrade_cost(upgrade_id, requested_ship)
+	var current_level := get_pilot_upgrade_level(upgrade_id, requested_ship)
+	if cost < 0 or current_level >= 5 or pilot_tokens < cost:
+		return false
+	var previous_tokens := pilot_tokens
+	var previous_levels := pilot_upgrade_levels.duplicate(true)
+	pilot_tokens -= cost
+	var ship_levels: Dictionary = pilot_upgrade_levels.get(requested_ship, {})
+	ship_levels[upgrade_id] = current_level + 1
+	pilot_upgrade_levels[requested_ship] = ship_levels
+	if not _save_pilot_profile():
+		pilot_tokens = previous_tokens
+		pilot_upgrade_levels = previous_levels
+		return false
+	lobby_profile_changed.emit()
+	return true
+
+
+func get_store_items() -> Array[Dictionary]:
+	var items: Array[Dictionary] = []
+	for item: Dictionary in STORE_ITEMS:
+		items.append(item.duplicate(true))
+	return items
+
+
+func get_store_item(item_id: String) -> Dictionary:
+	for item: Dictionary in STORE_ITEMS:
+		if str(item["id"]) == item_id:
+			return item.duplicate(true)
+	return {}
+
+
+func owns_store_item(item_id: String) -> bool:
+	return owned_store_item_ids.has(item_id)
+
+
+func get_equipped_store_item(slot: String, ship_id: String = "") -> String:
+	var requested_ship := selected_ship_id if ship_id.is_empty() else ship_id
+	var loadout: Variant = ship_store_loadouts.get(requested_ship, {})
+	if loadout is Dictionary:
+		return str(loadout.get(slot, ""))
+	return ""
+
+
+func purchase_store_item(item_id: String) -> bool:
+	var item := get_store_item(item_id)
+	if item.is_empty() or owns_store_item(item_id):
+		return false
+	var cost := int(item.get("price", -1))
+	if cost < 0 or pilot_cash < cost:
+		return false
+	var previous_cash := pilot_cash
+	pilot_cash -= cost
+	owned_store_item_ids.append(item_id)
+	if not _save_pilot_profile():
+		pilot_cash = previous_cash
+		owned_store_item_ids.erase(item_id)
+		return false
+	lobby_profile_changed.emit()
+	return true
+
+
+func equip_store_item(item_id: String, ship_id: String = "") -> bool:
+	var item := get_store_item(item_id)
+	if item.is_empty() or not owns_store_item(item_id):
+		return false
+	var requested_ship := selected_ship_id if ship_id.is_empty() else ship_id
+	if not is_ship_unlocked(requested_ship):
+		return false
+	var slot := str(item["slot"])
+	var previous_loadouts := ship_store_loadouts.duplicate(true)
+	var loadout: Dictionary = ship_store_loadouts.get(requested_ship, {})
+	if str(loadout.get(slot, "")) == item_id:
+		loadout.erase(slot)
+	else:
+		loadout[slot] = item_id
+	ship_store_loadouts[requested_ship] = loadout
+	if not _save_pilot_profile():
+		ship_store_loadouts = previous_loadouts
+		return false
+	lobby_profile_changed.emit()
+	return true
+
+
+func get_equipped_store_effects(ship_id: String = "") -> Dictionary:
+	var effects := {
+		"max_hp": 0,
+		"damage_multiplier": 1.0,
+		"fire_rate_multiplier": 1.0,
+	}
+	for slot in ["armor", "drone", "support"]:
+		var item_id := get_equipped_store_item(slot, ship_id)
+		match item_id:
+			"reinforced_armor":
+				effects["max_hp"] = int(effects["max_hp"]) + 3
+			"reactor_tuner":
+				effects["fire_rate_multiplier"] = 1.08
+			"targeting_servo":
+				effects["damage_multiplier"] = 1.1
+	return effects
+
+
+func get_active_store_drone(ship_id: String = "") -> String:
+	var drone_id := get_equipped_store_item("drone", ship_id)
+	return drone_id if drone_id in [
+		"strike_drone", "repair_drone", "hex_guard_drone",
+	] else ""
+
+
 func set_selected_ship(ship_id: String) -> bool:
 	if not is_ship_unlocked(ship_id):
 		return false
@@ -447,9 +609,51 @@ func get_ship_unlock_wave(ship_id: String) -> int:
 func get_ship_combat_stats(ship_id: String = "") -> Dictionary:
 	var requested_id := selected_ship_id if ship_id.is_empty() else ship_id
 	var stats: Dictionary = SHIP_COMBAT_STATS.get(
-		requested_id, SHIP_COMBAT_STATS["aquila"]
+		requested_id, SHIP_COMBAT_STATS["phoenix"]
 	)
 	return stats.duplicate(true)
+
+
+func get_effective_ship_combat_stats(ship_id: String = "") -> Dictionary:
+	var requested_ship := selected_ship_id if ship_id.is_empty() else ship_id
+	var stats := get_ship_combat_stats(requested_ship)
+	stats["fire_rate_multiplier"] = 1.0
+	stats["bullet_speed_multiplier"] = 1.0
+	stats["crit_chance"] = 0.0
+	stats["pierce_bonus"] = 0
+	stats["burn_bonus"] = 0
+	for definition: Dictionary in get_pilot_upgrade_definitions(requested_ship):
+		var upgrade_id := str(definition["id"])
+		var amount := get_pilot_upgrade_effect(upgrade_id, requested_ship) \
+			* float(get_pilot_upgrade_level(upgrade_id, requested_ship))
+		match str(definition["stat"]):
+			"max_speed":
+				stats["max_speed"] = float(stats["max_speed"]) * (1.0 + amount)
+			"damage_multiplier":
+				stats["damage_multiplier"] = \
+					float(stats["damage_multiplier"]) * (1.0 + amount)
+			"fire_rate_multiplier":
+				stats["fire_rate_multiplier"] = 1.0 + amount
+			"max_hp":
+				stats["max_hp"] = int(stats["max_hp"]) + roundi(amount)
+			"bullet_speed_multiplier":
+				stats["bullet_speed_multiplier"] = \
+					float(stats["bullet_speed_multiplier"]) * (1.0 + amount)
+			"crit_chance":
+				stats["crit_chance"] = float(stats["crit_chance"]) + amount
+			"pierce_bonus":
+				stats["pierce_bonus"] = int(stats["pierce_bonus"]) + roundi(amount)
+			"burn_bonus":
+				stats["burn_bonus"] = int(stats["burn_bonus"]) + roundi(amount)
+	stats["bullet_speed"] = float(stats["bullet_speed"]) \
+		* float(stats["bullet_speed_multiplier"])
+	var store_effects := get_equipped_store_effects(requested_ship)
+	stats["max_hp"] = int(stats["max_hp"]) + int(store_effects["max_hp"])
+	stats["damage_multiplier"] = float(stats["damage_multiplier"]) \
+		* float(store_effects["damage_multiplier"])
+	stats["fire_rate_multiplier"] = float(stats["fire_rate_multiplier"]) \
+		* float(store_effects["fire_rate_multiplier"])
+	return stats
 
 
 func is_ship_unlocked(ship_id: String) -> bool:
@@ -460,15 +664,8 @@ func is_ship_unlocked(ship_id: String) -> bool:
 	)
 
 
-func get_ship_token_cost(ship_id: String) -> int:
-	var costs := {
-		"viper": 100,
-		"raven": 150,
-		"phoenix": 250,
-		"draco": 350,
-		"orion": 500,
-	}
-	return int(costs.get(ship_id, -1))
+func get_ship_token_cost(_ship_id: String) -> int:
+	return -1
 
 
 func unlock_ship_with_tokens(ship_id: String) -> bool:
@@ -488,35 +685,31 @@ func unlock_ship_with_tokens(ship_id: String) -> bool:
 	return true
 
 
-func get_ship_tint(ship_id: String) -> Color:
-	var tints := {
-		"aquila": Color(0.86, 0.94, 1.0),
-		"viper": Color(0.40, 0.91, 1.0),
-		"raven": Color(0.75, 0.57, 1.0),
-		"phoenix": Color(1.0, 0.68, 0.37),
-		"draco": Color(0.46, 1.0, 0.68),
-		"orion": Color(1.0, 0.48, 0.62),
-	}
-	return tints.get(ship_id, Color.WHITE)
+func get_ship_tint(_ship_id: String) -> Color:
+	return Color.WHITE
 
 
 func _ship_unlock_wave(ship_id: String) -> int:
-	var unlock_waves := {
-		"aquila": 0,
-		"viper": 3,
-		"raven": 5,
-		"phoenix": 8,
-		"draco": 12,
-		"orion": 16,
-	}
-	return int(unlock_waves.get(ship_id, -1))
+	return 0 if ship_id == "phoenix" else -1
 
 
 func _daily_mission_definitions() -> Array[Dictionary]:
 	return [
-		{"id": "play_run", "title": "Complete a run", "target": 1, "reward": 50},
-		{"id": "reach_wave", "title": "Reach wave 5", "target": 5, "reward": 100},
-		{"id": "defeat_boss", "title": "Defeat a boss", "target": 1, "reward": 100},
+		{
+			"id": "play_run", "title": "Complete a run",
+			"description": "Finish one normal run to earn pilot gems.",
+			"target": 1, "reward": 50,
+		},
+		{
+			"id": "reach_wave", "title": "Reach wave 5",
+			"description": "Survive until wave five in a normal run.",
+			"target": 5, "reward": 100,
+		},
+		{
+			"id": "defeat_boss", "title": "Defeat a boss",
+			"description": "Defeat a boss during a normal run.",
+			"target": 1, "reward": 100,
+		},
 	]
 
 
@@ -550,28 +743,97 @@ func _load_pilot_profile() -> void:
 	var error := config.load(PILOT_PROFILE_PATH)
 	if error != OK and error != ERR_FILE_NOT_FOUND:
 		push_error("Unable to load pilot profile: %s" % error_string(error))
+	var legacy_selected_ship := str(
+		config.get_value("pilot", "selected_ship", "phoenix")
+	)
+	var profile_needs_migration := legacy_selected_ship != "phoenix"
 	pilot_tokens = maxi(0, int(config.get_value("pilot", "tokens", 0)))
 	pilot_cash = maxi(0, int(config.get_value("pilot", "cash", 0)))
 	pilot_level = maxi(1, int(config.get_value("pilot", "level", 1)))
 	pilot_xp = maxi(0, int(config.get_value("pilot", "xp", 0)))
-	selected_ship_id = str(config.get_value("pilot", "selected_ship", "aquila"))
-	var unlocked: Variant = config.get_value("pilot", "unlocked_ships", ["aquila"])
-	unlocked_ship_ids.clear()
-	if unlocked is Array:
-		for id: Variant in unlocked:
-			var ship_id := str(id)
-			if _ship_unlock_wave(ship_id) >= 0 and not unlocked_ship_ids.has(ship_id):
-				unlocked_ship_ids.append(ship_id)
-	if not unlocked_ship_ids.has("aquila"):
-		unlocked_ship_ids.append("aquila")
+	var saved_upgrades: Variant = config.get_value("pilot", "upgrades", {})
+	var phoenix_levels: Dictionary = {}
+	if saved_upgrades is Dictionary:
+		var saved_phoenix_levels: Variant = saved_upgrades.get("phoenix", {})
+		if saved_upgrades.has("phoenix") and saved_phoenix_levels is Dictionary:
+			phoenix_levels = saved_phoenix_levels.duplicate(true)
+		else:
+			var legacy_levels: Variant = saved_upgrades.get(
+				"aquila", saved_upgrades
+			)
+			if legacy_levels is Dictionary:
+				var legacy_to_phoenix := {
+					"engine": "afterburner",
+					"weapon": "plasma_core",
+					"fire_rate": "ignition_array",
+				}
+				for legacy_id: Variant in legacy_to_phoenix:
+					var phoenix_id := str(legacy_to_phoenix[legacy_id])
+					phoenix_levels[phoenix_id] = clampi(
+						int(legacy_levels.get(legacy_id, 0)), 0, 5
+					)
+			profile_needs_migration = true
+	pilot_upgrade_levels = {"phoenix": phoenix_levels}
+	for ship_id: String in SHIP_UPGRADE_DEFINITIONS:
+		var ship_levels: Variant = pilot_upgrade_levels.get(ship_id, {})
+		if not ship_levels is Dictionary:
+			ship_levels = {}
+		var normalized_levels: Dictionary = {}
+		for definition: Dictionary in SHIP_UPGRADE_DEFINITIONS[ship_id]:
+			var upgrade_id := str(definition["id"])
+			normalized_levels[upgrade_id] = clampi(
+				int(ship_levels.get(upgrade_id, 0)), 0, 5
+			)
+		pilot_upgrade_levels[ship_id] = normalized_levels
+	selected_ship_id = "phoenix"
+	var unlocked: Variant = config.get_value("pilot", "unlocked_ships", ["phoenix"])
+	if unlocked != ["phoenix"]:
+		profile_needs_migration = true
+	unlocked_ship_ids = ["phoenix"]
+	var saved_owned_items: Variant = config.get_value("pilot", "owned_store_items", [])
+	owned_store_item_ids.clear()
+	if saved_owned_items is Array:
+		for item_id: Variant in saved_owned_items:
+			var item_name := str(item_id)
+			if not get_store_item(item_name).is_empty() \
+					and not owned_store_item_ids.has(item_name):
+				owned_store_item_ids.append(item_name)
+	var saved_loadouts: Variant = config.get_value("pilot", "ship_store_loadouts", {})
+	ship_store_loadouts = saved_loadouts if saved_loadouts is Dictionary else {}
+	var phoenix_loadout: Dictionary = {}
+	var saved_phoenix_loadout: Variant = ship_store_loadouts.get("phoenix", {})
+	if saved_phoenix_loadout is Dictionary:
+		phoenix_loadout = saved_phoenix_loadout.duplicate(true)
+	if legacy_selected_ship != "phoenix":
+		var previous_loadout: Variant = ship_store_loadouts.get(
+			legacy_selected_ship, {}
+		)
+		if previous_loadout is Dictionary:
+			for slot: Variant in previous_loadout:
+				if not phoenix_loadout.has(slot):
+					phoenix_loadout[slot] = previous_loadout[slot]
+	ship_store_loadouts = {"phoenix": phoenix_loadout}
+	for loadout_ship: Variant in ship_store_loadouts.keys():
+		var loadout: Variant = ship_store_loadouts[loadout_ship]
+		if not loadout is Dictionary:
+			ship_store_loadouts.erase(loadout_ship)
+			continue
+		for slot: Variant in loadout.keys():
+			var item_id := str(loadout[slot])
+			var item := get_store_item(item_id)
+			if item.is_empty() or not owns_store_item(item_id) \
+					or str(item.get("slot", "")) != str(slot):
+				loadout.erase(slot)
+				continue
+			loadout[slot] = item_id
 	_daily_mission_date = str(config.get_value("daily", "date", ""))
 	var progress: Variant = config.get_value("daily", "progress", {})
 	var claimed: Variant = config.get_value("daily", "claimed", {})
 	_daily_mission_progress = progress if progress is Dictionary else {}
 	_daily_mission_claimed = claimed if claimed is Dictionary else {}
 	_ensure_current_daily_missions()
-	if not is_ship_unlocked(selected_ship_id):
-		selected_ship_id = "aquila"
+	if profile_needs_migration:
+		_save_pilot_profile()
 
 
 func _save_pilot_profile() -> bool:
@@ -580,8 +842,11 @@ func _save_pilot_profile() -> bool:
 	config.set_value("pilot", "cash", pilot_cash)
 	config.set_value("pilot", "level", pilot_level)
 	config.set_value("pilot", "xp", pilot_xp)
+	config.set_value("pilot", "upgrades", pilot_upgrade_levels)
 	config.set_value("pilot", "selected_ship", selected_ship_id)
 	config.set_value("pilot", "unlocked_ships", unlocked_ship_ids)
+	config.set_value("pilot", "owned_store_items", owned_store_item_ids)
+	config.set_value("pilot", "ship_store_loadouts", ship_store_loadouts)
 	config.set_value("daily", "date", _daily_mission_date)
 	config.set_value("daily", "progress", _daily_mission_progress)
 	config.set_value("daily", "claimed", _daily_mission_claimed)

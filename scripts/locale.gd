@@ -1,11 +1,137 @@
 extends Node
 
+const DropdownStyle := preload("res://scripts/dropdown_style.gd")
+
 signal locale_changed(locale: String)
 
 const LOCALE_FILE := "user://locale.cfg"
 var locale: String = "en"
 
 const EN_TO_VI := {
+	"SHOP": "CỬA HÀNG TÀU",
+	"STORE": "CỬA HÀNG",
+	"CREDITS": "TIỀN",
+	"LOADOUT CATEGORIES": "DANH MỤC TRANG BỊ",
+	"OVERVIEW": "TỔNG QUAN",
+	"DRONES": "DRONE",
+	"WEAPONS": "VŨ KHÍ",
+	"NO COMPATIBLE EQUIPMENT FOUND": "KHÔNG CÓ TRANG BỊ TƯƠNG THÍCH",
+	"SELECT A SLOT OR BROWSE YOUR EQUIPMENT": "Chọn một ô hoặc duyệt kho trang bị",
+	"SELECT AN ITEM TO EQUIP IN THE %s SLOT": "Chọn vật phẩm để lắp vào ô %s",
+	"%d ITEMS  /  %d OWNED": "%d VẬT PHẨM  /  %d ĐÃ SỞ HỮU",
+	"NOT OWNED": "CHƯA SỞ HỮU",
+	"EQUIPPED ITEMS / Select a slot to choose from equipment you own.": "TRANG BỊ ĐANG DÙNG / Chọn một ô để chọn vật phẩm bạn sở hữu.",
+	"EQUIPMENT SLOTS": "Ô TRANG BỊ",
+	"ARMOR SLOT": "Ô GIÁP",
+	"DRONE SLOT": "Ô DRONE",
+	"SUPPORT SLOT": "Ô HỖ TRỢ",
+	"SUPPORT SYSTEM": "HỆ THỐNG HỖ TRỢ",
+	"EMPTY": "TRỐNG",
+	"SELECT ITEM": "CHỌN VẬT PHẨM",
+	"NO OWNED ITEMS FOR THIS SLOT. VISIT STORE TO BUY EQUIPMENT.": "Bạn chưa sở hữu vật phẩm phù hợp. Hãy đến Cửa hàng để mua.",
+	"CHANGE PILOT NAME": "ĐỔI TÊN PHI CÔNG",
+	"your name is saved for future sessions": "Tên sẽ được lưu cho những lần chơi sau",
+	"SAVE NAME": "LƯU TÊN",
+	"OPEN PILOT PROFILE": "MỞ HỒ SƠ PHI CÔNG",
+	"PILOT COMBAT PROFILE": "HỒ SƠ CHIẾN ĐẤU",
+	"PILOT LEVEL": "CẤP PHI CÔNG",
+	"BEST-RUN KILLS": "QUÁI HẠ GỤC (LƯỢT TỐT NHẤT)",
+	"BOSSES DEFEATED": "BOSS ĐÃ HẠ",
+	"DAMAGE DEALT": "SÁT THƯƠNG GÂY RA",
+	"LATEST RUN": "LƯỢT GẦN NHẤT",
+	"SHIP & ENGINE COLORS": "MÀU TÀU & ĐỘNG CƠ",
+	"SHIP COLOR  /  ONE PLAYER PER COLOR": "MÀU TÀU  /  MỖI NGƯỜI MỘT MÀU",
+	"ENGINE FLAME  /  SHARED COLORS ALLOWED": "LỬA ĐỘNG CƠ  /  ĐƯỢC DÙNG CHUNG MÀU",
+	"UNEQUIP SLOT": "THÁO TRANG BỊ",
+	"CATEGORIES": "DANH MỤC",
+	"ALL ITEMS": "TẤT CẢ VẬT PHẨM",
+	"ARMOR": "GIÁP",
+	"ATTACK DRONES": "DRONE TẤN CÔNG",
+	"REPAIR": "HỒI PHỤC",
+	"DEFENSE": "PHÒNG THỦ",
+	"SUPPORT": "HỖ TRỢ",
+	"SEARCH EQUIPMENT": "TÌM TRANG BỊ",
+	"BUY EQUIPMENT WITH CREDITS / Owned items can be equipped from Equipment.": "MUA TRANG BỊ BẰNG TIỀN / Vật phẩm đã mua có thể lắp từ Kho trang bị.",
+	"NO MATCHING EQUIPMENT": "KHÔNG CÓ TRANG BỊ PHÙ HỢP",
+	"REPLACE EQUIPMENT": "THAY TRANG BỊ",
+	"BUY": "MUA",
+	"EQUIP": "TRANG BỊ",
+	"UNEQUIP": "THÁO",
+	"REINFORCED ARMOR": "GIÁP GIA CỐ",
+	"STRIKE DRONE": "DRONE TẤN CÔNG",
+	"REPAIR DRONE": "DRONE SỬA CHỮA",
+	"HEX GUARD DRONE": "DRONE KHIÊN LỤC GIÁC",
+	"REACTOR TUNER": "BỘ ĐIỀU CHỈNH LÒ PHẢN ỨNG",
+	"TARGETING SERVO": "BỘ NGẮM MỤC TIÊU",
+	"+3 maximum hull points while equipped.": "Tăng 3 máu tối đa khi trang bị.",
+	"Autonomously fires at nearby enemies.": "Tự động bắn kẻ địch ở gần.",
+	"Repairs one hull point during combat.": "Sửa một điểm máu trong khi chiến đấu.",
+	"Generates a segmented hex shield around the ship.": "Tạo khiên lục giác nhiều mảnh quanh phi thuyền.",
+	"Optimizes the ship's firing cycle.": "Tối ưu chu kỳ khai hỏa của phi thuyền.",
+	"Improves weapon targeting efficiency.": "Tăng hiệu quả ngắm bắn.",
+	"Adds 3 maximum HP.": "Tăng 3 máu tối đa.",
+	"Fires a support shot about every 1.4 seconds.": "Bắn hỗ trợ khoảng mỗi 1,4 giây.",
+	"Restores 1 HP every 6 seconds.": "Hồi 1 HP mỗi 6 giây.",
+	"Blocks 3 hits; one charge returns every 8 seconds.": "Chặn 3 đòn; hồi một mảnh khiên mỗi 8 giây.",
+	"+8% firing rate while equipped.": "Tăng 8% tốc độ bắn khi trang bị.",
+	"+10% weapon damage while equipped.": "Tăng 10% sát thương vũ khí khi trang bị.",
+	"SEARCH FIGHTERS": "TÌM PHI THUYỀN",
+	"FIGHTER DETAILS": "CHI TIẾT PHI THUYỀN",
+	"ENGINE": "ĐỘNG CƠ",
+	"WEAPON": "VŨ KHÍ",
+	"VECTOR DRIVE": "ĐỘNG CƠ VECTOR",
+	"NEEDLE CANNON": "PHÁO KIM",
+	"OVERCLOCK": "TĂNG XUNG",
+	"ACE OPTICS": "ỐNG NGẮM ACE",
+	"VECTOR THRUSTERS": "ĐỘNG CƠ VECTOR",
+	"PULSE FOCUS": "TẬP TRUNG XUNG",
+	"CAPACITOR": "TỤ ĐIỆN",
+	"PHASE PIERCING": "ĐẠN XUYÊN PHA",
+	"AFTERBURNER": "ĐỘNG CƠ ĐỐT SAU",
+	"PLASMA CORE": "LÕI PLASMA",
+	"IGNITION ARRAY": "MẢNG ĐÁNH LỬA",
+	"EMBER MATRIX": "MA TRẬN THAN HỒNG",
+	"HEAVY THRUSTERS": "ĐỘNG CƠ HẠNG NẶNG",
+	"SIEGE CANNON": "PHÁO CÔNG PHÁ",
+	"POWER CELL": "PIN NĂNG LƯỢNG",
+	"BULWARK PLATING": "GIÁP PHÁO ĐÀI",
+	"INTERCEPTOR DRIVE": "ĐỘNG CƠ ĐÁNH CHẶN",
+	"TARGETING ARRAY": "MẢNG NGẮM",
+	"REACTOR LOOP": "VÒNG LÒ PHẢN ỨNG",
+	"HYPERCOIL": "CUỘN SIÊU TỐC",
+	"+3.5% critical chance per level": "Tăng 3,5% tỉ lệ chí mạng mỗi cấp",
+	"+1 projectile pierce per level": "Tăng 1 lần xuyên đạn mỗi cấp",
+	"+1 burn stack per level": "Tăng 1 cộng dồn thiêu đốt mỗi cấp",
+	"+6% projectile speed per level": "Tăng 6% tốc độ đạn mỗi cấp",
+	"FIRE RATE": "TỐC ĐỘ BẮN",
+	"RATE": "TỐC ĐỘ BẮN",
+	"HULL": "THÂN TÀU",
+	"SPEED": "TỐC ĐỘ",
+	"DMG": "SÁT THƯƠNG",
+	"CRIT": "CHÍ MẠNG",
+	"PIERCE": "XUYÊN GIÁP",
+	"BURN": "THIÊU ĐỐT",
+	"BULLET SPEED": "TỐC ĐỘ ĐẠN",
+	"UPGRADE": "NÂNG CẤP",
+	"MAX": "TỐI ĐA",
+	"CURRENT": "HIỆN TẠI",
+	"NEXT": "TIẾP THEO",
+	"LEVEL": "CẤP",
+	"NOT ENOUGH GEMS": "KHÔNG ĐỦ NGỌC",
+	"ACTIVE SHIP": "TÀU ĐANG DÙNG",
+	"UNLOCK BY REACHING WAVE": "MỞ KHÓA KHI ĐẠT ĐỢT",
+	"OR PURCHASE FOR": "HOẶC MUA VỚI",
+	"PERMANENT SHIP SYSTEMS / Upgrade levels apply to the pilot's ship in future runs.": "HỆ THỐNG TÀU VĨNH VIỄN / Cấp nâng cấp được áp dụng cho tàu trong các lượt chơi tiếp theo.",
+	"ACTIVE FIGHTER / Changes here persist and apply to your next run.": "PHI THUYỀN HIỆN TẠI / Thay đổi được lưu và áp dụng cho lượt chơi tiếp theo.",
+	"SHIP UNLOCKS / Unlock fighters with gems or earn them by reaching their best-wave requirement.": "MỞ KHÓA TÀU / Dùng ngọc mở khóa hoặc đạt mốc wave yêu cầu.",
+	"DAILY MISSIONS / Progress and rewards are saved with your pilot profile.": "NHIỆM VỤ HẰNG NGÀY / Tiến trình và phần thưởng được lưu trong hồ sơ phi công.",
+	"+5% ship movement speed per level": "Tăng 5% tốc độ di chuyển mỗi cấp",
+	"+8% weapon damage per level": "Tăng 8% sát thương vũ khí mỗi cấp",
+	"+6% firing rate per level": "Tăng 6% tốc độ bắn mỗi cấp",
+	"+1 maximum hull point per level": "Tăng 1 máu tối đa mỗi cấp",
+	"Finish one normal run to earn pilot gems.": "Hoàn thành một lượt chơi thường để nhận ngọc.",
+	"Survive until wave five in a normal run.": "Sống sót đến wave 5 trong một lượt chơi thường.",
+	"Defeat a boss during a normal run.": "Đánh bại boss trong một lượt chơi thường.",
 	"PLAY": "CHƠI",
 	"SETTINGS": "CÀI ĐẶT",
 	"the other players will see this under your ship": "Tên này sẽ hiện bên dưới tàu của bạn",
@@ -99,13 +225,12 @@ const EN_TO_VI := {
 	"TOKENS": "ĐỒNG",
 	"SET": "CÀI ĐẶT",
 	"MENU": "MENU",
-	"HOME": "TRANG CHÍNH",
-	"SHIPS": "PHI THUYỀN",
+	"HOME": "TRANG CHỦ",
+	"SHIPS": "PHI ĐỘI",
 	"UPGRADES": "NÂNG CẤP",
-	"EQUIPMENT": "TRANG BỊ",
+	"EQUIPMENT": "KHO TRANG BỊ",
 	"MISSIONS": "NHIỆM VỤ",
 	"ACHIEVEMENTS": "THÀNH TÍCH",
-	"STORE": "CỬA HÀNG",
 	"EVENTS": "SỰ KIỆN",
 	"ACTIVE STARFIGHTER": "PHI THUYỀN ĐANG DÙNG",
 	"HANGAR / ACTIVE FIGHTER": "HANGAR / PHI THUYỀN ĐANG DÙNG",
@@ -311,7 +436,8 @@ const EN_TO_VI := {
 	"Không thể khởi chạy trình cập nhật. Bạn có thể tải bản Windows trực tiếp từ trang web.": "Could not start the updater. You can download the Windows version directly from the website.",
 	"Đã tải và xác minh APK. Android sẽ yêu cầu bạn xác nhận cài đặt.": "The APK was downloaded and verified. Android will ask you to confirm installation.",
 	"Không thể mở trình cài đặt Android. Hãy tải bản cập nhật từ trang web.": "Could not open the Android installer. Download the update from the website.",
-	"Android yêu cầu cho phép MT Space cài ứng dụng. Bật quyền này trong Cài đặt, quay lại game rồi bấm cập nhật lần nữa.": "Android requires permission for MT Space to install apps. Enable it in Settings, return to the game, then tap Update again.",
+	"CẦN CẤP QUYỀN": "PERMISSION REQUIRED",
+	"Android yêu cầu cho phép MT Space cài ứng dụng trước khi tải bản cập nhật. Bật quyền này trong Cài đặt, quay lại game rồi bấm cập nhật lần nữa.": "Android requires permission for MT Space to install apps before downloading the update. Enable it in Settings, return to the game, then tap Update again.",
 	"KHÔNG THỂ TẢI BẢN CẬP NHẬT": "UPDATE DOWNLOAD FAILED",
 	"HỦY TẢI": "CANCEL DOWNLOAD",
 	"ĐÓNG": "CLOSE",
@@ -370,6 +496,30 @@ func translate_text(value: String) -> String:
 		return value
 	if locale == "en":
 		return _to_english(value)
+	var item_count_separator := " ITEMS  /  "
+	var item_count_position := value.find(item_count_separator)
+	if item_count_position >= 0 and value.ends_with(" OWNED"):
+		var item_count := value.substr(0, item_count_position)
+		var owned_count := value.substr(
+			item_count_position + item_count_separator.length()
+		).trim_suffix(" OWNED")
+		if item_count.is_valid_int() and owned_count.is_valid_int():
+			return "%s VẬT PHẨM  /  %s ĐÃ SỞ HỮU" % [
+				item_count, owned_count,
+			]
+	var slot_hint_prefix := "SELECT AN ITEM TO EQUIP IN THE "
+	if value.begins_with(slot_hint_prefix) and value.ends_with(" SLOT"):
+		var slot_name := value.trim_prefix(slot_hint_prefix).trim_suffix(" SLOT")
+		var translated_slot: String = {
+			"ARMOR": "GIÁP",
+			"DRONE": "DRONE",
+			"SUPPORT": "HỖ TRỢ",
+		}.get(slot_name, slot_name)
+		return "Chọn vật phẩm để lắp vào ô %s" % translated_slot
+	if value.begins_with("BUY  ") and value.ends_with(" CREDITS"):
+		var amount := value.trim_prefix("BUY  ").trim_suffix(" CREDITS")
+		if amount.is_valid_int():
+			return "MUA  %s $" % amount
 	if value.begins_with("UPGRADE STACKS: "):
 		return "SỐ LẦN NÂNG CẤP: " + value.trim_prefix("UPGRADE STACKS: ")
 	if value.ends_with(" XP") and value.contains(" / "):
@@ -404,6 +554,10 @@ func _to_english(value: String) -> String:
 	for english in EN_TO_VI:
 		if EN_TO_VI[english] == value:
 			return str(english)
+	if value.begins_with("MUA  ") and value.ends_with(" $"):
+		var amount := value.trim_prefix("MUA  ").trim_suffix(" $")
+		if amount.is_valid_int():
+			return "BUY  %s CREDITS" % amount
 	if value.begins_with("Không thể mở cổng "):
 		return "could not open port " + value.trim_prefix("Không thể mở cổng ")
 	if value.begins_with("Không thể kết nối tới "):
@@ -460,6 +614,7 @@ func _translate_node(node: Node) -> void:
 	if not is_instance_valid(node):
 		return
 	if node is OptionButton:
+		DropdownStyle.apply(node)
 		var source_items: Array = node.get_meta("locale_source_items", [])
 		if source_items.size() != node.item_count:
 			source_items.clear()

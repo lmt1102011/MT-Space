@@ -77,6 +77,20 @@ func show_download_error(message: String) -> void:
 		buttons.visible = true
 
 
+func show_permission_required(message: String) -> void:
+	visible = true
+	_set_localized(title, "CẦN CẤP QUYỀN")
+	_set_localized(status, message)
+	progress.visible = false
+	if launch_btn:
+		launch_btn.visible = false
+	if later_btn:
+		_set_localized(later_btn, "ĐÓNG")
+		later_btn.visible = true
+	if buttons:
+		buttons.visible = true
+
+
 func _show_buttons() -> void:
 	if buttons:
 		buttons.visible = true

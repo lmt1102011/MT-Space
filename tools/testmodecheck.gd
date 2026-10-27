@@ -11,7 +11,6 @@ func _run() -> void:
 	var net := root.get_node("Net")
 	var pool := root.get_node("PoolRoot")
 	var game_singleton := root.get_node("Game")
-	var selected_ship_before_tests := str(game_singleton.get("selected_ship_id"))
 	net.set("player_name", "")
 	var menu_scene := load("res://scenes/menu.tscn") as PackedScene
 	var menu := menu_scene.instantiate()
@@ -110,132 +109,61 @@ func _run() -> void:
 			stat + "Segments", true, false) as HBoxContainer
 		_check(stat_segments != null and stat_segments.get_child_count() == 5,
 			"%s is presented as five stat segments" % stat)
-	var previous_ship_index := int(lobby.get("_preview_ship_index"))
-	lobby.call("_finish_ship_gesture", -80.0)
-	_check(int(lobby.get("_preview_ship_index")) != previous_ship_index,
-		"swiping across the ship display advances to another paint preview")
-	var ship_preview_x := ship_preview.position.x
-	var ship_preview_base_x := float(lobby.get("_ship_preview_base_position").x)
-	var transition_ghost := stage.get_node_or_null("ShipTransitionGhost")
-	_check(transition_ghost is TextureRect
-		and ship_preview_x > ship_preview_base_x
-		and is_equal_approx(ship_preview.scale.x, 0.9)
-		and stage.get_node_or_null("ShipTransitionSweep") is ColorRect,
-		"ship changes use a staged slide with scale and light-sweep accents")
-	await create_timer(0.65).timeout
-	_check(stage.get_node_or_null("ShipTransitionGhost") == null
-		and is_equal_approx(ship_preview.position.x, ship_preview_base_x)
-		and is_equal_approx(ship_preview.scale.x, 1.0)
-		and is_zero_approx(ship_preview.rotation),
-		"ship transition finishes cleanly at the centered preview position")
-	lobby.call("_cycle_ship", -1)
-	_check(ship_preview.position.x < ship_preview_base_x,
-		"the previous ship enters from the left while the current ship slides right")
-	await create_timer(0.65).timeout
 	var ship_game := root.get_node("Game")
 	var previous_best_ship_run: Dictionary = ship_game.get("best_run").duplicate(true)
-	var previous_unlocked_ships: Array = ship_game.get("unlocked_ship_ids").duplicate()
-	var test_all_unlocked_ships: Array[String] = [
-		"aquila", "viper", "raven", "phoenix", "draco", "orion",
-	]
-	var ship_paint_ids: Array[String] = test_all_unlocked_ships.duplicate()
+	var previous_ship_index := int(lobby.get("_preview_ship_index"))
 	ship_game.set("best_run", {"wave": 0})
-	ship_game.set("unlocked_ship_ids", test_all_unlocked_ships)
-	var return_ship_id := str(ship_game.get("selected_ship_id"))
-	var original_ship_index := int(lobby.call("_paint_index", return_ship_id))
-	lobby.set("_preview_ship_index", original_ship_index)
-	lobby.call("_update_ship_preview", false)
-	lobby.call("_cycle_ship", 1)
-	var ship_transition_direction := float(lobby.get("_ship_preview_base_position").x)
-	lobby.call("_apply_ship_transition", 0.35, 1.0)
-	lobby.call("_layout_ship_stage")
-	var ship_transition_travel := stage.size.x + ship_preview.size.x
-	_check(int(lobby.get("_preview_ship_index")) == posmod(
-			original_ship_index + 1, ship_paint_ids.size())
-		and stage.get_node_or_null("ShipTransitionGhost") is TextureRect
-		and is_equal_approx(float(lobby.get("_ship_transition_progress")), 0.35)
-		and is_equal_approx(
-			ship_preview.position.x,
-			ship_transition_direction + ship_transition_travel * 0.65),
-		"unlocked ships slide into view and preserve transition progress when the stage relayouts")
-	await create_timer(0.65).timeout
+	ship_game.set("unlocked_ship_ids", ["phoenix"])
+	ship_game.set("selected_ship_id", "phoenix")
+	var previous_button := lobby_dashboard.find_child(
+		"PreviousShipButton", true, false
+	) as Button
+	var next_button := lobby_dashboard.find_child(
+		"NextShipButton", true, false
+	) as Button
+	_check(str(ship_game.get("selected_ship_id")) == "phoenix"
+		and ship_game.get("unlocked_ship_ids") == ["phoenix"]
+		and ship_game.call("is_ship_unlocked", "phoenix")
+		and not ship_game.call("is_ship_unlocked", "aquila")
+		and int(lobby.call("_paint_index", "phoenix")) == 0
+		and int(lobby.call("_paint_index", "aquila")) == -1
+		and previous_button != null and previous_button.disabled
+		and next_button != null and next_button.disabled,
+		"Phoenix is the only selectable, unlocked ship")
+	lobby.call("_finish_ship_gesture", -80.0)
 	lobby.call("_cycle_ship", -1)
-	_check(int(lobby.get("_preview_ship_index")) == original_ship_index
-		and stage.get_node_or_null("ShipTransitionGhost") is TextureRect
-		and ship_preview.position.x < ship_transition_direction,
-		"switching between unlocked ships in reverse slides the new ship in from the left")
-	await create_timer(0.65).timeout
-	var test_unlocked_ships: Array[String] = ["aquila"]
-	ship_game.set("unlocked_ship_ids", test_unlocked_ships)
-	ship_game.set("selected_ship_id", "aquila")
-	lobby.set("_last_selected_ship_id", "aquila")
-	lobby.set("_preview_ship_index", 0)
-	lobby.call("_update_ship_preview", false)
-	var locked_ship_index := -1
-	for paint_index in ship_paint_ids.size():
-		var paint_id := str(ship_paint_ids[paint_index])
-		if not bool(ship_game.call("is_ship_unlocked", paint_id)):
-			locked_ship_index = paint_index
-			break
-	if locked_ship_index >= 0:
-		var locked_previous_index := posmod(
-			locked_ship_index - 1, ship_paint_ids.size())
-		lobby.set("_preview_ship_index", locked_previous_index)
-		lobby.call("_update_ship_preview", false)
-		lobby.call("_cycle_ship", 1)
-		var locked_overlay := stage.get_node("LockedOverlay") as ColorRect
-		var lock_center := locked_overlay.get_node("LockCenter") as CenterContainer
-		_check(int(lobby.get("_preview_ship_index")) == locked_ship_index
-			and locked_overlay.visible
-			and locked_overlay.get_parent() == stage
-			and locked_overlay.size.is_equal_approx(stage.size)
-			and locked_overlay.color.a < 0.64
-			and lock_center.get_global_rect().has_point(
-				stage.get_global_rect().get_center())
-			and stage.get_node_or_null("ShipTransitionGhost") is TextureRect
-			and ship_preview.position.x > ship_preview_base_x,
-			"locked ships slide normally beneath a full-stage dark overlay and centered lock")
-		ship_game.emit_signal("lobby_profile_changed")
-		_check(int(lobby.get("_preview_ship_index")) == locked_ship_index
-			and locked_overlay.visible
-			and stage.get_node_or_null("ShipTransitionGhost") is TextureRect,
-			"unrelated profile refreshes do not interrupt a locked-ship transition")
-		await create_timer(0.65).timeout
-		var previous_ship_button := lobby_dashboard.find_child(
-			"PreviousShipButton", true, false) as Button
-		previous_ship_button.pressed.emit()
-		_check(int(lobby.get("_preview_ship_index")) == 0
-			and stage.get_node_or_null("ShipTransitionGhost") is TextureRect
-			and ship_preview.position.x < ship_preview_base_x,
-			"the left-arrow button returns from a locked fighter to the equipped ship with an animation")
-		await create_timer(0.65).timeout
-	else:
-		_check(true, "all available ship paints are unlocked in the current profile")
-	var ship_stat_signatures: Dictionary = {}
-	for ship_id: String in ship_paint_ids:
-		var combat_stats: Dictionary = ship_game.call("get_ship_combat_stats", ship_id)
-		var signature := "%s/%s/%s/%s" % [
-			combat_stats["max_speed"], combat_stats["max_hp"],
-			combat_stats["bullet_speed"], combat_stats["damage_multiplier"],
-		]
-		ship_stat_signatures[signature] = true
-	_check(ship_stat_signatures.size() == 6,
-		"each fighter has a distinct combat-stat profile")
+	_check(int(lobby.get("_preview_ship_index")) == previous_ship_index,
+		"ship navigation does not cycle when Phoenix is the only ship")
+	var phoenix_stats: Dictionary = ship_game.call(
+		"get_ship_combat_stats", "phoenix"
+	)
+	var effective_phoenix_stats: Dictionary = ship_game.call(
+		"get_effective_ship_combat_stats", "phoenix"
+	)
+	_check(is_equal_approx(float(phoenix_stats["damage_multiplier"]), 1.0)
+		and int(phoenix_stats["max_hp"]) == 6
+		and is_equal_approx(float(phoenix_stats["max_speed"]), 380.0),
+		"Phoenix uses standard damage, a weak hull, and a high movement speed")
 	var player_scene_for_stats := load("res://scenes/player.tscn") as PackedScene
-	ship_game.set("selected_ship_id", "viper")
 	var stat_player := player_scene_for_stats.instantiate() as CharacterBody2D
 	lobby.add_child(stat_player)
 	await process_frame
-	_check(is_equal_approx(float(stat_player.get("max_speed")), 390.0)
-		and int(stat_player.get("max_hp")) == 8
-		and is_equal_approx(float(stat_player.get("bullet_speed")), 680.0)
-		and is_equal_approx(float(stat_player.get("_ship_damage_multiplier")), 0.9),
-		"the selected fighter's speed, hull, projectile speed and damage affect the real player")
+	_check(is_equal_approx(float(stat_player.get("max_speed")),
+			float(effective_phoenix_stats["max_speed"]))
+		and int(stat_player.get("max_hp")) == int(effective_phoenix_stats["max_hp"])
+		and is_equal_approx(float(stat_player.get("bullet_speed")),
+			float(effective_phoenix_stats["bullet_speed"]))
+		and is_equal_approx(float(stat_player.get("_ship_damage_multiplier")),
+			float(effective_phoenix_stats["damage_multiplier"]))
+		and (stat_player.get_node("Sprite2D") as Sprite2D).texture.resource_path
+			== "res://assets/ships/phoenix.svg"
+		and (stat_player.get_node("Sprite2D") as Sprite2D).scale
+			.is_equal_approx(Vector2(0.6, 0.6)),
+		"the larger Phoenix art and ship stats are applied in combat")
 	stat_player.queue_free()
-	ship_game.set("selected_ship_id", selected_ship_before_tests)
 	ship_game.set("best_run", previous_best_ship_run)
-	ship_game.set("unlocked_ship_ids", previous_unlocked_ships)
-	ship_game.call("set_selected_ship", selected_ship_before_tests)
+	ship_game.set("unlocked_ship_ids", ["phoenix"])
+	ship_game.call("set_selected_ship", "phoenix")
 	await process_frame
 	var pilot_card := lobby_dashboard.find_child(
 		"PilotProfileCard", true, false) as PanelContainer
@@ -273,6 +201,9 @@ func _run() -> void:
 	await process_frame
 	var lobby_language_option := lobby_dashboard.find_child(
 		"LobbyLanguageOption", true, false) as OptionButton
+	if lobby_language_option == null:
+		lobby_language_option = lobby.find_child(
+			"LobbyLanguageOption", true, false) as OptionButton
 	_check(lobby_language_option != null
 		and lobby_language_option.item_count == 2
 		and lobby_language_option.selected
@@ -284,13 +215,13 @@ func _run() -> void:
 		await process_frame
 		_check(str(locale_singleton.call("get_locale"))
 			== ("vi" if lobby_locale_before_settings == "en" else "en")
-			and lobby_dashboard.find_child("LobbyLanguageOption", true, false)
+			and lobby.find_child("LobbyLanguageOption", true, false)
 				is OptionButton
-			and (lobby_dashboard.find_child(
+			and (lobby.find_child(
 				"LobbyLanguageLabel", true, false) as Label).text
 				== str(locale_singleton.call("translate_text", "LANGUAGE")),
 			"changing language in lobby settings applies, translates, and retains the chosen locale")
-		lobby_language_option = lobby_dashboard.find_child(
+		lobby_language_option = lobby.find_child(
 			"LobbyLanguageOption", true, false) as OptionButton
 		if lobby_language_option != null:
 			lobby_language_option.select(
@@ -300,11 +231,11 @@ func _run() -> void:
 	lobby.call("_close_page_popup")
 	lobby.call("_open_mode_selector")
 	await process_frame
-	var page_popup := lobby_dashboard.find_child("PagePopup", true, false) as PanelContainer
-	var select_coop := lobby_dashboard.find_child("SelectMode_coop", true, false) as Button
+	var page_popup := lobby.find_child("LobbyPage", true, false) as PanelContainer
+	var select_coop := lobby.find_child("SelectMode_coop", true, false) as Button
 	_check(page_popup != null and page_popup.visible and select_coop != null
-		and lobby_dashboard.find_child("SelectMode_solo", true, false) is Button
-		and lobby_dashboard.find_child("SelectMode_test", true, false) is Button,
+		and lobby.find_child("SelectMode_solo", true, false) is Button
+		and lobby.find_child("SelectMode_test", true, false) is Button,
 		"Choose Mode opens real solo, online co-op, and test choices")
 	var popup_style := page_popup.get_theme_stylebox("panel") as StyleBoxFlat
 	_check(popup_style != null and popup_style.bg_color.b > popup_style.bg_color.r,
@@ -349,41 +280,51 @@ func _run() -> void:
 		lobby.call("_refresh_run_record")
 		var record_label := record_panel.get_node(
 			"RunRecordScroll/RunRecordLabel") as Label
-		_check(not record_panel.visible and record_label.text.contains(
-				str(game_singleton.call("build_item_label", "Card 23 x1")))
-			and record_label.text.contains("00:24"),
-			"the records popup content includes the complete build and boss time")
 		lobby.call("_open_page", "achievements")
 		await process_frame
-		var record_scroll := record_panel.get_node("RunRecordScroll") as ScrollContainer
-		_check(record_panel.visible and record_scroll.get_v_scroll_bar().max_value > 0.0,
-			"the achievements navigation opens the records popup and long records can scroll vertically")
+		var achievement_content := lobby.find_child(
+			"PagePopupContent", true, false) as VBoxContainer
+		var achievement_record := achievement_content.get_child(1) as Label \
+			if achievement_content != null and achievement_content.get_child_count() > 1 \
+			else null
+		_check(not record_panel.visible and record_label.text.contains(
+				str(game_singleton.call("build_item_label", "Card 23 x1")))
+			and record_label.text.contains("00:24")
+			and achievement_record != null
+			and achievement_record.text.contains("Card 23 x1")
+			and achievement_record.text.contains("00:24"),
+			"the career page includes the full latest-run build and boss time")
 		lobby.call("_open_page", "store")
 		await process_frame
-		var popup_backdrop := lobby.get_node("UI/Dashboard/PageBackdrop") as ColorRect
-		page_popup = lobby.get_node("UI/Dashboard/PagePopup") as PanelContainer
-		_check(page_popup.visible and popup_backdrop.visible,
-			"opening a lobby page presents its modal backdrop")
+		page_popup = lobby.get_node("UI/LobbyPage") as PanelContainer
+		_check(page_popup.visible
+			and not bool(lobby.get_node("UI/Dashboard").visible),
+			"opening a lobby page presents a dedicated screen")
 		lobby.call("_open_page", "achievements")
 		await process_frame
 		var close_record_button := record_panel.get_node(
 			"CloseRunRecordButton") as Button
-		_check(not popup_backdrop.visible and not page_popup.visible
-			and close_record_button.mouse_filter == Control.MOUSE_FILTER_STOP
-			and close_record_button.z_index > 0,
-			"the achievements popup clears overlapping layers and keeps its close button above the header")
+		lobby.call("_toggle_run_record_popup")
+		_check(record_panel.visible
+			and close_record_button.mouse_filter == Control.MOUSE_FILTER_STOP,
+			"the independent profile close button remains interactive")
 		close_record_button.pressed.emit()
 		_check(not record_panel.visible,
-			"the achievements popup close button dismisses the records panel")
+			"the profile close button dismisses the records panel")
 		lobby.call("_open_page", "achievements")
 		await process_frame
+		lobby.call("_close_page_popup")
 		var viewport := lobby.get_viewport()
 		var original_size: Vector2i = viewport.size
 		viewport.size = Vector2i(320, 568)
 		await process_frame
 		var mobile_rect := Rect2(Vector2.ZERO, viewport.get_visible_rect().size)
-		_check(record_button == null and mobile_rect.encloses(record_panel.get_global_rect()),
+		lobby.call("_toggle_run_record_popup")
+		await process_frame
+		_check(record_button == null and record_panel.visible
+			and mobile_rect.encloses(record_panel.get_global_rect()),
 			"the corner trophy is absent and the records popup stays on-screen on mobile")
+		lobby.call("_toggle_run_record_popup")
 		lobby.call("_layout_dashboard")
 		await process_frame
 		var dashboard := lobby.get_node("UI/Dashboard")
@@ -409,12 +350,15 @@ func _run() -> void:
 			"the lobby displays three persistent daily objectives")
 		lobby.call("_open_page", "store")
 		await process_frame
-		var store_popup := dashboard.find_child("PagePopup", true, false) as PanelContainer
-		var store_content := dashboard.find_child(
+		var store_popup := lobby.find_child("LobbyPage", true, false) as PanelContainer
+		var store_content := lobby.find_child(
 			"PagePopupContent", true, false) as VBoxContainer
+		var store_grid := lobby.find_child("StoreItemsGrid", true, false) as GridContainer
 		_check(store_popup != null and store_popup.visible
-			and store_content != null and store_content.get_child_count() == 7,
-			"the store popup lists all five purchasable paint schemes")
+			and store_content != null and store_grid != null
+			and store_grid.get_child_count()
+				== (game_singleton.call("get_store_items") as Array).size(),
+			"the store page lists every real store offer")
 		lobby.call("_close_page_popup")
 		viewport.size = original_size
 		await process_frame
@@ -433,6 +377,9 @@ func _run() -> void:
 	lobby.call("_on_test_pressed")
 	_check(not bool(lobby.get_node("UI/TestPanel").visible),
 		"the removed lobby test-settings panel cannot be opened")
+	var saved_store_loadouts: Dictionary = game_singleton.get(
+		"ship_store_loadouts").duplicate(true)
+	game_singleton.set("ship_store_loadouts", {})
 	lobby.call("_on_play_pressed")
 	await create_timer(2.5).timeout
 
@@ -882,6 +829,9 @@ func _run() -> void:
 		drone.queue_free()
 		var drone_target := main.get_node("Player")
 		var hp_before_drone := int(drone_target.get("hp"))
+		drone_target.set("_dead", false)
+		drone_target.set("hp", int(drone_target.call("max_hp_total")))
+		hp_before_drone = int(drone_target.get("hp"))
 		drone_target.set("invuln", 0.5)
 		var damage_drone := drone_scene.instantiate()
 		main.add_child(damage_drone)
@@ -1026,6 +976,8 @@ func _run() -> void:
 			and not bool(root.get_node("Game").get("test_mode")),
 			"Play Now launches a normal solo run directly")
 
+	game_singleton.set("ship_store_loadouts", saved_store_loadouts)
+	game_singleton.call("_save_pilot_profile")
 	print("=== test-mode check: %d failure(s) ===" % _failures)
 	quit(1 if _failures > 0 else 0)
 

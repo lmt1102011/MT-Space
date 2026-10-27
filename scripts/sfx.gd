@@ -62,6 +62,17 @@ static func setup(players: Array) -> void:
 		_load_bank()
 
 
+static func shutdown() -> void:
+	for player: AudioStreamPlayer in _players:
+		if is_instance_valid(player):
+			player.stop()
+			player.stream = null
+	_players.clear()
+	_bank.clear()
+	_last.clear()
+	_idx = 0
+
+
 static func _load_bank() -> void:
 	for key in BANK_PATHS.keys():
 		var arr: Array = []
