@@ -18,6 +18,7 @@ const EN_TO_VI := {
 	"NEW VERSION - UPDATE": "CÓ PHIÊN BẢN MỚI - CẬP NHẬT",
 	"VOLUME": "ÂM LƯỢNG",
 	"LANGUAGE": "NGÔN NGỮ",
+	"MASTER VOLUME": "ÂM LƯỢNG CHÍNH",
 	"CLOSE": "ĐÓNG",
 	"LOBBY": "SẢNH CHỜ",
 	"select a room, or start your own": "chọn phòng hoặc tự tạo phòng",
@@ -67,8 +68,120 @@ const EN_TO_VI := {
 	"REFRESH ROOMS": "LÀM MỚI DANH SÁCH PHÒNG",
 	"WAVE CLEAR": "ĐÃ DỌN SẠCH ĐỢT",
 	"GAME OVER": "TRÒ CHƠI KẾT THÚC",
+	"TOTAL EARNED": "TỔNG NHẬN ĐƯỢC",
+	"TOTAL EXPERIENCE": "TỔNG KINH NGHIỆM",
+	"CASH SAVE FAILED": "Không lưu được tiền thưởng vào hồ sơ",
+	"REWARD SAVE FAILED": "Không lưu được phần thưởng vào hồ sơ",
+	"WAVE REACHED": "MÀN ĐẠT ĐƯỢC",
+	"ENEMIES DEFEATED": "QUÁI ĐÃ TIÊU DIỆT",
+	"NO REWARDS EARNED": "CHƯA NHẬN ĐƯỢC THƯỞNG",
+	"CASH EACH": "TIỀN MỖI CON",
+	"SHAPE 3": "QUÁI HÌNH 3 CẠNH",
+	"SHAPE 4": "QUÁI HÌNH 4 CẠNH",
+	"SHAPE 5": "QUÁI HÌNH 5 CẠNH",
+	"SHAPE 6": "QUÁI HÌNH 6 CẠNH",
+	"SHOOTER": "QUÁI BẮN ĐẠN",
+	"DOUBLE": "QUÁI ĐÔI",
+	"RAILGUN": "QUÁI RAILGUN",
+	"CHARGER": "QUÁI LAO TỚI",
+	"ORB": "QUÁI ORB",
+	"BEAM": "QUÁI TIA BEAM",
+	"BOSS DRONE": "DRONE BOSS",
+	"BOSS": "BOSS",
+	"BOSS 2": "BOSS 2",
+	"WAVES": "SỐ MÀN",
 	"RUN RECORD": "THÀNH TÍCH",
 	"NO RUNS RECORDED": "CHƯA CÓ THÀNH TÍCH",
+	"MT SPACE": "MT SPACE",
+	"PILOT": "PHI CÔNG",
+	"STARFIGHTER COMMAND": "BỘ CHỈ HUY PHI CƠ",
+	"BEST WAVE": "ĐỢT CAO NHẤT",
+	"TOKENS": "ĐỒNG",
+	"SET": "CÀI ĐẶT",
+	"MENU": "MENU",
+	"HOME": "TRANG CHÍNH",
+	"SHIPS": "PHI THUYỀN",
+	"UPGRADES": "NÂNG CẤP",
+	"EQUIPMENT": "TRANG BỊ",
+	"MISSIONS": "NHIỆM VỤ",
+	"ACHIEVEMENTS": "THÀNH TÍCH",
+	"STORE": "CỬA HÀNG",
+	"EVENTS": "SỰ KIỆN",
+	"ACTIVE STARFIGHTER": "PHI THUYỀN ĐANG DÙNG",
+	"HANGAR / ACTIVE FIGHTER": "HANGAR / PHI THUYỀN ĐANG DÙNG",
+	"PILOT PROFILE": "HỒ SƠ PHI CÔNG",
+	"FRAME SYSTEMS": "THÔNG SỐ KHUNG TÀU",
+	"HP": "HP",
+	"CASH": "TIỀN MẶT",
+	"GEM": "NGỌC",
+	"GEMS": "NGỌC",
+	"STOCK": "MẶC ĐỊNH",
+	"ION": "ION",
+	"NEBULA": "TINH VÂN",
+	"SOLAR": "MẶT TRỜI",
+	"JADE": "NGỌC BÍCH",
+	"CORAL": "SAN HÔ",
+	"EQUIPPED": "ĐANG DÙNG",
+	"OWNED": "ĐÃ SỞ HỮU",
+	"CURRENTLY EQUIPPED": "ĐANG TRANG BỊ",
+	"BEST WAVE %d OR %d GEMS": "ĐẠT ĐỢT %d HOẶC DÙNG %d NGỌC",
+	"CHOOSE MODE": "CHỌN CHẾ ĐỘ",
+	"SELECT A FLIGHT MODE": "CHỌN CHẾ ĐỘ BAY",
+	"Choose what Play Now will launch.": "Chọn chế độ mà nút Chơi ngay sẽ bắt đầu.",
+	"SINGLE PLAYER": "CHƠI ĐƠN",
+	"Start a solo wave-survival run immediately.": "Bắt đầu lượt sinh tồn theo đợt ngay lập tức.",
+	"Open the room browser to host or join a multiplayer run.": "Mở danh sách phòng để tạo hoặc tham gia lượt chơi nhiều người.",
+	"SELECT MODE": "CHỌN CHẾ ĐỘ",
+	"CURRENT MODE": "CHẾ ĐỘ HIỆN TẠI",
+	"SOLO  /  WAVE SURVIVAL": "CHƠI ĐƠN  /  SINH TỒN THEO ĐỢT",
+	"ONLINE CO-OP  /  ROOM BROWSER": "CHƠI PHỐI HỢP  /  DANH SÁCH PHÒNG",
+	"TEST MODE": "CHẾ ĐỘ KIỂM THỬ",
+	"TEST MODE  /  SANDBOX": "CHẾ ĐỘ KIỂM THỬ  /  MÔI TRƯỜNG THỬ",
+	"Start a sandbox with no normal waves and manual enemy controls.": "Bắt đầu môi trường thử nghiệm không có đợt quái tự động, cho phép gọi quái thủ công.",
+	"VIEW ALL MISSIONS": "XEM TẤT CẢ NHIỆM VỤ",
+	"AVAILABLE": "CÓ THỂ CHỌN",
+	"SELECT PAINT": "CHỌN MÀU SƠN",
+	"OPEN STORE": "MỞ CỬA HÀNG",
+	"Distinct fighter frames with different combat stats. Choose one that matches your play style.": "Mỗi phi thuyền có bộ chỉ số chiến đấu riêng. Hãy chọn tàu phù hợp với lối chơi của bạn.",
+	"Gems come from daily mission rewards. Spend them to unlock fighters early; reaching the listed best wave also unlocks a fighter for free.": "Ngọc nhận từ nhiệm vụ hằng ngày. Dùng ngọc để mở sớm phi thuyền; đạt mốc đợt cao nhất cũng mở tàu miễn phí.",
+	"COSMETIC SHIP SKINS": "PHI ĐỘI PHI THUYỀN",
+	"RECON FIGHTER  /  COSMETIC": "PHI THUYỀN CHIẾN ĐẤU",
+	"Each fighter has its own speed, hull, weapon damage, and projectile velocity.": "Mỗi tàu có tốc độ, giáp, sát thương và tốc độ đạn riêng.",
+	"BROWSE FLEET": "XEM HANGAR",
+	"FLIGHT RECORD": "HỒ SƠ CHIẾN ĐẤU",
+	"YOUR RECENT PERFORMANCE": "THÀNH TÍCH CỦA BẠN",
+	"OPERATIONS": "NHIỆM VỤ",
+	"CHOOSE YOUR NEXT FLIGHT": "CHỌN CHUYẾN BAY TIẾP THEO",
+	"PLAY NOW": "CHƠI NGAY",
+	"ONLINE CO-OP": "CHƠI PHỐI HỢP",
+	"Solo starts immediately. Co-op opens the room browser.": "Chơi đơn bắt đầu ngay. Chơi phối hợp mở danh sách phòng.",
+	"PILOT SERVICES": "DỊCH VỤ PHI CÔNG",
+	"QUICK ACCESS": "TRUY CẬP NHANH",
+	"DAILY MISSIONS": "NHIỆM VỤ HẰNG NGÀY",
+	"REWARDS RESET EACH DAY": "PHẦN THƯỞNG ĐẶT LẠI MỖI NGÀY",
+	"STARFIGHTER HANGAR": "HANGAR PHI THUYỀN",
+	"PAINT SCHEMES UNLOCK FROM BEST WAVE": "MỞ MÀU SƠN THEO ĐỢT CAO NHẤT",
+	"Complete a run": "Hoàn thành một lượt",
+	"Reach wave 5": "Đạt đợt 5",
+	"Defeat a boss": "Đánh bại một boss",
+	"SELECTED": "ĐANG CHỌN",
+	"UNLOCKED": "ĐÃ MỞ",
+	"LOCKED": "ĐÃ KHÓA",
+	"UNLOCK": "MỞ KHÓA",
+	"REWARD": "PHẦN THƯỞNG",
+	"COST": "CHI PHÍ",
+	"FREE AT WAVE": "MỞ MIỄN PHÍ Ở ĐỢT",
+	"CLAIM": "NHẬN",
+	"CLAIMED": "ĐÃ NHẬN",
+	"Every fighter has distinct combat stats. Unlock ships by reaching the listed best wave or using gems.": "Mỗi phi thuyền có chỉ số chiến đấu riêng. Đạt mốc đợt cao nhất hoặc dùng ngọc để mở khóa.",
+	"Complete objectives during regular runs. Progress is saved locally and resets each day.": "Hoàn thành mục tiêu trong các lượt chơi thường. Tiến độ được lưu trên thiết bị và đặt lại mỗi ngày.",
+	"These are in-run cards; choose them when leveling up during a run.": "Đây là thẻ nâng cấp trong trận; hãy chọn khi lên cấp.",
+	"Your weapon and passive upgrades are selected during a run. Last recorded weapon: %s.": "Vũ khí và nâng cấp bị động được chọn trong trận. Vũ khí ghi nhận gần nhất: %s.",
+	"Use the Upgrades section to review the available cards.": "Mở mục Nâng cấp để xem các thẻ hiện có.",
+	"Pilot tokens: %d": "Đồng phi công: %d",
+	"Tokens come from daily mission rewards. Spend them to unlock fighters early; reaching the listed best wave also unlocks one for free.": "Đồng nhận từ phần thưởng nhiệm vụ hằng ngày. Dùng đồng để mở sớm phi thuyền; đạt mốc đợt cao nhất cũng mở miễn phí.",
+	"No active limited-time event is running. Daily missions are available in Pilot Services.": "Hiện không có sự kiện giới hạn thời gian. Nhiệm vụ hằng ngày nằm trong mục Dịch vụ phi công.",
+	"MASTER VOLUME  %d%%": "ÂM LƯỢNG CHÍNH  %d%%",
 	"LAST RUN": "LƯỢT GẦN NHẤT",
 	"BEST RUN": "LƯỢT TỐT NHẤT",
 	"MOST PICKED": "THẺ ĐƯỢC CHỌN NHIỀU NHẤT",
@@ -81,6 +194,7 @@ const EN_TO_VI := {
 	"BUILD": "BỘ THẺ",
 	"PLAY AGAIN": "CHƠI LẠI",
 	"MAIN MENU": "MENU CHÍNH",
+	"RETURN TO LOBBY": "VỀ SẢNH",
 	"WHAT IS YOUR NAME?": "BẠN TÊN GÌ?",
 	"SURVIVE  THE  SWARM": "SỐNG SÓT TRƯỚC BẦY ĐỊCH",
 	"UPDATE": "CẬP NHẬT",
@@ -258,6 +372,8 @@ func translate_text(value: String) -> String:
 		return _to_english(value)
 	if value.begins_with("UPGRADE STACKS: "):
 		return "SỐ LẦN NÂNG CẤP: " + value.trim_prefix("UPGRADE STACKS: ")
+	if value.ends_with(" XP") and value.contains(" / "):
+		return value.trim_suffix(" XP") + " KN"
 	if EN_TO_VI.has(value):
 		return str(EN_TO_VI[value])
 	if value.begins_with("could not open port "):
@@ -294,6 +410,8 @@ func _to_english(value: String) -> String:
 		return "cannot reach " + value.trim_prefix("Không thể kết nối tới ")
 	if value.begins_with("SỐ LẦN NÂNG CẤP: "):
 		return "UPGRADE STACKS: " + value.trim_prefix("SỐ LẦN NÂNG CẤP: ")
+	if value.ends_with(" KN") and value.contains(" / "):
+		return value.trim_suffix(" KN") + " XP"
 	if value.begins_with("ĐANG QUAN SÁT "):
 		return "SPECTATING " + value.trim_prefix("ĐANG QUAN SÁT ")
 	if value.begins_with("ĐỢT ") and value.substr(5).is_valid_int():
@@ -319,7 +437,13 @@ func _translate_current_scene() -> void:
 
 
 func _on_node_added(node: Node) -> void:
-	call_deferred("_translate_node", node)
+	call_deferred("_translate_added_node", node.get_instance_id())
+
+
+func _translate_added_node(instance_id: int) -> void:
+	var added_object := instance_from_id(instance_id)
+	if added_object is Node:
+		_translate_node(added_object)
 
 
 func _on_scene_changed() -> void:

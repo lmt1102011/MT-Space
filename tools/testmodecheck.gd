@@ -10,6 +10,8 @@ func _initialize() -> void:
 func _run() -> void:
 	var net := root.get_node("Net")
 	var pool := root.get_node("PoolRoot")
+	var game_singleton := root.get_node("Game")
+	var selected_ship_before_tests := str(game_singleton.get("selected_ship_id"))
 	net.set("player_name", "")
 	var menu_scene := load("res://scenes/menu.tscn") as PackedScene
 	var menu := menu_scene.instantiate()
@@ -18,8 +20,22 @@ func _run() -> void:
 	await process_frame
 	menu.call("_on_play")
 	var prompt := menu.get_node_or_null("NamePrompt")
+	var menu_play_button := menu.find_child("PlayButton", true, false) as Button
+	var menu_settings_button := menu.find_child(
+		"SettingsButton", true, false) as Button
 	_check(prompt != null and str(current_scene.scene_file_path) == "res://scenes/menu.tscn",
 		"Play from the main menu asks for the player name before entering the lobby")
+	_check(menu_play_button != null
+		and menu_play_button.get_theme_stylebox("normal") is StyleBoxFlat
+		and (menu_play_button.get_theme_stylebox("normal") as StyleBoxFlat)
+			.bg_color.r > (menu_play_button.get_theme_stylebox("normal")
+			as StyleBoxFlat).bg_color.b
+		and menu_settings_button != null
+		and menu_settings_button.get_theme_stylebox("normal") is StyleBoxFlat
+		and (menu_settings_button.get_theme_stylebox("normal") as StyleBoxFlat)
+			.border_color.b > (menu_settings_button.get_theme_stylebox("normal")
+			as StyleBoxFlat).border_color.r,
+		"main menu primary and secondary buttons use the shared amber/cyan sci-fi palette")
 	if prompt != null:
 		prompt.get_node("Panel/NameEdit").text = "Test Pilot"
 		prompt.get_node("Panel/PlayButton").pressed.emit()
@@ -31,13 +47,291 @@ func _run() -> void:
 	await process_frame
 	var record_button := lobby.get_node_or_null("UI/RunRecordButton") as Button
 	var record_panel := lobby.get_node_or_null("UI/RunRecordPanel") as Panel
-	_check(record_button != null and record_panel != null
+	_check(record_button == null and record_panel != null
 		and record_panel.get_node_or_null("RunRecordScroll") is ScrollContainer
 		and record_panel.get_node_or_null("RunRecordScroll/RunRecordLabel") is Label
 		and not record_panel.visible,
-		"the lobby has a trophy button and a hidden scrollable records popup")
-	if record_panel != null and record_button != null:
-		var game_singleton := root.get_node("Game")
+		"the lobby has no corner trophy button and retains a hidden scrollable records popup")
+	var lobby_viewport := lobby.get_viewport()
+	var original_resolution: Vector2i = lobby_viewport.size
+	lobby_viewport.size = Vector2i(1366, 768)
+	lobby.call("_layout_dashboard")
+	await process_frame
+	var lobby_dashboard := lobby.get_node("UI/Dashboard")
+	var primary_play := lobby_dashboard.find_child("PlayNowButton", true, false) as Button
+	var ship_preview := lobby_dashboard.find_child(
+		"SelectedShipPreview", true, false) as TextureRect
+	var navigation_buttons := lobby_dashboard.find_children(
+		"*", "Button", true, false)
+	var has_home_navigation := false
+	for navigation_button: Button in navigation_buttons:
+		if navigation_button.text.to_upper() in ["HOME", "HOME PAGE", "TRANG CHÍNH"]:
+			has_home_navigation = true
+	_check(not has_home_navigation,
+		"the home destination is removed from the lobby navigation")
+	_check(primary_play != null and primary_play.is_visible_in_tree()
+		and Rect2(Vector2.ZERO, lobby_viewport.get_visible_rect().size).encloses(
+			primary_play.get_global_rect())
+		and ship_preview != null and ship_preview.size.x >= 200.0,
+		"the 1366x768 dashboard keeps Play Now visible and presents a large real ship asset")
+	var stage := lobby_dashboard.find_child(
+		"ShipDisplayStage", true, false) as Control
+	var stat_card := lobby_dashboard.find_child(
+		"ShipStatCard", true, false) as PanelContainer
+	var best_wave_card := lobby_dashboard.find_child(
+		"QuickStat_BEST_WAVE", true, false) as PanelContainer
+	var lobby_scroll := lobby_dashboard.find_child(
+		"LobbyScroll", true, false) as ScrollContainer
+	_check(stage != null
+		and lobby_dashboard.find_child("PreviousShipButton", true, false) is Button
+		and lobby_dashboard.find_child("NextShipButton", true, false) is Button
+		and stat_card != null,
+		"ship controls and stat card are present")
+	_check(best_wave_card != null
+		and best_wave_card.get_theme_stylebox("panel") is StyleBoxFlat
+		and (best_wave_card.get_theme_stylebox("panel") as StyleBoxFlat)
+			.bg_color.b > (best_wave_card.get_theme_stylebox("panel")
+			as StyleBoxFlat).bg_color.r
+		and best_wave_card.find_child("Value", true, false) is Label,
+		"Best Wave and nearby record cards use the cyan/navy dashboard surface instead of gray")
+	_check(lobby_dashboard.find_child("ShipHangarScroll", true, false) == null
+		and lobby_dashboard.find_child("ShipCarousel", true, false) == null,
+		"the lower ship list has been removed")
+	var desktop_scroll_overflow := maxf(
+		0.0,
+		lobby_scroll.get_v_scroll_bar().max_value
+			- lobby_scroll.get_v_scroll_bar().page
+	) if lobby_scroll != null else -1.0
+	_check(desktop_scroll_overflow == 0.0,
+		"the 1366x768 home dashboard does not require scrolling (overflow %.1f)"
+		% desktop_scroll_overflow)
+	for stat in ["DAMAGE", "SPEED", "HP"]:
+		var stat_segments := lobby_dashboard.find_child(
+			stat + "Segments", true, false) as HBoxContainer
+		_check(stat_segments != null and stat_segments.get_child_count() == 5,
+			"%s is presented as five stat segments" % stat)
+	var previous_ship_index := int(lobby.get("_preview_ship_index"))
+	lobby.call("_finish_ship_gesture", -80.0)
+	_check(int(lobby.get("_preview_ship_index")) != previous_ship_index,
+		"swiping across the ship display advances to another paint preview")
+	var ship_preview_x := ship_preview.position.x
+	var ship_preview_base_x := float(lobby.get("_ship_preview_base_position").x)
+	var transition_ghost := stage.get_node_or_null("ShipTransitionGhost")
+	_check(transition_ghost is TextureRect
+		and ship_preview_x > ship_preview_base_x
+		and is_equal_approx(ship_preview.scale.x, 0.9)
+		and stage.get_node_or_null("ShipTransitionSweep") is ColorRect,
+		"ship changes use a staged slide with scale and light-sweep accents")
+	await create_timer(0.65).timeout
+	_check(stage.get_node_or_null("ShipTransitionGhost") == null
+		and is_equal_approx(ship_preview.position.x, ship_preview_base_x)
+		and is_equal_approx(ship_preview.scale.x, 1.0)
+		and is_zero_approx(ship_preview.rotation),
+		"ship transition finishes cleanly at the centered preview position")
+	lobby.call("_cycle_ship", -1)
+	_check(ship_preview.position.x < ship_preview_base_x,
+		"the previous ship enters from the left while the current ship slides right")
+	await create_timer(0.65).timeout
+	var ship_game := root.get_node("Game")
+	var previous_best_ship_run: Dictionary = ship_game.get("best_run").duplicate(true)
+	var previous_unlocked_ships: Array = ship_game.get("unlocked_ship_ids").duplicate()
+	var test_all_unlocked_ships: Array[String] = [
+		"aquila", "viper", "raven", "phoenix", "draco", "orion",
+	]
+	var ship_paint_ids: Array[String] = test_all_unlocked_ships.duplicate()
+	ship_game.set("best_run", {"wave": 0})
+	ship_game.set("unlocked_ship_ids", test_all_unlocked_ships)
+	var return_ship_id := str(ship_game.get("selected_ship_id"))
+	var original_ship_index := int(lobby.call("_paint_index", return_ship_id))
+	lobby.set("_preview_ship_index", original_ship_index)
+	lobby.call("_update_ship_preview", false)
+	lobby.call("_cycle_ship", 1)
+	var ship_transition_direction := float(lobby.get("_ship_preview_base_position").x)
+	lobby.call("_apply_ship_transition", 0.35, 1.0)
+	lobby.call("_layout_ship_stage")
+	var ship_transition_travel := stage.size.x + ship_preview.size.x
+	_check(int(lobby.get("_preview_ship_index")) == posmod(
+			original_ship_index + 1, ship_paint_ids.size())
+		and stage.get_node_or_null("ShipTransitionGhost") is TextureRect
+		and is_equal_approx(float(lobby.get("_ship_transition_progress")), 0.35)
+		and is_equal_approx(
+			ship_preview.position.x,
+			ship_transition_direction + ship_transition_travel * 0.65),
+		"unlocked ships slide into view and preserve transition progress when the stage relayouts")
+	await create_timer(0.65).timeout
+	lobby.call("_cycle_ship", -1)
+	_check(int(lobby.get("_preview_ship_index")) == original_ship_index
+		and stage.get_node_or_null("ShipTransitionGhost") is TextureRect
+		and ship_preview.position.x < ship_transition_direction,
+		"switching between unlocked ships in reverse slides the new ship in from the left")
+	await create_timer(0.65).timeout
+	var test_unlocked_ships: Array[String] = ["aquila"]
+	ship_game.set("unlocked_ship_ids", test_unlocked_ships)
+	ship_game.set("selected_ship_id", "aquila")
+	lobby.set("_last_selected_ship_id", "aquila")
+	lobby.set("_preview_ship_index", 0)
+	lobby.call("_update_ship_preview", false)
+	var locked_ship_index := -1
+	for paint_index in ship_paint_ids.size():
+		var paint_id := str(ship_paint_ids[paint_index])
+		if not bool(ship_game.call("is_ship_unlocked", paint_id)):
+			locked_ship_index = paint_index
+			break
+	if locked_ship_index >= 0:
+		var locked_previous_index := posmod(
+			locked_ship_index - 1, ship_paint_ids.size())
+		lobby.set("_preview_ship_index", locked_previous_index)
+		lobby.call("_update_ship_preview", false)
+		lobby.call("_cycle_ship", 1)
+		var locked_overlay := stage.get_node("LockedOverlay") as ColorRect
+		var lock_center := locked_overlay.get_node("LockCenter") as CenterContainer
+		_check(int(lobby.get("_preview_ship_index")) == locked_ship_index
+			and locked_overlay.visible
+			and locked_overlay.get_parent() == stage
+			and locked_overlay.size.is_equal_approx(stage.size)
+			and locked_overlay.color.a < 0.64
+			and lock_center.get_global_rect().has_point(
+				stage.get_global_rect().get_center())
+			and stage.get_node_or_null("ShipTransitionGhost") is TextureRect
+			and ship_preview.position.x > ship_preview_base_x,
+			"locked ships slide normally beneath a full-stage dark overlay and centered lock")
+		ship_game.emit_signal("lobby_profile_changed")
+		_check(int(lobby.get("_preview_ship_index")) == locked_ship_index
+			and locked_overlay.visible
+			and stage.get_node_or_null("ShipTransitionGhost") is TextureRect,
+			"unrelated profile refreshes do not interrupt a locked-ship transition")
+		await create_timer(0.65).timeout
+		var previous_ship_button := lobby_dashboard.find_child(
+			"PreviousShipButton", true, false) as Button
+		previous_ship_button.pressed.emit()
+		_check(int(lobby.get("_preview_ship_index")) == 0
+			and stage.get_node_or_null("ShipTransitionGhost") is TextureRect
+			and ship_preview.position.x < ship_preview_base_x,
+			"the left-arrow button returns from a locked fighter to the equipped ship with an animation")
+		await create_timer(0.65).timeout
+	else:
+		_check(true, "all available ship paints are unlocked in the current profile")
+	var ship_stat_signatures: Dictionary = {}
+	for ship_id: String in ship_paint_ids:
+		var combat_stats: Dictionary = ship_game.call("get_ship_combat_stats", ship_id)
+		var signature := "%s/%s/%s/%s" % [
+			combat_stats["max_speed"], combat_stats["max_hp"],
+			combat_stats["bullet_speed"], combat_stats["damage_multiplier"],
+		]
+		ship_stat_signatures[signature] = true
+	_check(ship_stat_signatures.size() == 6,
+		"each fighter has a distinct combat-stat profile")
+	var player_scene_for_stats := load("res://scenes/player.tscn") as PackedScene
+	ship_game.set("selected_ship_id", "viper")
+	var stat_player := player_scene_for_stats.instantiate() as CharacterBody2D
+	lobby.add_child(stat_player)
+	await process_frame
+	_check(is_equal_approx(float(stat_player.get("max_speed")), 390.0)
+		and int(stat_player.get("max_hp")) == 8
+		and is_equal_approx(float(stat_player.get("bullet_speed")), 680.0)
+		and is_equal_approx(float(stat_player.get("_ship_damage_multiplier")), 0.9),
+		"the selected fighter's speed, hull, projectile speed and damage affect the real player")
+	stat_player.queue_free()
+	ship_game.set("selected_ship_id", selected_ship_before_tests)
+	ship_game.set("best_run", previous_best_ship_run)
+	ship_game.set("unlocked_ship_ids", previous_unlocked_ships)
+	ship_game.call("set_selected_ship", selected_ship_before_tests)
+	await process_frame
+	var pilot_card := lobby_dashboard.find_child(
+		"PilotProfileCard", true, false) as PanelContainer
+	var pilot_avatar := lobby_dashboard.find_child(
+		"PilotAvatar", true, false) as PanelContainer
+	var cash_card := lobby_dashboard.find_child(
+		"CurrencyCard_Cash", true, false) as PanelContainer
+	var gem_card := lobby_dashboard.find_child(
+		"CurrencyCard_Gem", true, false) as PanelContainer
+	_check(pilot_card != null and pilot_avatar != null
+		and pilot_avatar.get_theme_stylebox("panel").get_corner_radius(
+			CORNER_TOP_LEFT) >= 20
+		and lobby_dashboard.find_child("PilotLevelValue", true, false) is Label
+		and lobby_dashboard.find_child("PilotXPBar", true, false) is ProgressBar,
+		"pilot identity, circular avatar, level, and experience bar live in one card")
+	_check(cash_card != null and gem_card != null
+		and lobby_dashboard.find_child("CurrencyValue_Cash", true, false) is Label
+		and lobby_dashboard.find_child("CurrencyValue_Gem", true, false) is Label
+		and lobby_dashboard.find_child("CurrencyCaption_Cash", true, false) == null
+		and lobby_dashboard.find_child("CurrencyCaption_Gem", true, false) == null
+		and (lobby_dashboard.find_child("CurrencyValue_Cash", true, false)
+			as Label).horizontal_alignment == HORIZONTAL_ALIGNMENT_CENTER
+		and (lobby_dashboard.find_child("CurrencyValue_Gem", true, false)
+			as Label).horizontal_alignment == HORIZONTAL_ALIGNMENT_CENTER
+		and lobby_dashboard.find_child("TokenStoreButton", true, false) == null,
+		"currency chips omit captions and center their values without an old store-plus button")
+	_check(cash_card != null and gem_card != null
+		and cash_card.get_parent() == gem_card.get_parent()
+		and cash_card.get_global_rect().position.y == gem_card.get_global_rect().position.y
+		and cash_card.get_global_rect().end.x <= gem_card.get_global_rect().position.x,
+		"cash and gem currency cards stay side by side in one horizontal row")
+	var locale_singleton := root.get_node("Locale")
+	var lobby_locale_before_settings := str(locale_singleton.call("get_locale"))
+	lobby.call("_open_page", "settings")
+	await process_frame
+	var lobby_language_option := lobby_dashboard.find_child(
+		"LobbyLanguageOption", true, false) as OptionButton
+	_check(lobby_language_option != null
+		and lobby_language_option.item_count == 2
+		and lobby_language_option.selected
+			== (1 if lobby_locale_before_settings == "vi" else 0),
+		"lobby settings expose the currently selected English or Vietnamese language")
+	if lobby_language_option != null:
+		lobby_language_option.select(1 if lobby_locale_before_settings == "en" else 0)
+		lobby_language_option.item_selected.emit(lobby_language_option.selected)
+		await process_frame
+		_check(str(locale_singleton.call("get_locale"))
+			== ("vi" if lobby_locale_before_settings == "en" else "en")
+			and lobby_dashboard.find_child("LobbyLanguageOption", true, false)
+				is OptionButton
+			and (lobby_dashboard.find_child(
+				"LobbyLanguageLabel", true, false) as Label).text
+				== str(locale_singleton.call("translate_text", "LANGUAGE")),
+			"changing language in lobby settings applies, translates, and retains the chosen locale")
+		lobby_language_option = lobby_dashboard.find_child(
+			"LobbyLanguageOption", true, false) as OptionButton
+		if lobby_language_option != null:
+			lobby_language_option.select(
+				1 if lobby_locale_before_settings == "en" else 0)
+			lobby_language_option.item_selected.emit(lobby_language_option.selected)
+			await process_frame
+	lobby.call("_close_page_popup")
+	lobby.call("_open_mode_selector")
+	await process_frame
+	var page_popup := lobby_dashboard.find_child("PagePopup", true, false) as PanelContainer
+	var select_coop := lobby_dashboard.find_child("SelectMode_coop", true, false) as Button
+	_check(page_popup != null and page_popup.visible and select_coop != null
+		and lobby_dashboard.find_child("SelectMode_solo", true, false) is Button
+		and lobby_dashboard.find_child("SelectMode_test", true, false) is Button,
+		"Choose Mode opens real solo, online co-op, and test choices")
+	var popup_style := page_popup.get_theme_stylebox("panel") as StyleBoxFlat
+	_check(popup_style != null and popup_style.bg_color.b > popup_style.bg_color.r,
+		"mode popup uses a layered navy and cyan sci-fi surface")
+	if select_coop != null:
+		select_coop.pressed.emit()
+	var mode_summary := lobby_dashboard.find_child(
+		"SelectedModeSummary", true, false) as Label
+	_check(str(lobby.get("_selected_play_mode")) == "coop"
+		and mode_summary.text == str(root.get_node("Locale").call(
+			"translate_text", "ONLINE CO-OP  /  ROOM BROWSER")),
+		"selecting online co-op updates the mode shown beside Play Now")
+	lobby.call("_select_play_mode", "solo")
+	_check(str(lobby.get("_selected_play_mode")) == "solo"
+		and mode_summary.text == str(root.get_node("Locale").call(
+			"translate_text", "SOLO  /  WAVE SURVIVAL")),
+		"selecting single-player restores the Play Now summary")
+	lobby.call("_select_play_mode", "test")
+	_check(str(lobby.get("_selected_play_mode")) == "test"
+		and mode_summary.text == str(root.get_node("Locale").call(
+			"translate_text", "TEST MODE  /  SANDBOX")),
+		"test mode becomes the selected Play Now mode")
+	lobby.call("_select_play_mode", "solo")
+	lobby.call("_close_page_popup")
+	lobby_viewport.size = original_resolution
+	lobby.call("_layout_dashboard")
+	if record_panel != null:
 		var previous_latest: Dictionary = game_singleton.get("latest_run").duplicate(true)
 		var previous_best: Dictionary = game_singleton.get("best_run").duplicate(true)
 		var long_build: Array[String] = []
@@ -59,19 +353,69 @@ func _run() -> void:
 				str(game_singleton.call("build_item_label", "Card 23 x1")))
 			and record_label.text.contains("00:24"),
 			"the records popup content includes the complete build and boss time")
-		record_button.pressed.emit()
+		lobby.call("_open_page", "achievements")
 		await process_frame
 		var record_scroll := record_panel.get_node("RunRecordScroll") as ScrollContainer
 		_check(record_panel.visible and record_scroll.get_v_scroll_bar().max_value > 0.0,
-			"the trophy button opens the popup and long records can scroll vertically")
+			"the achievements navigation opens the records popup and long records can scroll vertically")
+		lobby.call("_open_page", "store")
+		await process_frame
+		var popup_backdrop := lobby.get_node("UI/Dashboard/PageBackdrop") as ColorRect
+		page_popup = lobby.get_node("UI/Dashboard/PagePopup") as PanelContainer
+		_check(page_popup.visible and popup_backdrop.visible,
+			"opening a lobby page presents its modal backdrop")
+		lobby.call("_open_page", "achievements")
+		await process_frame
+		var close_record_button := record_panel.get_node(
+			"CloseRunRecordButton") as Button
+		_check(not popup_backdrop.visible and not page_popup.visible
+			and close_record_button.mouse_filter == Control.MOUSE_FILTER_STOP
+			and close_record_button.z_index > 0,
+			"the achievements popup clears overlapping layers and keeps its close button above the header")
+		close_record_button.pressed.emit()
+		_check(not record_panel.visible,
+			"the achievements popup close button dismisses the records panel")
+		lobby.call("_open_page", "achievements")
+		await process_frame
 		var viewport := lobby.get_viewport()
 		var original_size: Vector2i = viewport.size
 		viewport.size = Vector2i(320, 568)
 		await process_frame
 		var mobile_rect := Rect2(Vector2.ZERO, viewport.get_visible_rect().size)
-		_check(mobile_rect.encloses(record_button.get_global_rect())
-			and mobile_rect.encloses(record_panel.get_global_rect()),
-			"the trophy button and records popup stay inside a narrow mobile viewport")
+		_check(record_button == null and mobile_rect.encloses(record_panel.get_global_rect()),
+			"the corner trophy is absent and the records popup stays on-screen on mobile")
+		lobby.call("_layout_dashboard")
+		await process_frame
+		var dashboard := lobby.get_node("UI/Dashboard")
+		var mobile_navigation := dashboard.find_child(
+			"MobileNavigation", true, false) as ScrollContainer
+		var mobile_columns := dashboard.find_child("MainColumnsMobile", true, false)
+		var missions: Array = game_singleton.call("get_daily_missions")
+		_check(mobile_navigation != null and mobile_navigation.visible
+			and mobile_columns != null and mobile_columns.visible,
+			"the lobby stacks its navigation and panels on a narrow phone viewport")
+		var compact_header := dashboard.find_child(
+			"PilotHeaderRow", true, false) as HBoxContainer
+		var compact_settings := dashboard.find_child(
+			"HeaderSettingsButton", true, false) as Button
+		_check(compact_header != null
+			and compact_settings != null
+			and mobile_rect.encloses(compact_settings.get_global_rect()),
+			"the header compacts and keeps settings within a 320px viewport")
+		_check(dashboard.find_child("ShipHangarScroll", true, false) == null
+			and dashboard.find_child("ShipCarousel", true, false) == null,
+			"the lower ship carousel is removed so the home screen needs less scrolling")
+		_check(missions.size() == 3,
+			"the lobby displays three persistent daily objectives")
+		lobby.call("_open_page", "store")
+		await process_frame
+		var store_popup := dashboard.find_child("PagePopup", true, false) as PanelContainer
+		var store_content := dashboard.find_child(
+			"PagePopupContent", true, false) as VBoxContainer
+		_check(store_popup != null and store_popup.visible
+			and store_content != null and store_content.get_child_count() == 7,
+			"the store popup lists all five purchasable paint schemes")
+		lobby.call("_close_page_popup")
 		viewport.size = original_size
 		await process_frame
 		game_singleton.set("latest_run", previous_latest)
@@ -128,6 +472,7 @@ func _run() -> void:
 	var saved_run_damage: int = game.get("_run_damage")
 	var saved_run_wave: int = game.get("_run_max_wave")
 	var saved_run_bosses: int = game.get("_run_bosses_killed")
+	var saved_enemy_kills: Dictionary = game.get("_run_enemy_kills").duplicate(true)
 	var saved_boss_times: Array[float] = game.get("_run_boss_kill_times").duplicate()
 	var saved_boss_starts: Dictionary = game.get("_run_boss_started_at").duplicate()
 	game.set("test_mode", false)
@@ -140,10 +485,12 @@ func _run() -> void:
 	(game.get("_run_boss_started_at") as Dictionary).clear()
 	game.call("record_damage", 25)
 	game.call("record_wave", 7)
+	game.call("record_enemy_kill", "shooter")
 	game.call("register_boss_spawn", -1)
 	game.call("record_boss_kill", -1)
 	_check(int(game.get("_run_damage")) == 25
 		and int(game.get("_run_max_wave")) == 7
+		and int(game.get("_run_enemy_kills").get("shooter", 0)) == 1
 		and int(game.get("_run_bosses_killed")) == 1
 		and not game.get("_run_boss_kill_times").is_empty(),
 		"normal runs record applied damage, highest wave, boss kills, and boss time-to-kill")
@@ -153,10 +500,32 @@ func _run() -> void:
 	game.set("_run_damage", saved_run_damage)
 	game.set("_run_max_wave", saved_run_wave)
 	game.set("_run_bosses_killed", saved_run_bosses)
+	game.set("_run_enemy_kills", saved_enemy_kills)
 	var run_boss_times: Array = game.get("_run_boss_kill_times")
 	run_boss_times.append_array(saved_boss_times)
 	var run_boss_starts: Dictionary = game.get("_run_boss_started_at")
 	run_boss_starts.merge(saved_boss_starts)
+	var pilot_cash_before_reward := int(game.get("pilot_cash"))
+	var pilot_level_before_reward := int(game.get("pilot_level"))
+	var pilot_xp_before_reward := int(game.get("pilot_xp"))
+	var xp_to_next_pilot_level := int(game.call(
+		"xp_needed_for", pilot_level_before_reward)) - pilot_xp_before_reward + 3
+	var granted_rewards: bool = game.call(
+		"_grant_run_rewards", 7, maxi(xp_to_next_pilot_level, 0))
+	var saved_pilot_profile := ConfigFile.new()
+	var profile_loaded := saved_pilot_profile.load("user://pilot_profile.cfg") == OK
+	_check(granted_rewards
+		and int(game.get("pilot_cash")) == pilot_cash_before_reward + 7
+		and int(game.get("pilot_level")) == pilot_level_before_reward + 1
+		and profile_loaded
+		and int(saved_pilot_profile.get_value("pilot", "level", 0))
+			== pilot_level_before_reward + 1
+		and int(saved_pilot_profile.get_value("pilot", "xp", 0)) == 3,
+		"run rewards persist cash and pilot XP progress, including pilot level-ups")
+	game.set("pilot_cash", pilot_cash_before_reward)
+	game.set("pilot_level", pilot_level_before_reward)
+	game.set("pilot_xp", pilot_xp_before_reward)
+	game.call("_save_pilot_profile")
 	var summary := str(main.get_node("HUD").call("_format_run_summary", {
 		"wave": 4,
 		"bosses": 1,
@@ -174,6 +543,93 @@ func _run() -> void:
 		and summary.contains(expected_damage) and summary.contains(expected_card)
 		and summary.contains("00:20"),
 		"the game-over summary formats wave, boss, damage, survival, and build stats")
+	var reward_rows: Array = game.call("_build_run_reward_rows", {
+		"shooter": 3,
+		"boss_1": 1,
+	}, 4)
+	var expected_reward_total := 0
+	var expected_xp_total := 0
+	var has_boss_reward_icon := false
+	for reward_row: Dictionary in reward_rows:
+		expected_reward_total += int(reward_row["reward"])
+		expected_xp_total += int(reward_row["xp_reward"])
+		if reward_row["id"] == "boss_1":
+			has_boss_reward_icon = ResourceLoader.exists(str(reward_row["icon"]))
+	_check(expected_reward_total == 74 and has_boss_reward_icon
+		and expected_xp_total == 435
+		and int(reward_rows[0]["unit_xp"]) == 15
+		and int(reward_rows[0]["xp_reward"]) == 45
+		and reward_rows.back()["id"] == "waves"
+		and int(reward_rows.back()["reward"]) == 40
+		and int(reward_rows.back()["unit_xp"]) == 10
+		and int(reward_rows.back()["xp_reward"]) == 40,
+		"run rewards calculate per-enemy and per-wave cash and XP using real enemy art")
+	var results_hud := main.get_node("HUD")
+	var previous_latest_run: Dictionary = game.get("latest_run").duplicate(true)
+	var all_enemy_kills := {
+		"shape_3": 1, "shape_4": 1, "shape_5": 1, "shape_6": 1,
+		"shooter": 1, "double": 1, "railgun": 1, "charger": 1, "orb": 1,
+		"beam_enemy": 1, "boss_drone": 1, "boss_1": 1, "boss_2": 1,
+	}
+	var long_reward_rows: Array = game.call("_build_run_reward_rows", all_enemy_kills, 8)
+	var long_reward_total := 0
+	var long_experience_total := 0
+	for reward_row: Dictionary in long_reward_rows:
+		long_reward_total += int(reward_row["reward"])
+		long_experience_total += int(reward_row["xp_reward"])
+	game.set("latest_run", {
+		"wave": 4,
+		"enemy_kills": {"shooter": 3, "boss_1": 1},
+		"reward_rows": long_reward_rows,
+		"cash_earned": long_reward_total,
+		"xp_earned": long_experience_total,
+		"cash_saved": true,
+		"xp_saved": true,
+	})
+	results_hud.call("_on_game_over")
+	await process_frame
+	var results_panel := results_hud.find_child("RunResultsPanel", true, false) as PanelContainer
+	var results_scroll := results_hud.find_child("KillRewardScroll", true, false) as ScrollContainer
+	var results_footer := results_hud.find_child("RunRewardBar", true, false) as PanelContainer
+	_check(results_panel != null and results_scroll != null
+		and results_scroll.get_v_scroll_bar().max_value
+			> results_scroll.get_v_scroll_bar().page
+		and results_footer != null
+		and results_hud.find_child("TotalCashEarned", true, false) is Label
+		and results_hud.find_child("TotalExperienceEarned", true, false) is Label
+		and results_hud.find_child("CashCalculation_shape_3", true, false) is Label
+		and (results_hud.find_child("ExperienceCalculation_shape_3", true, false)
+			as Label).text == "1 x 5 XP",
+		"the game-over debrief lists per-enemy cash and XP plus totals in its footer")
+	_check(results_hud.find_child("RewardIcon_boss_1", true, false) is TextureRect
+		and results_hud.find_child("RewardIcon_waves", true, false) is TextureRect
+		and results_hud.get("_menu_btn") is Button,
+		"the results list displays boss and wave icons with a return action")
+	var results_viewport := main.get_viewport()
+	var results_viewport_size: Vector2i = results_viewport.size
+	results_viewport.size = Vector2i(320, 568)
+	results_hud.call("_layout_game_over")
+	await process_frame
+	var results_screen := Rect2(Vector2.ZERO, results_viewport.get_visible_rect().size)
+	_check(results_panel != null
+		and results_screen.encloses(results_panel.get_global_rect())
+		and results_hud.get("_menu_btn").is_visible_in_tree()
+		and results_hud.get("_play_again_btn").is_visible_in_tree(),
+		"the results panel and both actions fit on a narrow phone viewport")
+	results_viewport.size = results_viewport_size
+	results_hud.call("_layout_game_over")
+	game.set("latest_run", previous_latest_run)
+	var hp_bar_script := load("res://scripts/hp_bar.gd") as GDScript
+	var hp_bar := hp_bar_script.new() as Node2D
+	main.add_child(hp_bar)
+	_check(not hp_bar.visible,
+		"HP bars remain hidden until an enemy assigns their world position")
+	var hp_bar_position := Vector2(260.0, 180.0)
+	hp_bar.call("place_at", hp_bar_position)
+	_check(hp_bar.visible
+		and hp_bar.global_position.is_equal_approx(hp_bar_position),
+		"HP bars appear at the assigned enemy position instead of flashing at the origin")
+	hp_bar.queue_free()
 	var bullet_scene := load("res://scenes/bullet.tscn") as PackedScene
 	var pooled_bullet := pool.call("acquire", bullet_scene, main) as Node
 	var bullet_id := pooled_bullet.get_instance_id()
@@ -183,8 +639,14 @@ func _run() -> void:
 	var reused_bullet := pool.call("acquire", bullet_scene, main) as Node
 	_check(reused_bullet.get_instance_id() == bullet_id
 		and is_equal_approx(float(reused_bullet.get("damage")), 1.0)
-		and reused_bullet.is_in_group("player_bullet"),
-		"player bullets are reused from the pool with fresh state")
+		and reused_bullet.is_in_group("player_bullet")
+		and not reused_bullet.visible,
+		"reused player bullets stay hidden until their firing direction is assigned")
+	reused_bullet.set("direction", Vector2.UP)
+	reused_bullet.call("prepare_for_flight")
+	_check(reused_bullet.visible
+		and is_equal_approx(float(reused_bullet.get("rotation")), -PI * 0.5),
+		"player bullets are shown already aligned to their firing direction")
 	pool.call("release", reused_bullet)
 	var damage_number_scene := load("res://scenes/damage_number.tscn") as PackedScene
 	var pooled_number := pool.call("acquire", damage_number_scene, main) as Node
@@ -221,8 +683,14 @@ func _run() -> void:
 		"CollisionShape2D").shape as CapsuleShape2D
 	_check(reused_enemy_bullet.get_instance_id() == enemy_bullet_id
 		and int(reused_enemy_bullet.get("damage")) == 1
-		and is_equal_approx(reset_enemy_shape.height, 16.0),
-		"enemy bullets restore their damage and hitbox when reused")
+		and is_equal_approx(reset_enemy_shape.height, 16.0)
+		and not reused_enemy_bullet.visible,
+		"enemy bullets restore their damage and stay hidden until configured")
+	reused_enemy_bullet.set("direction", Vector2.UP)
+	reused_enemy_bullet.call("prepare_for_flight")
+	_check(reused_enemy_bullet.visible
+		and is_equal_approx(float(reused_enemy_bullet.get("rotation")), -PI * 0.5),
+		"enemy bullets are shown already aligned to their firing direction")
 	pool.call("release", reused_enemy_bullet)
 	await process_frame
 	var pooled_orb_scene := load("res://scenes/orb_projectile.tscn") as PackedScene
@@ -234,8 +702,13 @@ func _run() -> void:
 	var reused_orb := pool.call("acquire", pooled_orb_scene, main) as Node
 	_check(reused_orb.get_instance_id() == orb_id
 		and is_equal_approx(float(reused_orb.get("damage")), 1.0)
-		and reused_orb.is_in_group("orb_projectile"),
-		"orb projectiles are recycled with collision state and damage reset")
+		and reused_orb.is_in_group("orb_projectile")
+		and not reused_orb.visible,
+		"orb projectiles reset collision state and stay hidden until configured")
+	reused_orb.set("direction", Vector2.UP)
+	reused_orb.call("prepare_for_flight")
+	_check(reused_orb.visible,
+		"orb projectiles appear only after launch data is assigned")
 	pool.call("release", reused_orb)
 	await process_frame
 	var missile_scene := load("res://scenes/boss_missile.tscn") as PackedScene
@@ -246,8 +719,14 @@ func _run() -> void:
 	await process_frame
 	var reused_missile := pool.call("acquire", missile_scene, main) as Node
 	_check(reused_missile.get_instance_id() == missile_id
-		and int(reused_missile.get("damage")) == 5,
-		"boss missiles are recycled and reset their damage")
+		and int(reused_missile.get("damage")) == 5
+		and not reused_missile.visible,
+		"boss missiles reset their damage and stay hidden until configured")
+	reused_missile.set("direction", Vector2.UP)
+	reused_missile.call("prepare_for_flight")
+	_check(reused_missile.visible
+		and is_equal_approx(float(reused_missile.get("rotation")), -PI * 0.5),
+		"boss missiles appear already aligned to their launch direction")
 	pool.call("release", reused_missile)
 	_check(main.get_tree().get_nodes_in_group("monster").is_empty()
 		and main.get_tree().get_nodes_in_group("enemy").is_empty(),
@@ -451,15 +930,101 @@ func _run() -> void:
 	wave_lobby.call("_on_play_pressed")
 	await process_frame
 	_check(str(current_scene.scene_file_path) == "res://scenes/room_lobby.tscn"
-		and current_scene.get_node_or_null("UI/RoomsList") != null,
+		and current_scene.get_node_or_null("UI/RoomsScroll/RoomsList") != null,
 		"wave mode opens the room browser and create-room lobby")
+	var room_ui := current_scene.get_node("UI") as Control
+	var room_create_button := room_ui.get_node("CreateRoomButton") as Button
+	var room_start_button := room_ui.get_node("RoomPanel/StartButton") as Button
+	var room_secondary_button := room_ui.get_node("JoinRoomButton") as Button
+	var room_slot := room_ui.get_node("RoomPanel/SlotTL") as Panel
+	var rooms_scroll := room_ui.get_node("RoomsScroll") as ScrollContainer
+	_check(room_ui.get_node_or_null("RoomsScrollGlassSurface") is Panel
+		and room_ui.get_node_or_null("CreatePanelGlassSurface") is Panel
+		and room_ui.get_node_or_null("AddressPanelGlassSurface") is Panel
+		and room_ui.get_node_or_null("RoomPanelGlassSurface") is Panel,
+		"room browser, create, address, and player-room views share the sci-fi glass panel treatment")
+	_check(rooms_scroll != null
+		and rooms_scroll.get_child(0).name == "RoomsList"
+		and rooms_scroll.vertical_scroll_mode
+			== ScrollContainer.SCROLL_MODE_AUTO,
+		"room discovery results are contained in a vertical scroll area")
+	var create_button_style := room_create_button.get_theme_stylebox(
+		"normal") as StyleBoxFlat
+	var start_button_style := room_start_button.get_theme_stylebox(
+		"normal") as StyleBoxFlat
+	var secondary_button_style := room_secondary_button.get_theme_stylebox(
+		"normal") as StyleBoxFlat
+	_check(create_button_style != null
+		and create_button_style.bg_color.r > create_button_style.bg_color.b,
+		"create-room action uses the lobby's amber primary-button palette")
+	_check(start_button_style != null
+		and start_button_style.bg_color.r > start_button_style.bg_color.b,
+		"start-game action uses the lobby's amber primary-button palette")
+	_check(secondary_button_style != null
+		and secondary_button_style.border_color.b > secondary_button_style.border_color.r,
+		"secondary room actions use the lobby's cyan-button palette")
+	current_scene.call("_style_slot", room_slot, true)
+	_check((room_slot.get_theme_stylebox("panel") as StyleBoxFlat)
+		.border_color.b > (room_slot.get_theme_stylebox("panel")
+			as StyleBoxFlat).border_color.r,
+		"occupied player slots use a cyan-accented panel instead of the legacy gray surface")
 	var room_header := current_scene.get_node("UI/Header") as Label
 	_check(room_header.text == str(locale.call("translate_text", "ROOM")),
 		"the room browser is labeled as a room")
+	current_scene.call("_on_create")
+	await process_frame
+	var create_panel := room_ui.get_node("CreatePanel") as Control
+	var create_surface := room_ui.get_node("CreatePanelGlassSurface") as Control
+	var rooms_surface := room_ui.get_node("RoomsScrollGlassSurface") as Control
+	var address_surface := room_ui.get_node("AddressPanelGlassSurface") as Control
+	var room_surface := room_ui.get_node("RoomPanelGlassSurface") as Control
+	var create_panel_rect := create_panel.get_global_rect()
+	var create_contents_fit := create_panel_rect.encloses(
+		(room_ui.get_node("CreatePanel/Title") as Control).get_global_rect()
+	) and create_panel_rect.encloses(
+		(room_ui.get_node("CreatePanel/NameEdit") as Control).get_global_rect()
+	) and create_panel_rect.encloses(
+		(room_ui.get_node("CreatePanel/WebModeButton") as Control).get_global_rect()
+	) and create_panel_rect.encloses(
+		(room_ui.get_node("CreatePanel/CreateConfirm") as Control).get_global_rect()
+	) and create_panel_rect.encloses(
+		(room_ui.get_node("CreatePanel/CreateCancel") as Control).get_global_rect()
+	)
+	_check(create_surface.visible and not rooms_surface.visible
+		and not address_surface.visible and not room_surface.visible
+		and create_contents_fit,
+		"create-room view shows only its own backdrop and keeps every control inside the popup")
+	current_scene.call("_on_create_cancel")
+	await process_frame
+	_check(not create_surface.visible
+		and (rooms_scroll.visible
+			or (room_ui.get_node("EmptyLabel") as Label).visible)
+		and not rooms_surface.visible,
+		"closing create-room restores the room browser without leaving a backdrop over it")
 	current_scene.call("_on_back")
 	await create_timer(0.2).timeout
 	_check(str(current_scene.scene_file_path) == "res://scenes/lobby.tscn",
 		"the room browser back button returns to mode selection")
+	var dashboard := current_scene.get_node("UI/Dashboard")
+	current_scene.call("_select_play_mode", "coop")
+	current_scene.call("_start_selected_mode")
+	await create_timer(0.2).timeout
+	_check(current_scene != null
+		and str(current_scene.scene_file_path) == "res://scenes/room_lobby.tscn",
+		"Play Now dispatches the selected online co-op mode to the room browser")
+	current_scene.call("_on_back")
+	await create_timer(0.2).timeout
+	dashboard = current_scene.get_node("UI/Dashboard")
+	var play_now := dashboard.find_child("PlayNowButton", true, false) as Button
+	_check(play_now != null,
+		"the dashboard exposes its primary play action")
+	if play_now != null:
+		play_now.pressed.emit()
+		await create_timer(0.1).timeout
+		_check(current_scene != null
+			and str(current_scene.scene_file_path) == "res://scenes/main.tscn"
+			and not bool(root.get_node("Game").get("test_mode")),
+			"Play Now launches a normal solo run directly")
 
 	print("=== test-mode check: %d failure(s) ===" % _failures)
 	quit(1 if _failures > 0 else 0)

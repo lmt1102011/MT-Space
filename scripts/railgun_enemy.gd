@@ -171,8 +171,7 @@ func _physics_process(delta: float) -> void:
 		_tick_status(delta, false)
 		_charge_t = maxf(_charge_t - delta * 0.15, 0.0)
 		_update_tell()
-		_bar.global_position = global_position + Vector2(0, 30.0)
-		_bar.global_rotation = 0.0
+		_bar.place_at(global_position + Vector2(0, 30.0))
 		return
 	_cooldown -= delta
 	_flame_time += delta
@@ -195,8 +194,7 @@ func _physics_process(delta: float) -> void:
 	if _on_screen:
 		# the charge tell is a sprite, it is updated and hidden every frame
 		_update_tell()
-		_bar.global_position = global_position + Vector2(0, 36.0)
-		_bar.global_rotation = 0.0
+		_bar.place_at(global_position + Vector2(0, 36.0))
 
 
 # --- normal flight --------------------------------------------------------
@@ -276,6 +274,7 @@ func _fire_laser() -> void:
 		get_tree().current_scene) as EnemyBullet
 	if b == null:
 		return
+	b.hide()
 	b.global_position = global_position + dir * 50.0
 	b.direction = dir
 	b.speed = laser_speed
@@ -293,6 +292,7 @@ func _fire_laser() -> void:
 	cap.height = laser_length
 	cap.radius = maxf(laser_width * 0.5, 3.0)
 	cs.shape = cap
+	b.prepare_for_flight()
 	Net.broadcast_enemy_bullet(b.global_position, b.direction, b.speed, b.damage,
 		b.burn, b.freeze, b.lifetime, b.beam_length, b.beam_width)
 	Game.sfx("laser", -8.0, 0.9, 1.1)
@@ -454,6 +454,7 @@ func _die() -> void:
 	boom.setup(1.0, Color(0.5, 0.75, 1.0))
 	Game.combat_impact(0.8)
 	Game.sfx("crunch", -15.0, 0.85, 1.18)
+	Game.on_enemy_killed("railgun")
 	if Game.upg_lifesteal:
 		var pl := get_tree().get_first_node_in_group("player")
 		if pl and pl.has_method("heal"):

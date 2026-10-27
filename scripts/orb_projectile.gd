@@ -21,6 +21,10 @@ var _pooled: bool = false
 var _shape_radius: float = -1.0
 
 
+func _init() -> void:
+	hide()
+
+
 func _current_radius() -> float:
 	# Stay full-sized for most of the flight, then dissolve slowly at the end.
 	var dissolve_start := maxf(lifetime - 2.2, 0.0)
@@ -29,6 +33,7 @@ func _current_radius() -> float:
 
 
 func _ready() -> void:
+	hide()
 	add_to_group("orb_projectile")
 	_art = get_node_or_null("OrbArt") as Sprite2D
 	var shape := get_node_or_null("CollisionShape2D") as CollisionShape2D
@@ -40,6 +45,7 @@ func _ready() -> void:
 
 func pool_activate() -> void:
 	_pooled = false
+	hide()
 	direction = Vector2.RIGHT
 	speed = 260.0
 	radius = 44.0
@@ -58,6 +64,11 @@ func pool_activate() -> void:
 	add_to_group("orb_projectile")
 	if _art != null:
 		_art.modulate.a = 1.0
+
+
+func prepare_for_flight() -> void:
+	_update_art()
+	show()
 
 
 func pool_deactivate() -> void:

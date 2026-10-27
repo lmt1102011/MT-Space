@@ -75,8 +75,7 @@ func _physics_process(delta: float) -> void:
 		collision_mask = 0
 		NetEnemy.follow(self, delta)
 		_tick_status(delta, false)
-		_bar.global_position = global_position + Vector2(0, radius + 8.0)
-		_bar.global_rotation = 0.0
+		_bar.place_at(global_position + Vector2(0, radius + 8.0))
 		return
 	if Net.is_online() and not Net.is_host():
 		return
@@ -108,8 +107,7 @@ func _physics_process(delta: float) -> void:
 		velocity = velocity.move_toward(Vector2.ZERO, 90.0 * delta)
 		move_and_slide()
 	_update_charge_art()
-	_bar.global_position = global_position + Vector2(0, radius + 8.0)
-	_bar.global_rotation = 0.0
+	_bar.place_at(global_position + Vector2(0, radius + 8.0))
 
 
 func _update_charge_art() -> void:
@@ -158,6 +156,7 @@ func _launch_orb(dir: Vector2) -> void:
 	# 0.1 every 0.25s instead of rounding every hit up to one HP.
 	orb.damage = 0.1 * (1.0 + 0.15 * float(maxi(Game.wave - 1, 0)))
 	orb.knockback = 360.0
+	orb.prepare_for_flight()
 	if Net.is_online() and Net.is_host():
 		Net.broadcast_orb(global_position + dir * 30.0, dir, orb_speed,
 			orb_radius, orb_lifetime)
@@ -246,7 +245,7 @@ func _die() -> void:
 	boom.global_position = global_position
 	boom.setup(1.0, Color(0.55, 1.0, 0.55))
 	Game.combat_impact(0.8)
-	Game.on_enemy_killed()
+	Game.on_enemy_killed("orb")
 	if drop:
 		XP_DROP.drop(get_tree(), global_position, xp)
 	queue_free()

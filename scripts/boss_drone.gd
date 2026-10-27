@@ -57,8 +57,7 @@ func _physics_process(delta: float) -> void:
 		collision_mask = 0
 		NetEnemy.follow(self, delta)
 		_tick_status(delta, false)
-		_bar.global_position = global_position + Vector2(0.0, 24.0)
-		_bar.global_rotation = 0.0
+		_bar.place_at(global_position + Vector2(0.0, 24.0))
 		return
 	if Net.is_online() and not Net.is_host():
 		return
@@ -88,8 +87,7 @@ func _physics_process(delta: float) -> void:
 	lifetime -= delta
 	if lifetime <= 0.0:
 		_detonate(false, false)
-	_bar.global_position = global_position + Vector2(0.0, 24.0)
-	_bar.global_rotation = 0.0
+	_bar.place_at(global_position + Vector2(0.0, 24.0))
 
 
 func take_damage(amount: float, kind: String = "normal") -> void:
@@ -142,7 +140,7 @@ func _detonate(hit_player: bool, shot_down: bool) -> void:
 	var xp := 10 if shot_down else 0
 	var drop_xp := NetEnemy.died(self, xp)
 	if shot_down:
-		Game.on_enemy_killed()
+		Game.on_enemy_killed("boss_drone")
 		if drop_xp:
 			XP_DROP.drop(get_tree(), global_position, xp)
 	var blast_radius := 180.0 if hit_player else 90.0

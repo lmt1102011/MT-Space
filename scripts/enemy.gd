@@ -132,8 +132,7 @@ func _physics_process(delta: float) -> void:
 		# a copy of a host enemy just walks to where the host says it is
 		NetEnemy.follow(self, delta)
 		_tick_status(delta, false)
-		_bar.global_position = global_position + Vector2(0, 30.0)
-		_bar.global_rotation = 0.0
+		_bar.place_at(global_position + Vector2(0, 30.0))
 		return
 	_anim_t += delta
 	_cull(delta)
@@ -172,8 +171,7 @@ func _physics_process(delta: float) -> void:
 			_drift = _drift.bounce(c.get_normal())
 			break
 
-	_bar.global_position = global_position + Vector2(0, radius + 14.0)
-	_bar.global_rotation = 0.0
+	_bar.place_at(global_position + Vector2(0, radius + 14.0))
 
 
 func _cull(delta: float) -> void:
@@ -280,7 +278,7 @@ func _die() -> void:
 	boom.global_position = global_position
 	boom.setup(1.0, Color(0.45, 0.9, 1.0))
 	Game.combat_impact(0.8)
-	Game.on_enemy_killed()
+	Game.on_enemy_killed("shape_%d" % sides)
 	Game.sfx("shatter", -15.0, 0.85, 1.2)
 	_on_kill()
 	if drop:

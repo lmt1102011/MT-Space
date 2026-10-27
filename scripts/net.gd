@@ -961,6 +961,7 @@ func _cli_orb(pos: Vector2, direction: Vector2, speed: float,
 	orb.radius = radius
 	orb.lifetime = lifetime
 	orb.network_visual = true
+	orb.prepare_for_flight()
 
 
 # Player bullets are simulated by their owner for damage. Other peers receive
@@ -1471,6 +1472,7 @@ func _cli_enemy_bullet(pos: Vector2, direction: Vector2, speed: float,
 		get_tree().current_scene) as EnemyBullet
 	if bullet == null:
 		return
+	bullet.hide()
 	bullet.global_position = pos
 	bullet.direction = direction
 	bullet.speed = speed
@@ -1481,6 +1483,7 @@ func _cli_enemy_bullet(pos: Vector2, direction: Vector2, speed: float,
 	bullet.beam_length = beam_length
 	bullet.beam_width = beam_width
 	bullet.network_visual = true
+	bullet.prepare_for_flight()
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 1)
@@ -1498,6 +1501,7 @@ func _cli_boss_missile(pos: Vector2, direction: Vector2, speed: float,
 	missile.network_visual = true
 	missile.collision_layer = 0
 	missile.collision_mask = 0
+	missile.prepare_for_flight()
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered", 1)
@@ -1531,6 +1535,7 @@ func _add_network_player_bullet(pos: Vector2, direction: Vector2, speed: float,
 	var bullet := Pool.acquire(scene, get_tree().current_scene) as PlayerBullet
 	if bullet == null:
 		return
+	bullet.hide()
 	bullet.global_position = pos
 	bullet.direction = direction
 	bullet.speed = speed
@@ -1539,6 +1544,7 @@ func _add_network_player_bullet(pos: Vector2, direction: Vector2, speed: float,
 	bullet.beam_width = beam_width
 	bullet.beam_color = beam_color
 	bullet.network_visual = true
+	bullet.prepare_for_flight()
 
 
 # --- session ----------------------------------------------------------------

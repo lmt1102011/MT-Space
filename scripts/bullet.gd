@@ -40,7 +40,12 @@ var _beam_core: Sprite2D = null
 var _pooled: bool = false
 
 
+func _init() -> void:
+	hide()
+
+
 func _ready() -> void:
+	hide()
 	add_to_group("player_bullet")
 	rotation = direction.angle()
 	body_entered.connect(_on_body_entered)
@@ -78,12 +83,18 @@ func pool_activate() -> void:
 	_home_t = 0.0
 	_home_age = 0.0
 	_home_target = null
-	rotation = 0.0
+	rotation = direction.angle()
 	collision_layer = 2
 	collision_mask = 14
 	set_deferred("monitoring", true)
 	set_deferred("monitorable", true)
 	add_to_group("player_bullet")
+	hide()
+
+
+func prepare_for_flight() -> void:
+	_sync_beam_visuals()
+	show()
 
 
 func pool_deactivate() -> void:

@@ -98,8 +98,7 @@ func _physics_process(delta: float) -> void:
 		_update_warning(_remote_warning_time > 0.0,
 			1.0 - _remote_warning_time / 1.5, _remote_warning_center,
 			_warning_direction)
-		_bar.global_position = global_position + Vector2(0.0, -82.0)
-		_bar.global_rotation = 0.0
+		_bar.place_at(global_position + Vector2(0.0, -82.0))
 		return
 	if Net.is_online() and not Net.is_host():
 		return
@@ -132,8 +131,7 @@ func _physics_process(delta: float) -> void:
 			_drone_timer = drone_cooldown
 		if _attack_timer <= 0.0 and target != null:
 			_start_warning(target.global_position)
-	_bar.global_position = global_position + Vector2(0.0, -82.0)
-	_bar.global_rotation = 0.0
+	_bar.place_at(global_position + Vector2(0.0, -82.0))
 
 
 func _move_step(delta: float, target: Node2D) -> void:
@@ -328,7 +326,7 @@ func _die() -> void:
 	Game.combat_impact(1.0)
 	var xp := 180
 	var drop_xp := NetEnemy.died(self, xp)
-	Game.on_enemy_killed()
+	Game.on_enemy_killed("boss_2")
 	_drop_upgrade_card()
 	if drop_xp:
 		XP_DROP.drop(get_tree(), global_position, xp)

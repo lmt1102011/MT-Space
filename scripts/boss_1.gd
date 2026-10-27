@@ -73,8 +73,7 @@ func _physics_process(delta: float) -> void:
 		collision_layer = 2
 		collision_mask = 0
 		NetEnemy.follow(self, delta)
-		_bar.global_position = global_position + Vector2(0.0, -radius - 20.0)
-		_bar.global_rotation = 0.0
+		_bar.place_at(global_position + Vector2(0.0, -radius - 20.0))
 		return
 	if Net.is_online() and not Net.is_host():
 		return
@@ -102,8 +101,7 @@ func _physics_process(delta: float) -> void:
 		_push = _push.move_toward(Vector2.ZERO, 500.0 * delta)
 		velocity = velocity.move_toward(Vector2.ZERO, 70.0 * delta)
 		move_and_slide()
-	_bar.global_position = global_position + Vector2(0.0, -radius - 20.0)
-	_bar.global_rotation = 0.0
+	_bar.place_at(global_position + Vector2(0.0, -radius - 20.0))
 
 
 func _update_attacks(delta: float, aim_angle: float) -> void:
@@ -143,6 +141,7 @@ func _fire_fan(aim_angle: float) -> void:
 			get_tree().current_scene) as EnemyBullet
 		if bullet == null:
 			continue
+		bullet.hide()
 		bullet.global_position = muzzle
 		bullet.direction = shot_dir
 		bullet.speed = 380.0
@@ -150,6 +149,7 @@ func _fire_fan(aim_angle: float) -> void:
 		bullet.lifetime = 3.0
 		bullet.beam_length = 25.0
 		bullet.beam_width = 7.0
+		bullet.prepare_for_flight()
 		Net.broadcast_enemy_bullet(bullet.global_position, bullet.direction,
 			bullet.speed, bullet.damage, bullet.burn, bullet.freeze,
 			bullet.lifetime, bullet.beam_length, bullet.beam_width)
@@ -170,6 +170,7 @@ func _fire_missile_pair(aim_angle: float) -> void:
 		missile.turn_rate = 0.85
 		missile.damage = 5 + _damage_bonus
 		missile.lifetime = 7.0
+		missile.prepare_for_flight()
 		Net.broadcast_boss_missile(missile.global_position, direction,
 			missile.speed, missile.turn_rate, missile.lifetime)
 
@@ -260,7 +261,7 @@ func _die() -> void:
 	Game.combat_impact(1.0)
 	var xp_amount := 350
 	var drop_xp := NetEnemy.died(self, xp_amount)
-	Game.on_enemy_killed()
+	Game.on_enemy_killed("boss_1")
 	_drop_upgrade_card()
 	if drop_xp:
 		XP_DROP.drop(get_tree(), global_position, xp_amount)

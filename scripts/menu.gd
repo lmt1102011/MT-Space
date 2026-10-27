@@ -27,6 +27,7 @@ func _ready() -> void:
 	_update_btn.visible = false
 	_update_btn.text = "CHECK FOR UPDATE"
 	_update_btn.pressed.connect(_on_update_pressed)
+	_style_menu_buttons()
 	var version_name := str(ProjectSettings.get_setting("application/version/name", "1.0"))
 	var embedded_version := Web.get_embedded_version()
 	_version_label.text = "v%s" % version_name
@@ -144,6 +145,46 @@ func _on_lang_selected(idx: int) -> void:
 func _on_volume_changed(value: float) -> void:
 	Game.set_master_volume(value)
 	_volume_value.text = "%d%%" % int(round(value * 100.0))
+
+
+func _style_menu_buttons() -> void:
+	_style_menu_button(_play_btn, true)
+	_style_menu_button(_settings_btn, false)
+	_style_menu_button(_quit_btn, false)
+	_style_menu_button(_update_btn, false)
+	_style_menu_button(_settings_close, false)
+
+
+func _style_menu_button(button: Button, primary: bool) -> void:
+	button.focus_mode = Control.FOCUS_NONE
+	button.add_theme_color_override("font_color",
+		Color(0.08, 0.10, 0.13) if primary else Color(0.82, 0.94, 1.0))
+	button.add_theme_color_override("font_hover_color",
+		Color(0.08, 0.10, 0.13) if primary else Color(0.94, 0.99, 1.0))
+	button.add_theme_color_override("font_pressed_color",
+		Color(0.08, 0.10, 0.13) if primary else Color(0.94, 0.99, 1.0))
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color(0.66, 0.40, 0.20, 1.0) if primary \
+		else Color(0.035, 0.10, 0.16, 0.96)
+	normal.border_color = Color(0.95, 0.64, 0.32, 0.95) if primary \
+		else Color(0.27, 0.67, 0.83, 0.88)
+	normal.set_border_width_all(1)
+	normal.set_corner_radius_all(8)
+	var hover := normal.duplicate() as StyleBoxFlat
+	hover.bg_color = Color(0.80, 0.49, 0.24, 1.0) if primary \
+		else Color(0.07, 0.17, 0.24, 1.0)
+	hover.border_color = Color(1.0, 0.76, 0.44) if primary \
+		else Color(0.46, 0.86, 0.98)
+	var pressed := normal.duplicate() as StyleBoxFlat
+	pressed.bg_color = Color(0.53, 0.31, 0.17, 1.0) if primary \
+		else Color(0.025, 0.075, 0.12, 1.0)
+	var disabled := normal.duplicate() as StyleBoxFlat
+	disabled.bg_color = Color(0.09, 0.13, 0.17, 0.9)
+	disabled.border_color = Color(0.22, 0.36, 0.43, 0.55)
+	button.add_theme_stylebox_override("normal", normal)
+	button.add_theme_stylebox_override("hover", hover)
+	button.add_theme_stylebox_override("pressed", pressed)
+	button.add_theme_stylebox_override("disabled", disabled)
 
 
 func _unhandled_input(event: InputEvent) -> void:

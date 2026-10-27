@@ -136,8 +136,7 @@ func _physics_process(delta: float) -> void:
 		_remote_phase_time = maxf(_remote_phase_time - delta, 0.0)
 		_update_visuals(_remote_phase,
 			1.0 - _remote_phase_time / maxf(_remote_phase_duration, 0.01))
-		_bar.global_position = global_position + Vector2(0.0, 38.0)
-		_bar.global_rotation = 0.0
+		_bar.place_at(global_position + Vector2(0.0, 38.0))
 		return
 	if Net.is_online() and not Net.is_host():
 		return
@@ -162,8 +161,7 @@ func _physics_process(delta: float) -> void:
 					and global_position.distance_squared_to(target.global_position) \
 					<= 1100.0 * 1100.0:
 				_start_charge()
-	_bar.global_position = global_position + Vector2(0.0, 38.0)
-	_bar.global_rotation = 0.0
+	_bar.place_at(global_position + Vector2(0.0, 38.0))
 
 
 func _move_step(delta: float, target: Node2D) -> void:
@@ -362,7 +360,7 @@ func _die() -> void:
 	boom.global_position = global_position
 	boom.setup(1.1, Color(0.25, 0.45, 1.0))
 	Game.combat_impact(0.8)
-	Game.on_enemy_killed()
+	Game.on_enemy_killed("beam_enemy")
 	if drop_xp:
 		XP_DROP.drop(get_tree(), global_position, xp)
 	queue_free()

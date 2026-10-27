@@ -13,7 +13,12 @@ var _pooled: bool = false
 const EXPLOSION_SCENE := preload("res://scenes/explosion.tscn")
 
 
+func _init() -> void:
+	hide()
+
+
 func _ready() -> void:
+	hide()
 	rotation = direction.angle()
 	body_entered.connect(_on_body_entered)
 	if network_visual:
@@ -23,6 +28,7 @@ func _ready() -> void:
 
 func pool_activate() -> void:
 	_pooled = false
+	hide()
 	speed = 195.0
 	turn_rate = 0.85
 	lifetime = 7.0
@@ -33,6 +39,11 @@ func pool_activate() -> void:
 	collision_mask = 5
 	set_deferred("monitoring", true)
 	set_deferred("monitorable", true)
+
+
+func prepare_for_flight() -> void:
+	rotation = direction.angle()
+	show()
 
 
 func pool_deactivate() -> void:

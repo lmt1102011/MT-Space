@@ -25,7 +25,12 @@ const BEAM_W := 64.0
 const BEAM_H := 16.0
 
 
+func _init() -> void:
+	hide()
+
+
 func _ready() -> void:
+	hide()
 	rotation = direction.angle()
 	body_entered.connect(_on_body_entered)
 	# the shot is an image: the outer bolt and a solid hot core
@@ -63,6 +68,7 @@ func pool_activate() -> void:
 	collision_mask = 5
 	set_deferred("monitoring", true)
 	set_deferred("monitorable", true)
+	hide()
 
 
 func pool_deactivate() -> void:
@@ -75,6 +81,15 @@ func _beam_color() -> Color:
 	if freeze > 0:
 		return Color(0.4, 0.85, 1.0, 1.0)
 	return Color(1.0, 0.15, 0.15, 1.0)
+
+
+func prepare_for_flight() -> void:
+	rotation = direction.angle()
+	_beam.modulate = _beam_color()
+	_beam.scale = Vector2(beam_length / BEAM_W, beam_width / BEAM_H)
+	_beam_core.scale = Vector2(beam_length / BEAM_W,
+		beam_width * 0.4 / BEAM_H)
+	show()
 
 
 func _physics_process(delta: float) -> void:

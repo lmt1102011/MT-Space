@@ -40,6 +40,7 @@ var _hp_drawn: int = -1
 var _base_max_speed: float = 340.0
 var _base_bullet_speed: float = 640.0
 var _base_fire_cooldown: float = 0.14
+var _ship_damage_multiplier: float = 1.0
 
 var _cooldown: float = 0.0
 var _thrust: float = 0.0
@@ -59,9 +60,15 @@ func _ready() -> void:
 	# must not physically collide with interpolated remote enemies, otherwise
 	# movement jitters, while bullets still use their own mask to hit layer 8.
 	collision_mask = 4
+	var ship_stats: Dictionary = Game.get_ship_combat_stats()
+	max_speed = float(ship_stats["max_speed"])
+	max_hp = int(ship_stats["max_hp"])
+	bullet_speed = float(ship_stats["bullet_speed"])
+	_ship_damage_multiplier = float(ship_stats["damage_multiplier"])
 	_base_max_speed = max_speed
 	_base_bullet_speed = bullet_speed
 	_base_fire_cooldown = fire_cooldown
+	_sprite.modulate = Game.get_ship_tint(Game.selected_ship_id)
 	hp = max_hp
 	_prewarm_combat_pool.call_deferred()
 	_flame_out = _make_flame(5.0)
@@ -319,7 +326,8 @@ func _shoot(delta: float) -> void:
 	if Game._burst_left > 0 and _cooldown <= 0.0:
 		_cooldown = 0.06
 		Game._burst_left -= 1
-		_spawn_bullet(dir, _base_bullet_speed * Game.upg_bullet_speed, Game.upg_damage, 0, 0, 0.0)
+		_spawn_bullet(dir, _base_bullet_speed * Game.upg_bullet_speed,
+			Game.upg_damage * _ship_damage_multiplier, 0, 0, 0.0)
 		velocity -= dir * 30.0
 		return
 
@@ -327,7 +335,8 @@ func _shoot(delta: float) -> void:
 		return
 
 	var base_speed := _base_bullet_speed * Game.upg_bullet_speed * (1.0 - 0.12 * float(Game.upg_rushed))
-	var dmg := Game.upg_damage * (1.0 + 0.25 * float(Game.upg_heavy_caliber))
+	var dmg := Game.upg_damage * _ship_damage_multiplier \
+		* (1.0 + 0.25 * float(Game.upg_heavy_caliber))
 	var burn := Game.upg_burn
 	var freeze := Game.upg_freeze
 	var rate := Game.upg_fire_rate \
@@ -376,6 +385,7 @@ func _spawn_bullet(dir: Vector2, spd: float, dmg: float, burn: int, freeze: int,
 	var bullet := Pool.acquire(BULLET_SCENE, get_tree().current_scene) as PlayerBullet
 	if bullet == null:
 		return
+	bullet.hide()
 	bullet.global_position = global_position + dir * 26.0 + offset
 	bullet.direction = dir.rotated(randf_range(-bullet_spread, bullet_spread))
 	bullet.speed = spd
@@ -400,6 +410,7 @@ func _spawn_bullet(dir: Vector2, spd: float, dmg: float, burn: int, freeze: int,
 	bullet.beam_width = width * (1.7 if is_crit else 1.0)
 	bullet.beam_color = col
 	bullet.source_position = global_position
+	bullet.prepare_for_flight()
 	if Game.upg_momentum > 0 and velocity.length() >= _base_max_speed * 0.6:
 		bullet.damage *= 1.0 + 0.15 * float(Game.upg_momentum)
 	bullet.lifetime *= 1.0 + Game.upg_range
@@ -536,7 +547,6 @@ func _die() -> void:
 		return
 	_dead = true
 	Game.player_dead = true
-	Game.finish_run()
 	Game.set_fire(false)
 	Net.send_player_death(Game.spectate_target if Game.spectate_mode else 0, Game.level)
 	# The physics loop stops below; send the death immediately instead of

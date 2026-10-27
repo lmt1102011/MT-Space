@@ -155,8 +155,7 @@ func _physics_process(delta: float) -> void:
 		NetEnemy.follow(self, delta)
 		_tick_status(delta, false)
 		_update_charge_dash_visuals(delta)
-		_bar.global_position = global_position + Vector2(0, 30.0)
-		_bar.global_rotation = 0.0
+		_bar.place_at(global_position + Vector2(0, 30.0))
 		return
 	_cull(delta)
 	_tick_status(delta)
@@ -178,8 +177,7 @@ func _physics_process(delta: float) -> void:
 		# the player is down: no hunting, no charging, just ambling about
 		_stroll_step(delta)
 		_update_charge_dash_visuals(delta)
-		_bar.global_position = global_position + Vector2(0, radius + 18.0)
-		_bar.global_rotation = 0.0
+		_bar.place_at(global_position + Vector2(0, radius + 18.0))
 		return
 
 	match _state:
@@ -195,8 +193,7 @@ func _physics_process(delta: float) -> void:
 		_face(target, delta)
 
 	_update_charge_dash_visuals(delta)
-	_bar.global_position = global_position + Vector2(0, radius + 18.0)
-	_bar.global_rotation = 0.0
+	_bar.place_at(global_position + Vector2(0, radius + 18.0))
 
 
 func _chase(delta: float, target: Node2D) -> void:
@@ -432,7 +429,7 @@ func _die() -> void:
 			pl.heal(1)
 	boom.setup(1.0, Color(1.0, 0.75, 0.3))
 	Game.combat_impact(0.8)
-	Game.on_enemy_killed()
+	Game.on_enemy_killed("charger")
 	if elite:
 		drop_elite_card()
 	if drop:

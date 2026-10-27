@@ -8,6 +8,7 @@ signal level_changed(level: int)
 signal game_over
 signal card_collected(card: Dictionary)
 signal spectate_changed(target_id: int)
+signal lobby_profile_changed
 
 var wave: int = 0
 var active: bool = true
@@ -78,15 +79,69 @@ var _fire_on: bool = false
 
 # --- run records ---
 const RUN_RECORDS_PATH := "user://run_records.cfg"
+const PILOT_PROFILE_PATH := "user://pilot_profile.cfg"
+const CASH_PER_WAVE := 10
+const XP_PER_WAVE := 10
+const SHIP_COMBAT_STATS := {
+	"aquila": {
+		"max_speed": 340.0, "max_hp": 10, "bullet_speed": 640.0,
+		"damage_multiplier": 1.0,
+	},
+	"viper": {
+		"max_speed": 390.0, "max_hp": 8, "bullet_speed": 680.0,
+		"damage_multiplier": 0.9,
+	},
+	"raven": {
+		"max_speed": 315.0, "max_hp": 12, "bullet_speed": 610.0,
+		"damage_multiplier": 1.1,
+	},
+	"phoenix": {
+		"max_speed": 330.0, "max_hp": 9, "bullet_speed": 720.0,
+		"damage_multiplier": 1.15,
+	},
+	"draco": {
+		"max_speed": 300.0, "max_hp": 14, "bullet_speed": 600.0,
+		"damage_multiplier": 1.0,
+	},
+	"orion": {
+		"max_speed": 365.0, "max_hp": 9, "bullet_speed": 660.0,
+		"damage_multiplier": 1.05,
+	},
+}
+const ENEMY_CASH_REWARDS := [
+	{"id": "shape_3", "name": "SHAPE 3", "icon": "res://assets/shape_3.svg", "cash": 1, "xp": 5},
+	{"id": "shape_4", "name": "SHAPE 4", "icon": "res://assets/shape_4.svg", "cash": 2, "xp": 10},
+	{"id": "shape_5", "name": "SHAPE 5", "icon": "res://assets/shape_5.svg", "cash": 3, "xp": 15},
+	{"id": "shape_6", "name": "SHAPE 6", "icon": "res://assets/shape_6.svg", "cash": 4, "xp": 20},
+	{"id": "shooter", "name": "SHOOTER", "icon": "res://assets/player.svg", "cash": 3, "xp": 15},
+	{"id": "double", "name": "DOUBLE", "icon": "res://assets/double_enemy.svg", "cash": 3, "xp": 15},
+	{"id": "railgun", "name": "RAILGUN", "icon": "res://assets/railgun_enemy.svg", "cash": 4, "xp": 15},
+	{"id": "charger", "name": "CHARGER", "icon": "res://assets/charger_enemy.svg", "cash": 4, "xp": 15},
+	{"id": "orb", "name": "ORB", "icon": "res://assets/orb_enemy.svg", "cash": 5, "xp": 20},
+	{"id": "beam_enemy", "name": "BEAM", "icon": "res://assets/beam_enemy.svg", "cash": 6, "xp": 25},
+	{"id": "boss_drone", "name": "BOSS DRONE", "icon": "res://assets/boss_drone.svg", "cash": 2, "xp": 10},
+	{"id": "boss_1", "name": "BOSS", "icon": "res://assets/boss_1.svg", "cash": 25, "xp": 350},
+	{"id": "boss_2", "name": "BOSS 2", "icon": "res://assets/boss_2.svg", "cash": 40, "xp": 180},
+]
 var latest_run: Dictionary = {}
 var best_run: Dictionary = {}
 var card_pick_counts: Dictionary = {}
+var pilot_tokens: int = 0
+var pilot_cash: int = 0
+var pilot_level: int = 1
+var pilot_xp: int = 0
+var selected_ship_id: String = "aquila"
+var unlocked_ship_ids: Array[String] = ["aquila"]
+var _daily_mission_progress: Dictionary = {}
+var _daily_mission_claimed: Dictionary = {}
+var _daily_mission_date: String = ""
 var _run_started_at_msec: int = 0
 var _run_damage: int = 0
 var _run_bosses_killed: int = 0
 var _run_boss_kill_times: Array[float] = []
 var _run_boss_started_at: Dictionary = {}
 var _run_max_wave: int = 0
+var _run_enemy_kills: Dictionary = {}
 var _run_active: bool = false
 var _run_finished: bool = false
 var _impact_cooldown: float = 0.0
@@ -98,6 +153,7 @@ var _hitstop_active: bool = false
 func _ready() -> void:
 	_load_settings()
 	_load_run_records()
+	_load_pilot_profile()
 	for i in SfxLib.POOL:
 		var p := AudioStreamPlayer.new()
 		# must keep playing while the tree is paused (card screen, game over)
@@ -176,6 +232,7 @@ func start_run() -> void:
 	_run_boss_kill_times.clear()
 	_run_boss_started_at.clear()
 	_run_max_wave = maxi(wave, 0)
+	_run_enemy_kills.clear()
 
 
 func record_damage(amount: int) -> void:
@@ -188,6 +245,44 @@ func record_wave(wave_number: int) -> void:
 	if not _run_active or _run_finished or test_mode:
 		return
 	_run_max_wave = maxi(_run_max_wave, wave_number)
+
+
+func record_enemy_kill(enemy_id: String) -> void:
+	if not _run_active or _run_finished or test_mode or enemy_id.is_empty():
+		return
+	_run_enemy_kills[enemy_id] = int(_run_enemy_kills.get(enemy_id, 0)) + 1
+
+
+func _build_run_reward_rows(kills: Dictionary, reached_wave: int) -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	for definition: Dictionary in ENEMY_CASH_REWARDS:
+		var count := int(kills.get(str(definition["id"]), 0))
+		if count <= 0:
+			continue
+		var unit_reward := int(definition["cash"])
+		var unit_xp := int(definition["xp"])
+		rows.append({
+			"id": definition["id"],
+			"name": definition["name"],
+			"icon": definition["icon"],
+			"count": count,
+			"unit_reward": unit_reward,
+			"reward": count * unit_reward,
+			"unit_xp": unit_xp,
+			"xp_reward": count * unit_xp,
+		})
+	if reached_wave > 0:
+		rows.append({
+			"id": "waves",
+			"name": "WAVES",
+			"icon": "res://assets/icons/trophy.svg",
+			"count": reached_wave,
+			"unit_reward": CASH_PER_WAVE,
+			"reward": reached_wave * CASH_PER_WAVE,
+			"unit_xp": XP_PER_WAVE,
+			"xp_reward": reached_wave * XP_PER_WAVE,
+		})
+	return rows
 
 
 func register_boss_spawn(boss_instance_id: int) -> void:
@@ -209,6 +304,26 @@ func record_boss_kill(boss_instance_id: int) -> void:
 	_run_boss_kill_times.append(
 		maxf(float(Time.get_ticks_msec() - started_at) / 1000.0, 0.0)
 	)
+
+
+func _grant_run_rewards(cash_earned: int, xp_earned: int) -> bool:
+	var previous_cash := pilot_cash
+	var previous_pilot_xp := pilot_xp
+	var previous_pilot_level := pilot_level
+	pilot_cash += cash_earned
+	pilot_xp += xp_earned
+	while pilot_xp >= xp_needed_for(pilot_level):
+		pilot_xp -= xp_needed_for(pilot_level)
+		pilot_level += 1
+	var rewards_saved := _save_pilot_profile()
+	if not rewards_saved:
+		pilot_cash = previous_cash
+		pilot_xp = previous_pilot_xp
+		pilot_level = previous_pilot_level
+		return false
+	if cash_earned > 0 or xp_earned > 0:
+		lobby_profile_changed.emit()
+	return true
 
 
 func finish_run() -> void:
@@ -239,8 +354,22 @@ func finish_run() -> void:
 			total_boss_kill_time += kill_time
 		average_boss_kill_time = total_boss_kill_time \
 			/ float(_run_boss_kill_times.size())
+	var reward_rows := _build_run_reward_rows(_run_enemy_kills, _run_max_wave)
+	var cash_earned := 0
+	var xp_earned := 0
+	for reward_row: Dictionary in reward_rows:
+		cash_earned += int(reward_row["reward"])
+		xp_earned += int(reward_row["xp_reward"])
+	var rewards_saved := _grant_run_rewards(cash_earned, xp_earned) \
+		if cash_earned > 0 or xp_earned > 0 else true
 	latest_run = {
 		"wave": _run_max_wave,
+		"enemy_kills": _run_enemy_kills.duplicate(true),
+		"reward_rows": reward_rows,
+		"cash_earned": cash_earned,
+		"xp_earned": xp_earned,
+		"cash_saved": rewards_saved,
+		"xp_saved": rewards_saved,
 		"bosses": _run_bosses_killed,
 		"boss_kill_times": _run_boss_kill_times.duplicate(),
 		"average_boss_kill_seconds": average_boss_kill_time,
@@ -255,7 +384,212 @@ func finish_run() -> void:
 			or (latest_wave == best_wave
 				and elapsed > float(best_run.get("seconds", 0.0))):
 		best_run = latest_run.duplicate(true)
+	_record_daily_run(latest_run)
 	_save_run_records()
+
+
+func get_daily_missions() -> Array[Dictionary]:
+	_ensure_current_daily_missions()
+	var missions: Array[Dictionary] = []
+	for definition: Dictionary in _daily_mission_definitions():
+		var mission_id := str(definition["id"])
+		var mission := definition.duplicate(true)
+		mission["progress"] = mini(
+			int(_daily_mission_progress.get(mission_id, 0)),
+			int(definition["target"])
+		)
+		mission["claimed"] = bool(_daily_mission_claimed.get(mission_id, false))
+		missions.append(mission)
+	return missions
+
+
+func claim_daily_mission(mission_id: String) -> bool:
+	for mission: Dictionary in get_daily_missions():
+		if str(mission["id"]) != mission_id:
+			continue
+		if bool(mission["claimed"]) \
+				or int(mission["progress"]) < int(mission["target"]):
+			return false
+		_daily_mission_claimed[mission_id] = true
+		var previous_tokens := pilot_tokens
+		pilot_tokens += int(mission["reward"])
+		if not _save_pilot_profile():
+			_daily_mission_claimed.erase(mission_id)
+			pilot_tokens = previous_tokens
+			return false
+		lobby_profile_changed.emit()
+		return true
+	return false
+
+
+func set_selected_ship(ship_id: String) -> bool:
+	if not is_ship_unlocked(ship_id):
+		return false
+	var config := ConfigFile.new()
+	var load_error := config.load(PILOT_PROFILE_PATH)
+	if load_error != OK and load_error != ERR_FILE_NOT_FOUND:
+		push_error("Unable to load pilot profile before saving ship: %s" % error_string(load_error))
+		return false
+	config.set_value("pilot", "selected_ship", ship_id)
+	var error := config.save(PILOT_PROFILE_PATH)
+	if error != OK:
+		push_error("Unable to save selected ship: %s" % error_string(error))
+		return false
+	selected_ship_id = ship_id
+	lobby_profile_changed.emit()
+	return true
+
+
+func get_ship_unlock_wave(ship_id: String) -> int:
+	return _ship_unlock_wave(ship_id)
+
+
+func get_ship_combat_stats(ship_id: String = "") -> Dictionary:
+	var requested_id := selected_ship_id if ship_id.is_empty() else ship_id
+	var stats: Dictionary = SHIP_COMBAT_STATS.get(
+		requested_id, SHIP_COMBAT_STATS["aquila"]
+	)
+	return stats.duplicate(true)
+
+
+func is_ship_unlocked(ship_id: String) -> bool:
+	var unlock_wave := _ship_unlock_wave(ship_id)
+	return unlock_wave >= 0 and (
+		ship_id in unlocked_ship_ids
+		or int(best_run.get("wave", 0)) >= unlock_wave
+	)
+
+
+func get_ship_token_cost(ship_id: String) -> int:
+	var costs := {
+		"viper": 100,
+		"raven": 150,
+		"phoenix": 250,
+		"draco": 350,
+		"orion": 500,
+	}
+	return int(costs.get(ship_id, -1))
+
+
+func unlock_ship_with_tokens(ship_id: String) -> bool:
+	if is_ship_unlocked(ship_id):
+		return false
+	var cost := get_ship_token_cost(ship_id)
+	if cost < 0 or pilot_tokens < cost:
+		return false
+	pilot_tokens -= cost
+	if not unlocked_ship_ids.has(ship_id):
+		unlocked_ship_ids.append(ship_id)
+	if not _save_pilot_profile():
+		pilot_tokens += cost
+		unlocked_ship_ids.erase(ship_id)
+		return false
+	lobby_profile_changed.emit()
+	return true
+
+
+func get_ship_tint(ship_id: String) -> Color:
+	var tints := {
+		"aquila": Color(0.86, 0.94, 1.0),
+		"viper": Color(0.40, 0.91, 1.0),
+		"raven": Color(0.75, 0.57, 1.0),
+		"phoenix": Color(1.0, 0.68, 0.37),
+		"draco": Color(0.46, 1.0, 0.68),
+		"orion": Color(1.0, 0.48, 0.62),
+	}
+	return tints.get(ship_id, Color.WHITE)
+
+
+func _ship_unlock_wave(ship_id: String) -> int:
+	var unlock_waves := {
+		"aquila": 0,
+		"viper": 3,
+		"raven": 5,
+		"phoenix": 8,
+		"draco": 12,
+		"orion": 16,
+	}
+	return int(unlock_waves.get(ship_id, -1))
+
+
+func _daily_mission_definitions() -> Array[Dictionary]:
+	return [
+		{"id": "play_run", "title": "Complete a run", "target": 1, "reward": 50},
+		{"id": "reach_wave", "title": "Reach wave 5", "target": 5, "reward": 100},
+		{"id": "defeat_boss", "title": "Defeat a boss", "target": 1, "reward": 100},
+	]
+
+
+func _record_daily_run(run: Dictionary) -> void:
+	_ensure_current_daily_missions()
+	_daily_mission_progress["play_run"] = \
+		int(_daily_mission_progress.get("play_run", 0)) + 1
+	_daily_mission_progress["reach_wave"] = maxi(
+		int(_daily_mission_progress.get("reach_wave", 0)),
+		int(run.get("wave", 0))
+	)
+	_daily_mission_progress["defeat_boss"] = \
+		int(_daily_mission_progress.get("defeat_boss", 0)) \
+		+ int(run.get("bosses", 0))
+	_save_pilot_profile()
+	lobby_profile_changed.emit()
+
+
+func _ensure_current_daily_missions() -> void:
+	var today := Time.get_date_string_from_system()
+	if _daily_mission_date == today:
+		return
+	_daily_mission_date = today
+	_daily_mission_progress.clear()
+	_daily_mission_claimed.clear()
+	_save_pilot_profile()
+
+
+func _load_pilot_profile() -> void:
+	var config := ConfigFile.new()
+	var error := config.load(PILOT_PROFILE_PATH)
+	if error != OK and error != ERR_FILE_NOT_FOUND:
+		push_error("Unable to load pilot profile: %s" % error_string(error))
+	pilot_tokens = maxi(0, int(config.get_value("pilot", "tokens", 0)))
+	pilot_cash = maxi(0, int(config.get_value("pilot", "cash", 0)))
+	pilot_level = maxi(1, int(config.get_value("pilot", "level", 1)))
+	pilot_xp = maxi(0, int(config.get_value("pilot", "xp", 0)))
+	selected_ship_id = str(config.get_value("pilot", "selected_ship", "aquila"))
+	var unlocked: Variant = config.get_value("pilot", "unlocked_ships", ["aquila"])
+	unlocked_ship_ids.clear()
+	if unlocked is Array:
+		for id: Variant in unlocked:
+			var ship_id := str(id)
+			if _ship_unlock_wave(ship_id) >= 0 and not unlocked_ship_ids.has(ship_id):
+				unlocked_ship_ids.append(ship_id)
+	if not unlocked_ship_ids.has("aquila"):
+		unlocked_ship_ids.append("aquila")
+	_daily_mission_date = str(config.get_value("daily", "date", ""))
+	var progress: Variant = config.get_value("daily", "progress", {})
+	var claimed: Variant = config.get_value("daily", "claimed", {})
+	_daily_mission_progress = progress if progress is Dictionary else {}
+	_daily_mission_claimed = claimed if claimed is Dictionary else {}
+	_ensure_current_daily_missions()
+	if not is_ship_unlocked(selected_ship_id):
+		selected_ship_id = "aquila"
+
+
+func _save_pilot_profile() -> bool:
+	var config := ConfigFile.new()
+	config.set_value("pilot", "tokens", pilot_tokens)
+	config.set_value("pilot", "cash", pilot_cash)
+	config.set_value("pilot", "level", pilot_level)
+	config.set_value("pilot", "xp", pilot_xp)
+	config.set_value("pilot", "selected_ship", selected_ship_id)
+	config.set_value("pilot", "unlocked_ships", unlocked_ship_ids)
+	config.set_value("daily", "date", _daily_mission_date)
+	config.set_value("daily", "progress", _daily_mission_progress)
+	config.set_value("daily", "claimed", _daily_mission_claimed)
+	var error := config.save(PILOT_PROFILE_PATH)
+	if error != OK:
+		push_error("Unable to save pilot profile: %s" % error_string(error))
+		return false
+	return true
 
 
 func build_item_label(item: String) -> String:
@@ -501,6 +835,7 @@ func reset_run() -> void:
 	_run_boss_kill_times.clear()
 	_run_boss_started_at.clear()
 	_run_max_wave = 0
+	_run_enemy_kills.clear()
 	Engine.time_scale = 1.0
 	_hitstop_active = false
 	_camera_shake_time = 0.0
@@ -521,6 +856,7 @@ func notify_player_died() -> void:
 		spectate_target = int(alive[0])
 		spectate_changed.emit(spectate_target)
 		return
+	finish_run()
 	is_game_over = true
 	game_over.emit()
 
@@ -682,7 +1018,8 @@ func add_xp(amount: int) -> void:
 
 
 # Called by enemies when they die - Bloodthirst may heal the player.
-func on_enemy_killed() -> void:
+func on_enemy_killed(enemy_id: String = "") -> void:
+	record_enemy_kill(enemy_id)
 	if upg_bloodthirst <= 0:
 		return
 	if randf() >= 0.12 * float(upg_bloodthirst):

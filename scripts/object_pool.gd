@@ -32,6 +32,7 @@ func _acquire(scene: PackedScene, parent: Node) -> Node:
 	if instance == null:
 		instance = scene.instantiate()
 		instance.set_meta("_pool_scene_key", key)
+		instance.hide()
 		parent.add_child(instance)
 	else:
 		instance.reparent(parent)

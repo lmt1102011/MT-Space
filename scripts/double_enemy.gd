@@ -137,8 +137,7 @@ func _physics_process(delta: float) -> void:
 			clampf(net_velocity.length() / maxf(move_speed, 1.0), 0.0, 1.0), delta * 8.0)
 		_flame_time += delta
 		_update_flame()
-		_bar.global_position = global_position + Vector2(0, 30.0)
-		_bar.global_rotation = 0.0
+		_bar.place_at(global_position + Vector2(0, 30.0))
 		return
 	_cooldown -= delta
 	_flame_time += delta
@@ -200,8 +199,7 @@ func _physics_process(delta: float) -> void:
 	_update_flame()
 
 	if _on_screen:
-		_bar.global_position = global_position + Vector2(0, radius + 16.0)
-		_bar.global_rotation = 0.0
+		_bar.place_at(global_position + Vector2(0, radius + 16.0))
 
 
 func _update_goal(target: Node2D, delta: float) -> void:
@@ -238,6 +236,7 @@ func _fire(dir: Vector2) -> void:
 			get_tree().current_scene) as EnemyBullet
 		if b == null:
 			continue
+		b.hide()
 		b.global_position = global_position + dir * (radius + 6.0) + perp * (10.0 * float(sign_i))
 		b.direction = dir
 		b.speed = bullet_speed
@@ -246,6 +245,7 @@ func _fire(dir: Vector2) -> void:
 		b.freeze = _elite_freeze
 		if _elite_crit > 0.0 and randf() < _elite_crit:
 			b.damage = int(round(b.damage * 2.0))
+		b.prepare_for_flight()
 		Net.broadcast_enemy_bullet(b.global_position, b.direction, b.speed, b.damage,
 			b.burn, b.freeze, b.lifetime, b.beam_length, b.beam_width)
 
@@ -398,7 +398,7 @@ func _die() -> void:
 			pl.heal(1)
 	boom.setup(1.0, Color(1.0, 0.32, 0.28))
 	Game.combat_impact(0.8)
-	Game.on_enemy_killed()
+	Game.on_enemy_killed("double")
 	if elite:
 		drop_elite_card()
 	if drop:

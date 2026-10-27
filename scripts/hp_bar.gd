@@ -28,7 +28,12 @@ var _bg: Sprite2D = null
 var _fill: Sprite2D = null
 
 
+func _init() -> void:
+	hide()
+
+
 func _ready() -> void:
+	hide()
 	var tex := _pixel_tex()
 	_bg = Sprite2D.new()
 	_bg.texture = tex
@@ -44,6 +49,12 @@ func _ready() -> void:
 	_fill.position = Vector2(-bar_width * 0.5 + 1.0, 1.0)
 	add_child(_fill)
 	_apply()
+
+
+func place_at(world_position: Vector2) -> void:
+	global_position = world_position
+	global_rotation = 0.0
+	show()
 
 
 func set_ratio(value: float, color: Color = Color(0, 0, 0, 0)) -> void:

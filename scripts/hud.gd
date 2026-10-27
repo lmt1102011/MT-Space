@@ -24,6 +24,10 @@ var _inventory: CanvasLayer = null
 var _countdown: int = 0
 
 var _game_over_layer: Control
+var _game_over_panel: PanelContainer
+var _game_over_scroll: ScrollContainer
+var _game_over_total: Label
+var _game_over_footer: VBoxContainer
 var _play_again_btn: Button
 var _menu_btn: Button
 var _name_prompt: Control
@@ -45,10 +49,13 @@ func _ready() -> void:
 		_update_btn.visible = false
 		_update_btn.text = "CHECK FOR UPDATE"
 		_update_btn.pressed.connect(_on_update_pressed)
+		_style_tech_button(_update_btn, false)
 	if _backpack_btn:
 		_backpack_btn.pressed.connect(_on_backpack_pressed)
 	if Web.has_update():
 		_on_update_available(Web.available_version)
+	_style_tech_button(_settings_btn, false)
+	_style_tech_button(_settings_quit, true)
 	var spawner := get_node_or_null("../Spawner")
 	if spawner:
 		spawner.wave_cleared_text.connect(_on_wave_cleared)
@@ -310,77 +317,280 @@ func _on_game_over() -> void:
 	add_child(_game_over_layer)
 
 	var dim := ColorRect.new()
-	dim.color = Color(0.0, 0.0, 0.0, 0.65)
+	dim.color = Color(0.005, 0.015, 0.035, 0.82)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_game_over_layer.add_child(dim)
 
+	_game_over_panel = PanelContainer.new()
+	_game_over_panel.name = "RunResultsPanel"
+	_game_over_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_game_over_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.025, 0.055, 0.10, 0.98)
+	panel_style.border_color = Color(0.24, 0.68, 0.84, 0.88)
+	panel_style.set_border_width_all(1)
+	panel_style.set_border_width(SIDE_LEFT, 3)
+	panel_style.set_corner_radius_all(14)
+	panel_style.shadow_color = Color(0.0, 0.01, 0.035, 0.8)
+	panel_style.shadow_size = 22
+	_game_over_panel.add_theme_stylebox_override("panel", panel_style)
+	_game_over_layer.add_child(_game_over_panel)
+
+	var margin := MarginContainer.new()
+	margin.name = "RunResultsMargin"
+	for side in [SIDE_LEFT, SIDE_TOP, SIDE_RIGHT, SIDE_BOTTOM]:
+		margin.add_theme_constant_override("margin_" + _side_name(side), 16)
+	_game_over_panel.add_child(margin)
+	var layout := VBoxContainer.new()
+	layout.add_theme_constant_override("separation", 10)
+	margin.add_child(layout)
+
+	var header := VBoxContainer.new()
+	header.add_theme_constant_override("separation", 3)
+	layout.add_child(header)
 	var title_label := Label.new()
 	var locale := get_node_or_null("/root/Locale")
 	title_label.text = str(locale.call("translate_text", "GAME OVER")) \
 		if locale else "GAME OVER"
-	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	title_label.offset_left = -400.0
-	title_label.offset_right = 400.0
-	title_label.offset_top = 90.0
-	title_label.offset_bottom = 160.0
-	title_label.add_theme_font_size_override("font_size", 52)
-	title_label.add_theme_color_override("font_color", Color(0.95, 0.35, 0.35))
-	title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_game_over_layer.add_child(title_label)
-
+	title_label.add_theme_font_size_override("font_size", 30)
+	title_label.add_theme_color_override("font_color", Color(1.0, 0.58, 0.37))
+	header.add_child(title_label)
 	var summary_label := Label.new()
-	summary_label.text = _format_run_summary(Game.latest_run)
-	summary_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	summary_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	summary_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	summary_label.set_anchors_preset(Control.PRESET_CENTER)
-	summary_label.offset_left = -260.0
-	summary_label.offset_right = 260.0
-	summary_label.offset_top = -105.0
-	summary_label.offset_bottom = 5.0
-	summary_label.add_theme_font_size_override("font_size", 18)
-	summary_label.add_theme_color_override("font_color", Color(0.82, 0.9, 1.0))
-	summary_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_game_over_layer.add_child(summary_label)
+	summary_label.name = "RunResultsSummary"
+	summary_label.text = _run_results_subtitle(Game.latest_run)
+	summary_label.add_theme_font_size_override("font_size", 12)
+	summary_label.add_theme_color_override("font_color", Color(0.57, 0.82, 0.93))
+	header.add_child(summary_label)
 
+	_game_over_scroll = ScrollContainer.new()
+	_game_over_scroll.name = "KillRewardScroll"
+	_game_over_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_game_over_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_game_over_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	layout.add_child(_game_over_scroll)
+	var rows := VBoxContainer.new()
+	rows.name = "KillRewardRows"
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rows.add_theme_constant_override("separation", 6)
+	_game_over_scroll.add_child(rows)
+	_add_run_reward_rows(rows, Game.latest_run)
+
+	_game_over_footer = VBoxContainer.new()
+	_game_over_footer.name = "RunRewardFooter"
+	_game_over_footer.add_theme_constant_override("separation", 8)
+	var footer_style := StyleBoxFlat.new()
+	footer_style.bg_color = Color(0.045, 0.12, 0.18, 0.98)
+	footer_style.border_color = Color(0.25, 0.68, 0.82, 0.65)
+	footer_style.set_border_width_all(1)
+	footer_style.set_corner_radius_all(9)
+	var footer_panel := PanelContainer.new()
+	footer_panel.name = "RunRewardBar"
+	footer_panel.add_theme_stylebox_override("panel", footer_style)
+	layout.add_child(footer_panel)
+	var footer_margin := MarginContainer.new()
+	for side in [SIDE_LEFT, SIDE_TOP, SIDE_RIGHT, SIDE_BOTTOM]:
+		footer_margin.add_theme_constant_override("margin_" + _side_name(side), 10)
+	footer_panel.add_child(footer_margin)
+	footer_margin.add_child(_game_over_footer)
+	var total_row := HBoxContainer.new()
+	total_row.add_theme_constant_override("separation", 8)
+	_game_over_footer.add_child(total_row)
+	var total_title := Label.new()
+	total_title.text = _translate("TOTAL EARNED")
+	total_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	total_title.add_theme_font_size_override("font_size", 14)
+	total_title.add_theme_color_override("font_color", Color(0.76, 0.88, 0.94))
+	total_row.add_child(total_title)
+	_game_over_total = Label.new()
+	_game_over_total.name = "TotalCashEarned"
+	_game_over_total.text = "+%d $" % int(Game.latest_run.get("cash_earned", 0))
+	_game_over_total.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_game_over_total.add_theme_font_size_override("font_size", 20)
+	_game_over_total.add_theme_color_override("font_color", Color(1.0, 0.73, 0.38))
+	total_row.add_child(_game_over_total)
+	var experience_row := HBoxContainer.new()
+	experience_row.name = "TotalExperienceRow"
+	experience_row.add_theme_constant_override("separation", 8)
+	_game_over_footer.add_child(experience_row)
+	var experience_title := Label.new()
+	experience_title.text = _translate("TOTAL EXPERIENCE")
+	experience_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	experience_title.add_theme_font_size_override("font_size", 13)
+	experience_title.add_theme_color_override("font_color", Color(0.69, 0.86, 0.94))
+	experience_row.add_child(experience_title)
+	var total_experience := Label.new()
+	total_experience.name = "TotalExperienceEarned"
+	total_experience.text = "+%d XP" % int(Game.latest_run.get("xp_earned", 0))
+	total_experience.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	total_experience.add_theme_font_size_override("font_size", 18)
+	total_experience.add_theme_color_override("font_color", Color(0.42, 0.86, 0.98))
+	experience_row.add_child(total_experience)
+	if not bool(Game.latest_run.get("cash_saved", true)) \
+			or not bool(Game.latest_run.get("xp_saved", true)):
+		var save_warning := Label.new()
+		save_warning.name = "CashSaveWarning"
+		save_warning.text = _translate("REWARD SAVE FAILED")
+		save_warning.add_theme_font_size_override("font_size", 11)
+		save_warning.add_theme_color_override("font_color", Color(1.0, 0.48, 0.35))
+		_game_over_footer.add_child(save_warning)
+
+	var actions := HBoxContainer.new()
+	actions.name = "RunResultActions"
+	actions.add_theme_constant_override("separation", 8)
+	_game_over_footer.add_child(actions)
 	_play_again_btn = Button.new()
 	_play_again_btn.text = str(locale.call("translate_text", "PLAY AGAIN")) \
 		if locale else "PLAY AGAIN"
-	_play_again_btn.set_anchors_preset(Control.PRESET_CENTER)
-	_play_again_btn.offset_left = -110.0
-	_play_again_btn.offset_right = 110.0
-	_play_again_btn.offset_top = 45.0
-	_play_again_btn.offset_bottom = 93.0
-	_play_again_btn.add_theme_font_size_override("font_size", 24)
+	_play_again_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_play_again_btn.custom_minimum_size.y = 42
+	_style_tech_button(_play_again_btn, true)
 	_play_again_btn.pressed.connect(_on_play_again)
-	_game_over_layer.add_child(_play_again_btn)
-
 	_menu_btn = Button.new()
-	_menu_btn.text = str(locale.call("translate_text", "MAIN MENU")) \
-		if locale else "MAIN MENU"
-	_menu_btn.set_anchors_preset(Control.PRESET_CENTER)
-	_menu_btn.offset_left = -110.0
-	_menu_btn.offset_right = 110.0
-	_menu_btn.offset_top = 103.0
-	_menu_btn.offset_bottom = 147.0
-	_menu_btn.add_theme_font_size_override("font_size", 18)
+	_menu_btn.text = _translate("RETURN TO LOBBY")
+	_menu_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_menu_btn.custom_minimum_size.y = 42
+	_style_tech_button(_menu_btn, false)
 	_menu_btn.pressed.connect(_on_main_menu)
-	_game_over_layer.add_child(_menu_btn)
+	actions.add_child(_play_again_btn)
+	actions.add_child(_menu_btn)
+	_layout_game_over()
+	get_viewport().size_changed.connect(_layout_game_over)
 
 	dim.modulate.a = 0.0
-	title_label.modulate.a = 0.0
-	summary_label.modulate.a = 0.0
-	_play_again_btn.modulate.a = 0.0
-	_menu_btn.modulate.a = 0.0
+	_game_over_panel.modulate.a = 0.0
+	_game_over_panel.scale = Vector2(0.97, 0.97)
+	_game_over_panel.pivot_offset = _game_over_panel.size * 0.5
 	var tw := create_tween()
 	tw.tween_property(dim, "modulate:a", 1.0, 0.6)
-	tw.parallel().tween_property(title_label, "modulate:a", 1.0, 0.8)
-	tw.parallel().tween_property(summary_label, "modulate:a", 1.0, 0.8)
-	tw.tween_interval(0.3)
-	tw.tween_property(_play_again_btn, "modulate:a", 1.0, 1.5)
-	tw.parallel().tween_property(_menu_btn, "modulate:a", 1.0, 1.5)
+	tw.parallel().tween_property(_game_over_panel, "modulate:a", 1.0, 0.28)
+	tw.parallel().tween_property(
+		_game_over_panel, "scale", Vector2.ONE, 0.28
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+
+
+func _layout_game_over() -> void:
+	if not is_instance_valid(_game_over_panel):
+		return
+	var viewport_size := get_viewport().get_visible_rect().size
+	var panel_size := Vector2(
+		minf(820.0, maxf(280.0, viewport_size.x - 28.0)),
+		minf(650.0, maxf(300.0, viewport_size.y - 28.0))
+	)
+	_game_over_panel.offset_left = -panel_size.x * 0.5
+	_game_over_panel.offset_top = -panel_size.y * 0.5
+	_game_over_panel.offset_right = panel_size.x * 0.5
+	_game_over_panel.offset_bottom = panel_size.y * 0.5
+	_game_over_panel.pivot_offset = panel_size * 0.5
+
+
+func _side_name(side: int) -> String:
+	match side:
+		SIDE_LEFT: return "left"
+		SIDE_TOP: return "top"
+		SIDE_RIGHT: return "right"
+		_: return "bottom"
+
+
+func _translate(text: String) -> String:
+	var locale := get_node_or_null("/root/Locale")
+	return str(locale.call("translate_text", text)) if locale else text
+
+
+func _run_results_subtitle(run: Dictionary) -> String:
+	var kills: Dictionary = run.get("enemy_kills", {})
+	var defeated := 0
+	for count: Variant in kills.values():
+		defeated += int(count)
+	return "%s   %d     |     %s   %d" % [
+		_translate("WAVE REACHED"), int(run.get("wave", 0)),
+		_translate("ENEMIES DEFEATED"), defeated,
+	]
+
+
+func _add_run_reward_rows(parent: VBoxContainer, run: Dictionary) -> void:
+	var reward_rows: Array = run.get("reward_rows", [])
+	if reward_rows.is_empty():
+		var empty := Label.new()
+		empty.text = _translate("NO REWARDS EARNED")
+		empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		empty.add_theme_color_override("font_color", Color(0.62, 0.73, 0.83))
+		parent.add_child(empty)
+		return
+	for reward: Dictionary in reward_rows:
+		var row := PanelContainer.new()
+		var row_style := StyleBoxFlat.new()
+		row_style.bg_color = Color(0.055, 0.10, 0.16, 0.96)
+		row_style.border_color = Color(0.20, 0.42, 0.56, 0.52)
+		row_style.set_border_width_all(1)
+		row_style.set_corner_radius_all(7)
+		row.add_theme_stylebox_override("panel", row_style)
+		parent.add_child(row)
+		var row_margin := MarginContainer.new()
+		row_margin.add_theme_constant_override("margin_left", 9)
+		row_margin.add_theme_constant_override("margin_top", 6)
+		row_margin.add_theme_constant_override("margin_right", 9)
+		row_margin.add_theme_constant_override("margin_bottom", 6)
+		row.add_child(row_margin)
+		var content := HBoxContainer.new()
+		content.add_theme_constant_override("separation", 10)
+		row_margin.add_child(content)
+		var icon := TextureRect.new()
+		icon.name = "RewardIcon_" + str(reward["id"])
+		icon.custom_minimum_size = Vector2(42, 42)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.texture = load(str(reward["icon"])) as Texture2D
+		if str(reward["id"]) == "shooter":
+			icon.modulate = Color(1.0, 0.26, 0.28)
+		content.add_child(icon)
+		var identity := VBoxContainer.new()
+		identity.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		identity.alignment = BoxContainer.ALIGNMENT_CENTER
+		identity.add_theme_constant_override("separation", 2)
+		content.add_child(identity)
+		var name := Label.new()
+		name.text = _translate(str(reward["name"]))
+		name.add_theme_font_size_override("font_size", 14)
+		name.add_theme_color_override("font_color", Color(0.88, 0.94, 1.0))
+		identity.add_child(name)
+		var cash_calculation := Label.new()
+		cash_calculation.name = "CashCalculation_" + str(reward["id"])
+		cash_calculation.text = "%d x %d $" % [
+			int(reward["count"]), int(reward["unit_reward"]),
+		]
+		cash_calculation.add_theme_font_size_override("font_size", 11)
+		cash_calculation.add_theme_color_override("font_color", Color(0.53, 0.72, 0.84))
+		identity.add_child(cash_calculation)
+		var xp_calculation := Label.new()
+		xp_calculation.name = "ExperienceCalculation_" + str(reward["id"])
+		xp_calculation.text = "%d x %d XP" % [
+			int(reward["count"]), int(reward["unit_xp"]),
+		]
+		xp_calculation.add_theme_font_size_override("font_size", 11)
+		xp_calculation.add_theme_color_override("font_color", Color(0.42, 0.78, 0.91))
+		identity.add_child(xp_calculation)
+		var reward_amounts := VBoxContainer.new()
+		reward_amounts.custom_minimum_size.x = 78
+		reward_amounts.alignment = BoxContainer.ALIGNMENT_CENTER
+		reward_amounts.add_theme_constant_override("separation", 2)
+		content.add_child(reward_amounts)
+		var amount := Label.new()
+		amount.name = "CashReward_" + str(reward["id"])
+		amount.text = "+%d $" % int(reward["reward"])
+		amount.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		amount.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		amount.add_theme_font_size_override("font_size", 15)
+		amount.add_theme_color_override("font_color", Color(1.0, 0.73, 0.38))
+		reward_amounts.add_child(amount)
+		var xp_amount := Label.new()
+		xp_amount.name = "ExperienceReward_" + str(reward["id"])
+		xp_amount.text = "+%d XP" % int(reward["xp_reward"])
+		xp_amount.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		xp_amount.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		xp_amount.add_theme_font_size_override("font_size", 12)
+		xp_amount.add_theme_color_override("font_color", Color(0.42, 0.86, 0.98))
+		reward_amounts.add_child(xp_amount)
 
 
 func _on_play_again() -> void:
@@ -401,11 +611,40 @@ func _on_main_menu() -> void:
 	Game.test_mode = false
 	Game.test_data = {}
 	Net.leave()
-	call_deferred("_change_to_menu")
+	call_deferred("_change_to_lobby")
 
 
-func _change_to_menu() -> void:
-	get_tree().change_scene_to_file("res://scenes/menu.tscn")
+func _style_tech_button(button: Button, primary: bool) -> void:
+	if button == null:
+		return
+	button.focus_mode = Control.FOCUS_NONE
+	button.add_theme_font_size_override("font_size", 15)
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color(0.66, 0.40, 0.20, 1.0) if primary \
+		else Color(0.055, 0.13, 0.20, 1.0)
+	normal.border_color = Color(0.95, 0.64, 0.32, 0.95) if primary \
+		else Color(0.27, 0.67, 0.83, 0.9)
+	normal.set_border_width_all(1)
+	normal.set_corner_radius_all(7)
+	var hover := normal.duplicate() as StyleBoxFlat
+	hover.bg_color = Color(0.80, 0.49, 0.24, 1.0) if primary \
+		else Color(0.08, 0.19, 0.28, 1.0)
+	hover.border_color = Color(1.0, 0.76, 0.44) if primary else Color(0.46, 0.86, 0.98)
+	var pressed := normal.duplicate() as StyleBoxFlat
+	pressed.bg_color = Color(0.53, 0.31, 0.17, 1.0) if primary \
+		else Color(0.04, 0.10, 0.16, 1.0)
+	var disabled := normal.duplicate() as StyleBoxFlat
+	disabled.bg_color = Color(0.10, 0.13, 0.17, 0.9)
+	disabled.border_color = Color(0.28, 0.36, 0.43, 0.55)
+	button.add_theme_stylebox_override("normal", normal)
+	button.add_theme_stylebox_override("hover", hover)
+	button.add_theme_stylebox_override("pressed", pressed)
+	button.add_theme_stylebox_override("disabled", disabled)
+	button.add_theme_color_override("font_color", Color(0.08, 0.10, 0.13)
+		if primary else Color(0.82, 0.94, 1.0))
+	button.add_theme_color_override("font_hover_color", Color(0.08, 0.10, 0.13)
+		if primary else Color(0.94, 0.99, 1.0))
+	button.add_theme_color_override("font_disabled_color", Color(0.55, 0.62, 0.68))
 
 
 func _format_run_summary(run: Dictionary) -> String:
