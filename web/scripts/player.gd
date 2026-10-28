@@ -1,18 +1,21 @@
 extends CharacterBody2D
 
 @export var acceleration: float = 1400.0
-@export var max_speed: float = 340.0
+@export var max_speed: float = 350.0
 @export var friction: float = 900.0
 @export var turn_speed: float = 14.0
-@export var fire_cooldown: float = 0.14
-@export var bullet_speed: float = 640.0
+@export var fire_cooldown: float = 0.25
+@export var bullet_speed: float = 600.0
 @export var bullet_spread: float = 0.0
-@export var max_hp: int = 10
+@export var max_hp: int = 8
 @export var push_force: float = 180.0
 
 const BULLET_SCENE := preload("res://scenes/bullet.tscn")
 const EXPLOSION_SCENE := preload("res://scenes/explosion.tscn")
 const DAMAGE_NUMBER := preload("res://scenes/damage_number.tscn")
+const MULTIPLAYER_PALETTE_SHADER := preload(
+	"res://assets/shaders/ship_multiplayer_palette.gdshader"
+)
 const MAX_BULLETS := 36          # hard cap on live player bullets
 const BULLET_LIFE := 2.0
 
@@ -31,9 +34,11 @@ var _flame_out: Polygon2D = null
 var _flame_in: Polygon2D = null
 var _hp_drawn: int = -1
 
-var _base_max_speed: float = 340.0
-var _base_bullet_speed: float = 640.0
-var _base_fire_cooldown: float = 0.14
+var _base_max_speed: float = 350.0
+var _base_bullet_speed: float = 600.0
+var _base_fire_cooldown: float = 0.25
+
+const SHIP_DAMAGE_MULTIPLIER := 0.8
 
 var _cooldown: float = 0.0
 var _thrust: float = 0.0
@@ -51,6 +56,7 @@ func _ready() -> void:
 	_base_max_speed = max_speed
 	_base_bullet_speed = bullet_speed
 	_base_fire_cooldown = fire_cooldown
+	_set_ship_appearance(Net.is_online())
 	hp = max_hp
 	_flame_out = _make_flame(5.0)
 	_flame_in = _make_flame(2.5)
@@ -60,6 +66,17 @@ func _ready() -> void:
 	# the on screen stick and fire button live in the game scene, the player
 	# only asks for them
 	_setup_touch.call_deferred()
+
+
+func _set_ship_appearance(multiplayer: bool) -> void:
+	if multiplayer:
+		var palette := ShaderMaterial.new()
+		palette.shader = MULTIPLAYER_PALETTE_SHADER
+		_sprite.material = palette
+		_sprite.modulate = Net.get_player_ship_color()
+	else:
+		_sprite.material = null
+		_sprite.modulate = Color.WHITE
 
 
 # The on screen sticks live in the game scene, the player only asks for them.
@@ -80,6 +97,7 @@ func _shoot_held() -> bool:
 
 
 func _on_players_changed() -> void:
+	_set_ship_appearance(Net.is_online())
 	_refresh_name_label()
 
 
@@ -239,7 +257,8 @@ func _shoot(delta: float) -> void:
 	if Game._burst_left > 0 and _cooldown <= 0.0:
 		_cooldown = 0.06
 		Game._burst_left -= 1
-		_spawn_bullet(dir, _base_bullet_speed * Game.upg_bullet_speed, Game.upg_damage, 0, 0, 0.0)
+		_spawn_bullet(dir, _base_bullet_speed * Game.upg_bullet_speed,
+			Game.upg_damage * SHIP_DAMAGE_MULTIPLIER, 0, 0, 0.0)
 		velocity -= dir * 30.0
 		return
 
@@ -247,7 +266,8 @@ func _shoot(delta: float) -> void:
 		return
 
 	var base_speed := _base_bullet_speed * Game.upg_bullet_speed * (1.0 - 0.12 * float(Game.upg_rushed))
-	var dmg := Game.upg_damage * (1.0 + 0.25 * float(Game.upg_heavy_caliber))
+	var dmg := Game.upg_damage * SHIP_DAMAGE_MULTIPLIER \
+		* (1.0 + 0.25 * float(Game.upg_heavy_caliber))
 	var burn := Game.upg_burn
 	var freeze := Game.upg_freeze
 	var rate := Game.upg_fire_rate \
@@ -455,7 +475,7 @@ func revive_for_wave() -> void:
 	_thrust = 0.0
 	invuln = 1.5
 	_sprite.visible = true
-	_sprite.modulate = Color.WHITE
+	_set_ship_appearance(Net.is_online())
 	var name_label := get_node_or_null("NameLabel") as Label
 	if name_label:
 		name_label.visible = true
@@ -589,4 +609,3 @@ func _update_flame() -> void:
 	_flame_in.scale = Vector2(length * 0.55, 1.0)
 	_flame_in.color = Color(1.0, 1.0, 0.8, 0.6 + 0.4 * _thrust)
 	_flame_in.visible = lit
-

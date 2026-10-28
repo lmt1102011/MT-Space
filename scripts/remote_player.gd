@@ -9,6 +9,9 @@ const FOLLOW_SPEED := 38.0
 # the rotation is followed a bit slower so it does not snap
 const FOLLOW_TURN := 10.0
 const STATUS_VISUAL := preload("res://scripts/status_effect_visual.gd")
+const MULTIPLAYER_PALETTE_SHADER := preload(
+	"res://assets/shaders/ship_multiplayer_palette.gdshader"
+)
 
 var net_id: int = 0
 var net_name: String = ""
@@ -52,6 +55,9 @@ func _ready() -> void:
 	_status_visual.set("radius", 24.0)
 	_status_visual.z_index = 2
 	add_child(_status_visual)
+	var palette := ShaderMaterial.new()
+	palette.shader = MULTIPLAYER_PALETTE_SHADER
+	_sprite.material = palette
 	_sprite.modulate = net_color
 	_name_label = $Name
 	_refresh_name()

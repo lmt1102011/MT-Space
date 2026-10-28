@@ -358,44 +358,52 @@ func _refresh_color_popup() -> void:
 		(popup_width - 44.0 - 8.0 * (flame_columns - 1))
 			/ float(flame_columns)
 	)
-	for grid: GridContainer in [_ship_color_grid, _flame_color_grid]:
-		for child: Node in grid.get_children():
-			grid.remove_child(child)
-			child.free()
 	for index in Net.PLAYER_COLORS.size():
-		var color_button := _make_color_swatch(
+		if index >= _ship_color_grid.get_child_count():
+			var new_button := _make_color_swatch()
+			new_button.pressed.connect(_on_ship_color_selected.bind(index))
+			_ship_color_grid.add_child(new_button)
+		var color_button := _ship_color_grid.get_child(index) as Button
+		_update_color_swatch(
+			color_button,
 			Net.PLAYER_COLORS[index],
 			Net.SHIP_COLOR_NAMES[index],
 			index == Net.player_ship_color_index,
 			not Net.is_ship_color_available(index, Net.my_id()),
 			ship_swatch_width
 		)
-		color_button.pressed.connect(_on_ship_color_selected.bind(index))
-		_ship_color_grid.add_child(color_button)
 	for index in Net.FLAME_COLORS.size():
-		var color_button := _make_color_swatch(
+		if index >= _flame_color_grid.get_child_count():
+			var new_button := _make_color_swatch()
+			new_button.pressed.connect(_on_flame_color_selected.bind(index))
+			_flame_color_grid.add_child(new_button)
+		var color_button := _flame_color_grid.get_child(index) as Button
+		_update_color_swatch(
+			color_button,
 			Net.FLAME_COLORS[index],
 			Net.FLAME_COLOR_NAMES[index],
 			index == Net.player_flame_color_index,
 			false,
 			flame_swatch_width
 		)
-		color_button.pressed.connect(_on_flame_color_selected.bind(index))
-		_flame_color_grid.add_child(color_button)
 
 
-func _make_color_swatch(
-		color: Color, label: String, selected: bool, unavailable: bool,
-		swatch_width: float) -> Button:
+func _make_color_swatch() -> Button:
 	var button := Button.new()
-	button.custom_minimum_size = Vector2(swatch_width, 46)
-	button.text = "×" if unavailable else ("✓" if selected else "")
-	button.tooltip_text = label
-	button.disabled = unavailable
 	button.focus_mode = Control.FOCUS_NONE
 	button.add_theme_font_size_override("font_size", 20)
 	button.add_theme_color_override("font_color", Color.WHITE)
 	button.add_theme_color_override("font_disabled_color", Color(0.85, 0.88, 0.92, 0.9))
+	return button
+
+
+func _update_color_swatch(
+		button: Button, color: Color, label: String, selected: bool,
+		unavailable: bool, swatch_width: float) -> void:
+	button.custom_minimum_size = Vector2(swatch_width, 46)
+	button.text = "×" if unavailable else ("✓" if selected else "")
+	button.tooltip_text = label
+	button.disabled = unavailable
 	var fill := color.darkened(0.45) if unavailable else color
 	var normal := StyleBoxFlat.new()
 	normal.bg_color = fill
@@ -411,7 +419,6 @@ func _make_color_swatch(
 	disabled.bg_color = Color(fill.r, fill.g, fill.b, 0.42)
 	disabled.border_color = Color(0.42, 0.57, 0.66, 0.6)
 	button.add_theme_stylebox_override("disabled", disabled)
-	return button
 
 
 func _on_ship_color_selected(index: int) -> void:

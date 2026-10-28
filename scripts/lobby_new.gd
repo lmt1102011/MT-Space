@@ -383,7 +383,7 @@ func _show_ship_detail(ship_id: String) -> void:
 	var unlock_wave := Game.get_ship_unlock_wave(ship_id)
 	_selected_ship_detail_id = ship_id
 	_ship_detail_dialog.title = _translate("FIGHTER DETAILS")
-	_ship_detail_dialog.dialog_text = "%s\n\n%s %.2f×    %s %d    %s %d\n\n%s %d %s %d %s.\n%s: %d" % [
+	_ship_detail_dialog.dialog_text = "%s\n\n%s %.2f×    %s %d    %s %d\n%s %d    %s %.1f/s\n\n%s %d %s %d %s.\n%s: %d" % [
 		ship_id.to_upper(),
 		_translate("DMG"),
 		float(stats["damage_multiplier"]),
@@ -391,6 +391,10 @@ func _show_ship_detail(ship_id: String) -> void:
 		roundi(float(stats["max_speed"])),
 		_translate("HULL"),
 		int(stats["max_hp"]),
+		_translate("BULLET SPEED"),
+		roundi(float(stats["bullet_speed"])),
+		_translate("FIRE RATE"),
+		float(stats["fire_rate"]),
 		_translate("UNLOCK BY REACHING WAVE"),
 		unlock_wave,
 		_translate("OR PURCHASE FOR"),
@@ -830,6 +834,11 @@ func _build_content_columns() -> Control:
 	side.add_theme_constant_override("separation", 12)
 	columns.add_child(side)
 	side.add_child(_build_play_panel())
+	var daily_spacer := Control.new()
+	daily_spacer.name = "DailyMissionSpacer"
+	daily_spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	daily_spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	side.add_child(daily_spacer)
 	side.add_child(_build_daily_panel())
 	return columns
 
@@ -1030,9 +1039,9 @@ func _add_ship_stat(parent: VBoxContainer, title: String, value: float,
 	segments.name = title + "Segments"
 	segments.add_theme_constant_override("separation", 4)
 	var lit_count := clampi(
-		roundi(clampf(value / maxf(scale_max, 0.001), 0.0, 1.0) * 5.0), 0, 5
+		roundi(clampf(value / maxf(scale_max, 0.001), 0.0, 1.0) * 7.0), 0, 7
 	)
-	for index in 5:
+	for index in 7:
 		var segment := ColorRect.new()
 		segment.custom_minimum_size = Vector2(0, 7)
 		segment.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1055,6 +1064,7 @@ func _refresh_ship_stats(ship_id: String) -> void:
 	var speed := float(stats["max_speed"])
 	var hp := float(stats["max_hp"])
 	var projectile_speed := float(stats["bullet_speed"])
+	var fire_rate := float(stats["fire_rate"])
 	_add_ship_stat(_ship_stats, "DAMAGE", damage, 1.25,
 		"%.2f×" % damage, CYAN)
 	_add_ship_stat(_ship_stats, "SPEED", speed, 450.0,
@@ -1063,6 +1073,8 @@ func _refresh_ship_stats(ship_id: String) -> void:
 		"%d" % roundi(hp), Color(0.47, 0.89, 0.70))
 	_add_ship_stat(_ship_stats, "BULLET SPEED", projectile_speed, 750.0,
 		"%d" % roundi(projectile_speed), Color(0.95, 0.72, 0.39))
+	_add_ship_stat(_ship_stats, "FIRE RATE", fire_rate, 10.0,
+		"%.1f/s" % fire_rate, Color(0.91, 0.55, 0.95))
 
 
 func _build_quick_stats() -> Control:
@@ -1318,7 +1330,7 @@ func _layout_dashboard() -> void:
 		or viewport_size.x / maxf(viewport_size.y, 1.0) < 1.0
 	_scale_mobile_controls(_dashboard, narrow)
 	_scale_mobile_controls(_page_popup, narrow)
-	_layout_header(viewport_size.x < 430.0)
+	_layout_header(viewport_size.x < 430.0 or narrow)
 	var page_margin := _page_popup.get_node_or_null("PageMargin") as MarginContainer
 	if page_margin != null:
 		var horizontal_margin := 12 if narrow else 28
@@ -1358,6 +1370,12 @@ func _layout_dashboard() -> void:
 		else _main_columns.get_child(1)
 	if operations is Control:
 		operations.custom_minimum_size.x = 0 if narrow else 286
+	var daily_spacer_root: Node = _main_columns_mobile if narrow \
+		else _main_columns
+	var daily_spacer := daily_spacer_root.find_child(
+		"DailyMissionSpacer", true, false) as Control
+	if daily_spacer != null:
+		daily_spacer.visible = not narrow
 	var nav := _desktop_row.get_node_or_null("LobbyNavigation") as Control
 	if nav != null:
 		nav.visible = not narrow
@@ -2133,7 +2151,7 @@ func _open_page(page: String) -> void:
 			_add_page_text("No active limited-time event is running. Daily missions are available in Pilot Services.")
 	if page == "shop":
 		var current_stats: Dictionary = Game.get_effective_ship_combat_stats()
-		_add_page_text("%s: %s   /   %s %.2f×   /   %s %d   /   %s %d" % [
+		_add_page_text("%s: %s   /   %s %.2f×   /   %s %d   /   %s %d   /   %s %.1f/s" % [
 			_translate("ACTIVE SHIP"),
 			Game.selected_ship_id.to_upper(),
 			_translate("DMG"),
@@ -2142,6 +2160,8 @@ func _open_page(page: String) -> void:
 			roundi(float(current_stats["max_speed"])),
 			_translate("HULL"),
 			int(current_stats["max_hp"]),
+			_translate("FIRE RATE"),
+			float(current_stats["fire_rate"]),
 		])
 	_translate_subtree(_page_popup)
 	_set_page_visibility(true)
@@ -2415,10 +2435,11 @@ func _build_loadout_ship_panel() -> Control:
 	var stats := Game.get_effective_ship_combat_stats(Game.selected_ship_id)
 	var stats_label := Label.new()
 	stats_label.name = "LoadoutShipStats"
-	stats_label.text = "DMG %.2f×   /   SPEED %d   /   HULL %d" % [
+	stats_label.text = "DMG %.2f×   /   SPEED %d   /   HULL %d   /   RATE %.1f/s" % [
 		float(stats["damage_multiplier"]),
 		roundi(float(stats["max_speed"])),
 		int(stats["max_hp"]),
+		float(stats["fire_rate"]),
 	]
 	stats_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	stats_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -2701,10 +2722,11 @@ func _refresh_loadout_ship_details() -> void:
 	) as Label if _loadout_page_root != null else null
 	if stats_label != null:
 		var stats := Game.get_effective_ship_combat_stats(Game.selected_ship_id)
-		stats_label.text = "DMG %.2f×   /   SPEED %d   /   HULL %d" % [
+		stats_label.text = "DMG %.2f×   /   SPEED %d   /   HULL %d   /   RATE %.1f/s" % [
 			float(stats["damage_multiplier"]),
 			roundi(float(stats["max_speed"])),
 			int(stats["max_hp"]),
+			float(stats["fire_rate"]),
 		]
 
 
@@ -3108,10 +3130,11 @@ func _build_ship_showcase() -> Control:
 	image_holder.add_child(image)
 	var stats := Game.get_effective_ship_combat_stats(ship_id)
 	var stats_label := Label.new()
-	stats_label.text = "DMG %.2f×   /   SPEED %d   /   HULL %d" % [
+	stats_label.text = "DMG %.2f×   /   SPEED %d   /   HULL %d   /   RATE %.1f/s" % [
 		float(stats["damage_multiplier"]),
 		roundi(float(stats["max_speed"])),
 		int(stats["max_hp"]),
+		float(stats["fire_rate"]),
 	]
 	stats_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	stats_label.add_theme_font_size_override("font_size", 10)
@@ -3223,6 +3246,12 @@ func _build_fleet_active_ship() -> Control:
 		"%d" % roundi(float(stats["bullet_speed"])),
 		Color(0.95, 0.72, 0.39)
 	)
+	_add_ship_stat(
+		stats_column, "FIRE RATE",
+		float(stats["fire_rate"]), 10.0,
+		"%.1f/s" % float(stats["fire_rate"]),
+		Color(0.91, 0.55, 0.95)
+	)
 
 	_layout_fleet_active_ship(
 		get_viewport().get_visible_rect().size.x < 940.0
@@ -3318,16 +3347,13 @@ func _add_pilot_upgrade_row(
 	row.add_child(details)
 	var purchase := _make_button(
 		_translate("MAX") if level >= 5
-		else "%s  %d" % [_translate("UPGRADE"), cost],
+		else "%s  $%d" % [_translate("UPGRADE"), cost],
 		"upgrade_purchase"
 	)
-	if level < 5:
-		purchase.icon = load("res://assets/icons/gem.svg") as Texture2D
-		purchase.add_theme_constant_override("icon_max_width", 18)
 	purchase.custom_minimum_size = Vector2(142, 42)
-	purchase.disabled = level >= 5 or Game.pilot_tokens < cost
-	purchase.tooltip_text = _translate("NOT ENOUGH GEMS") \
-		if level < 5 and Game.pilot_tokens < cost else ""
+	purchase.disabled = level >= 5 or Game.pilot_cash < cost
+	purchase.tooltip_text = _translate("NOT ENOUGH CREDITS") \
+		if level < 5 and Game.pilot_cash < cost else ""
 	purchase.pressed.connect(_buy_pilot_upgrade.bind(upgrade_id))
 	row.add_child(purchase)
 	parent.add_child(item)
@@ -3471,10 +3497,11 @@ func _add_paint_option(paint: Dictionary) -> void:
 	var stats := Game.get_effective_ship_combat_stats(paint_id)
 	var combat_stats := Label.new()
 	combat_stats.name = "ShipCardStats"
-	combat_stats.text = "DMG %.2f×   SPD %d   HP %d" % [
+	combat_stats.text = "DMG %.2f×   SPD %d   HP %d   RATE %.1f/s" % [
 		float(stats["damage_multiplier"]),
 		roundi(float(stats["max_speed"])),
 		int(stats["max_hp"]),
+		float(stats["fire_rate"]),
 	]
 	combat_stats.add_theme_font_size_override("font_size", 9)
 	combat_stats.add_theme_color_override("font_color", MUTED)

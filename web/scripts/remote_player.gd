@@ -9,6 +9,10 @@ const FOLLOW_SPEED := 14.0
 # the rotation is followed a bit slower so it does not snap
 const FOLLOW_TURN := 10.0
 
+const MULTIPLAYER_PALETTE_SHADER := preload(
+	"res://assets/shaders/ship_multiplayer_palette.gdshader"
+)
+
 var net_id: int = 0
 var net_name: String = ""
 var net_color: Color = Color.WHITE
@@ -23,6 +27,9 @@ var _name_label: Label = null
 
 func _ready() -> void:
 	_sprite = $Ship
+	var palette := ShaderMaterial.new()
+	palette.shader = MULTIPLAYER_PALETTE_SHADER
+	_sprite.material = palette
 	_sprite.modulate = net_color
 	_name_label = $Name
 	_refresh_name()

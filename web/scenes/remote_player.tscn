@@ -10,7 +10,7 @@ script = ExtResource("1_remote")
 texture_filter = 4
 modulate = Color(1, 1, 1, 1)
 texture = ExtResource("2_ship")
-scale = Vector2(0.6, 0.6)
+scale = Vector2(0.174, 0.174)
 
 [node name="Name" type="Label" parent="."]
 offset_left = -60.0

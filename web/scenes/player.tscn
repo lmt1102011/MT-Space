@@ -14,7 +14,7 @@ script = ExtResource("1_player")
 [node name="Sprite2D" type="Sprite2D" parent="."]
 texture_filter = 4
 texture = ExtResource("2_ship")
-scale = Vector2(0.6, 0.6)
+scale = Vector2(0.174, 0.174)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("CircleShape2D_player")

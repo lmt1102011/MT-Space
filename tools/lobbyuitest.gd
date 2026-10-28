@@ -78,17 +78,43 @@ func _run() -> void:
 	var original_upgrades: Dictionary = game.get(
 		"pilot_upgrade_levels"
 	).duplicate(true)
+	var pilot_profile_path := "user://pilot_profile.cfg"
+	var pilot_profile_existed := FileAccess.file_exists(pilot_profile_path)
+	var pilot_profile_backup := FileAccess.get_file_as_bytes(
+		pilot_profile_path
+	) if pilot_profile_existed else PackedByteArray()
+	game.set("pilot_upgrade_levels", {"phoenix": {}})
+	game.set("pilot_cash", 57)
+	game.set("pilot_tokens", 654)
+	var insufficient_credit_purchase := bool(game.call(
+		"purchase_pilot_upgrade", "afterburner", "phoenix"
+	))
+	_check(not insufficient_credit_purchase
+		and int(game.get("pilot_tokens")) == 654
+		and int(game.call(
+			"get_pilot_upgrade_level", "afterburner", "phoenix"
+		)) == 0,
+		"requires credits for upgrades and never spends gems as a fallback")
+	game.set("pilot_cash", 321)
+	var successful_upgrade_purchase := bool(game.call(
+		"purchase_pilot_upgrade", "afterburner", "phoenix"
+	))
+	_check(successful_upgrade_purchase
+		and int(game.get("pilot_cash")) == 263
+		and int(game.get("pilot_tokens")) == 654
+		and int(game.call(
+			"get_pilot_upgrade_level", "afterburner", "phoenix"
+		)) == 1,
+		"purchases a pilot upgrade with credits while leaving gems untouched")
+	game.set("pilot_cash", 321)
+	game.set("pilot_tokens", 654)
+	game.set("pilot_upgrade_levels", original_upgrades.duplicate(true))
 	var original_loadouts: Dictionary = game.get(
 		"ship_store_loadouts"
 	).duplicate(true)
 	var original_owned_items: Array[String] = game.get(
 		"owned_store_item_ids"
 	).duplicate(true)
-	var pilot_profile_path := "user://pilot_profile.cfg"
-	var pilot_profile_existed := FileAccess.file_exists(pilot_profile_path)
-	var pilot_profile_backup := FileAccess.get_file_as_bytes(
-		pilot_profile_path
-	) if pilot_profile_existed else PackedByteArray()
 	game.set("ship_store_loadouts", {})
 	var original_selected_ship := str(game.get("selected_ship_id"))
 	var original_unlocked_ships: Array = game.get(
@@ -105,9 +131,11 @@ func _run() -> void:
 	var upgraded_stats: Dictionary = game.call(
 		"get_effective_ship_combat_stats", "phoenix"
 	)
-	_check(is_equal_approx(float(base_stats["damage_multiplier"]), 1.0)
-		and int(base_stats["max_hp"]) == 6
-		and is_equal_approx(float(base_stats["max_speed"]), 380.0)
+	_check(is_equal_approx(float(base_stats["damage_multiplier"]), 0.8)
+		and int(base_stats["max_hp"]) == 8
+		and is_equal_approx(float(base_stats["max_speed"]), 350.0)
+		and is_equal_approx(float(base_stats["bullet_speed"]), 600.0)
+		and is_equal_approx(float(base_stats["fire_rate"]), 4.0)
 		and is_equal_approx(
 		float(upgraded_stats["max_speed"]),
 		float(base_stats["max_speed"]) * 1.10
@@ -115,8 +143,9 @@ func _run() -> void:
 		float(upgraded_stats["damage_multiplier"]),
 		float(base_stats["damage_multiplier"]) * 1.08
 	) and is_equal_approx(float(upgraded_stats["fire_rate_multiplier"]), 1.18)
-		and int(upgraded_stats["max_hp"]) == 6,
-		"Phoenix has base damage 1, weak hull, high speed, and persistent upgrades affect combat stats")
+		and is_equal_approx(float(upgraded_stats["fire_rate"]), 4.72)
+		and int(upgraded_stats["max_hp"]) == 8,
+		"Phoenix base stats include 0.8 damage, 350 speed, 8 HP, 600 bullet speed, and 4 shots per second")
 	var ship_scene := load("res://scenes/player.tscn") as PackedScene
 	var ship_preview := ship_scene.instantiate() as Node2D
 	var ship_sprite := ship_preview.get_node("Sprite2D") as Sprite2D
@@ -139,7 +168,7 @@ func _run() -> void:
 			"get_pilot_upgrade_level", "afterburner", "phoenix"
 		)) == 2
 		and is_equal_approx(
-			float(phoenix_stats["max_speed"]), 380.0 * 1.10
+			float(phoenix_stats["max_speed"]), 350.0 * 1.10
 		),
 		"keeps the only ship's upgrade track connected to its real stats")
 	game.set("pilot_upgrade_levels", {"phoenix": {"ember_matrix": 3}})
@@ -165,9 +194,10 @@ func _run() -> void:
 	var equipped_stats: Dictionary = game.call(
 		"get_effective_ship_combat_stats", "phoenix"
 	)
-	_check(int(equipped_stats["max_hp"]) == 9
+	_check(int(equipped_stats["max_hp"]) == 11
 		and is_equal_approx(float(equipped_stats["fire_rate_multiplier"]), 1.08)
-		and is_equal_approx(float(equipped_stats["damage_multiplier"]), 1.0)
+		and is_equal_approx(float(equipped_stats["damage_multiplier"]), 0.8)
+		and is_equal_approx(float(equipped_stats["fire_rate"]), 4.32)
 		and str(game.call("get_active_store_drone", "phoenix"))
 			== "hex_guard_drone",
 		"applies equipped armor, support, and defensive drone effects to ship stats")
@@ -178,7 +208,7 @@ func _run() -> void:
 		"get_effective_ship_combat_stats", "phoenix"
 	)
 	_check(is_equal_approx(
-		float(targeting_stats["damage_multiplier"]), 1.1
+		float(targeting_stats["damage_multiplier"]), 0.88
 	), "applies the targeting servo damage bonus to gameplay stats")
 	game.set("pilot_upgrade_levels", original_upgrades)
 	game.set("ship_store_loadouts", original_loadouts)
@@ -233,6 +263,15 @@ func _run() -> void:
 	var daily_scroll := lobby.find_child(
 		"DailyMissionScroll", true, false
 	) as ScrollContainer
+	var daily_spacer := lobby.find_child(
+		"DailyMissionSpacer", true, false
+	) as Control
+	var fire_rate_value := lobby.find_child(
+		"FIRE RATEValue", true, false
+	) as Label
+	var fire_rate_segments := lobby.find_child(
+		"FIRE RATESegments", true, false
+	) as HBoxContainer
 	_check(lobby.find_children(
 		"LobbyNav_home", "Button", true, false
 	).is_empty(),
@@ -247,6 +286,23 @@ func _run() -> void:
 		== ScrollContainer.SCROLL_MODE_AUTO and pilot_level_label != null
 		and pilot_level_label.text == "LV %d" % int(game.get("pilot_level")),
 		"keeps the home missions independently scrollable and pilot level visible")
+	_check(fire_rate_value != null and fire_rate_value.text.ends_with("/s")
+		and fire_rate_segments != null
+		and fire_rate_segments.get_child_count() == 7,
+		"shows ship firing rate as its own seven-segment combat stat")
+	var operations := main_columns.get_node_or_null("OperationsColumn") as Control \
+		if main_columns != null else null
+	var daily_panel := daily_scroll.get_parent().get_parent().get_parent() as Control \
+		if daily_scroll != null else null
+	var daily_bottom_gap := operations.get_global_rect().end.y \
+		- daily_panel.get_global_rect().end.y \
+		if operations != null and daily_panel != null else -1.0
+	_check(daily_spacer != null and daily_spacer.visible
+		and daily_panel != null and daily_bottom_gap >= -1.0
+		and daily_bottom_gap <= 36.0,
+		"anchors daily missions at desktop column bottom (visible=%s, gap=%.1f)"
+			% [str(daily_spacer.visible) if daily_spacer != null else "missing",
+				daily_bottom_gap])
 	if page == null or desktop_row == null or main_columns == null \
 			or page_content == null or dashboard_content == null:
 		_finish()
@@ -303,13 +359,24 @@ func _run() -> void:
 		"opens upgrades as a full-screen page covering the lobby")
 	if upgrades.size() == 4:
 		var valid_segments := true
+		var valid_credit_prices := true
 		for upgrade: Node in upgrades:
 			var segments := upgrade.find_child(
 				"UpgradeSegments", true, false
 			) as HBoxContainer
 			valid_segments = valid_segments and segments != null \
 				and segments.get_child_count() == 5
-		_check(valid_segments, "shows exactly five level segments per upgrade")
+			var upgrade_buttons := upgrade.find_children(
+				"*", "Button", true, false
+			)
+			var upgrade_button := upgrade_buttons[0] as Button \
+				if not upgrade_buttons.is_empty() else null
+			valid_credit_prices = valid_credit_prices \
+				and upgrade_button != null \
+				and upgrade_button.text.contains("$")
+		_check(valid_segments, "keeps five progression segments for five upgrade levels")
+		_check(valid_credit_prices,
+			"shows credit prices on pilot-upgrade purchase buttons")
 
 	lobby.call("_open_page", "missions")
 	await process_frame
@@ -562,6 +629,8 @@ func _run() -> void:
 	lobby.call("_layout_dashboard")
 	lobby.call("_layout_header", true)
 	await process_frame
+	lobby.call("_layout_dashboard")
+	await process_frame
 	var lobby_scroll := lobby.find_child(
 		"LobbyScroll", true, false
 	) as ScrollContainer
@@ -584,6 +653,11 @@ func _run() -> void:
 	_check(lobby_scroll != null
 		and dashboard_content_size >= lobby_scroll.size.y,
 		"mobile lobby content fills the available page height")
+	_check(daily_spacer != null and not daily_spacer.visible,
+		"keeps daily missions below launch controls on mobile (spacer=%s, nav=%s, viewport=%s)"
+			% [str(daily_spacer.visible) if daily_spacer != null else "missing",
+				str((lobby.find_child("MobileNavigation", true, false) as Control).visible),
+				str(lobby.get_viewport().get_visible_rect().size)])
 	var compact_level := lobby.find_child(
 		"PilotLevelValue", true, false
 	) as Label
@@ -669,6 +743,14 @@ func _run() -> void:
 			and flame_choices != null and flame_choices.get_child_count() == 6
 			and not (flame_choices.get_child(1) as Button).disabled,
 			"locks ship colors taken by another player but allows shared flame colors")
+		var selected_swatch := ship_choices.get_child(2) as Button
+		selected_swatch.pressed.emit()
+		room_lobby.call("_refresh_color_popup")
+		_check(is_instance_valid(selected_swatch)
+			and selected_swatch.get_parent() == ship_choices
+			and ship_choices.get_child_count() == 4
+			and selected_swatch.text == "✓",
+			"refreshes color choices without freeing the button emitting its selection")
 		net.set("players", previous_players)
 		net.set("player_ship_color_index", original_ship_color)
 		net.set("player_flame_color_index", original_flame_color)

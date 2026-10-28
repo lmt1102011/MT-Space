@@ -100,8 +100,8 @@ const STORE_ITEMS := [
 ]
 const SHIP_COMBAT_STATS := {
 	"phoenix": {
-		"max_speed": 380.0, "max_hp": 6, "bullet_speed": 720.0,
-		"damage_multiplier": 1.0,
+		"max_speed": 350.0, "max_hp": 8, "bullet_speed": 600.0,
+		"damage_multiplier": 0.8, "fire_rate": 4.0,
 	},
 }
 const ENEMY_CASH_REWARDS := [
@@ -477,16 +477,16 @@ func purchase_pilot_upgrade(upgrade_id: String, ship_id: String = "") -> bool:
 		return false
 	var cost := get_pilot_upgrade_cost(upgrade_id, requested_ship)
 	var current_level := get_pilot_upgrade_level(upgrade_id, requested_ship)
-	if cost < 0 or current_level >= 5 or pilot_tokens < cost:
+	if cost < 0 or current_level >= 5 or pilot_cash < cost:
 		return false
-	var previous_tokens := pilot_tokens
+	var previous_cash := pilot_cash
 	var previous_levels := pilot_upgrade_levels.duplicate(true)
-	pilot_tokens -= cost
+	pilot_cash -= cost
 	var ship_levels: Dictionary = pilot_upgrade_levels.get(requested_ship, {})
 	ship_levels[upgrade_id] = current_level + 1
 	pilot_upgrade_levels[requested_ship] = ship_levels
 	if not _save_pilot_profile():
-		pilot_tokens = previous_tokens
+		pilot_cash = previous_cash
 		pilot_upgrade_levels = previous_levels
 		return false
 	lobby_profile_changed.emit()
@@ -653,6 +653,8 @@ func get_effective_ship_combat_stats(ship_id: String = "") -> Dictionary:
 		* float(store_effects["damage_multiplier"])
 	stats["fire_rate_multiplier"] = float(stats["fire_rate_multiplier"]) \
 		* float(store_effects["fire_rate_multiplier"])
+	stats["fire_rate"] = float(stats["fire_rate"]) \
+		* float(stats["fire_rate_multiplier"])
 	return stats
 
 

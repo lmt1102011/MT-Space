@@ -104,11 +104,11 @@ func _run() -> void:
 	_check(desktop_scroll_overflow == 0.0,
 		"the 1366x768 home dashboard does not require scrolling (overflow %.1f)"
 		% desktop_scroll_overflow)
-	for stat in ["DAMAGE", "SPEED", "HP"]:
+	for stat in ["DAMAGE", "SPEED", "HP", "BULLET SPEED", "FIRE RATE"]:
 		var stat_segments := lobby_dashboard.find_child(
 			stat + "Segments", true, false) as HBoxContainer
-		_check(stat_segments != null and stat_segments.get_child_count() == 5,
-			"%s is presented as five stat segments" % stat)
+		_check(stat_segments != null and stat_segments.get_child_count() == 7,
+			"%s is presented as seven stat segments" % stat)
 	var ship_game := root.get_node("Game")
 	var previous_best_ship_run: Dictionary = ship_game.get("best_run").duplicate(true)
 	var previous_ship_index := int(lobby.get("_preview_ship_index"))
@@ -140,14 +140,24 @@ func _run() -> void:
 	var effective_phoenix_stats: Dictionary = ship_game.call(
 		"get_effective_ship_combat_stats", "phoenix"
 	)
-	_check(is_equal_approx(float(phoenix_stats["damage_multiplier"]), 1.0)
-		and int(phoenix_stats["max_hp"]) == 6
-		and is_equal_approx(float(phoenix_stats["max_speed"]), 380.0),
-		"Phoenix uses standard damage, a weak hull, and a high movement speed")
+	_check(is_equal_approx(float(phoenix_stats["damage_multiplier"]), 0.8)
+		and int(phoenix_stats["max_hp"]) == 8
+		and is_equal_approx(float(phoenix_stats["max_speed"]), 350.0)
+		and is_equal_approx(float(phoenix_stats["bullet_speed"]), 600.0)
+		and is_equal_approx(float(phoenix_stats["fire_rate"]), 4.0),
+		"Phoenix uses the configured damage, speed, HP, bullet speed, and firing rate")
 	var player_scene_for_stats := load("res://scenes/player.tscn") as PackedScene
 	var stat_player := player_scene_for_stats.instantiate() as CharacterBody2D
+	var shooter_scene := load("res://scenes/shooter_enemy.tscn") as PackedScene
+	var shooter_reference := shooter_scene.instantiate() as CharacterBody2D
+	var player_sprite := stat_player.get_node("Sprite2D") as Sprite2D
+	var shooter_sprite := shooter_reference.get_node("Sprite2D") as Sprite2D
+	var player_art_width := player_sprite.texture.get_width() * player_sprite.scale.x
+	var shooter_art_width := shooter_sprite.texture.get_width() * shooter_sprite.scale.x
+	shooter_reference.free()
 	lobby.add_child(stat_player)
 	await process_frame
+	stat_player.call("_set_ship_appearance", false)
 	_check(is_equal_approx(float(stat_player.get("max_speed")),
 			float(effective_phoenix_stats["max_speed"]))
 		and int(stat_player.get("max_hp")) == int(effective_phoenix_stats["max_hp"])
@@ -155,11 +165,47 @@ func _run() -> void:
 			float(effective_phoenix_stats["bullet_speed"]))
 		and is_equal_approx(float(stat_player.get("_ship_damage_multiplier")),
 			float(effective_phoenix_stats["damage_multiplier"]))
+		and is_equal_approx(
+			1.0 / float(stat_player.get("fire_cooldown")),
+			float(effective_phoenix_stats["fire_rate"])
+		)
 		and (stat_player.get_node("Sprite2D") as Sprite2D).texture.resource_path
 			== "res://assets/ships/phoenix.svg"
+		and (stat_player.get_node("Sprite2D") as Sprite2D).material == null
+		and (stat_player.get_node("Sprite2D") as Sprite2D).modulate == Color.WHITE
 		and (stat_player.get_node("Sprite2D") as Sprite2D).scale
-			.is_equal_approx(Vector2(0.6, 0.6)),
-		"the larger Phoenix art and ship stats are applied in combat")
+			.is_equal_approx(Vector2(0.174, 0.174))
+		and absf(player_art_width - shooter_art_width) <= 1.0,
+		"solo Phoenix keeps its original artwork and matches the red shooter's size (%.2f vs %.2f px)"
+			% [player_art_width, shooter_art_width])
+	stat_player.call("_set_ship_appearance", true)
+	var multiplayer_sprite := stat_player.get_node("Sprite2D") as Sprite2D
+	var multiplayer_material := multiplayer_sprite.material as ShaderMaterial
+	_check(multiplayer_material != null
+		and multiplayer_material.shader.resource_path
+			== "res://assets/shaders/ship_multiplayer_palette.gdshader"
+		and multiplayer_sprite.modulate == net.call("get_player_ship_color"),
+		"multiplayer-only ship palette preserves the selected color over a neutral hull")
+	var previous_peer: Variant = net.get("_peer")
+	net.set("_peer", ENetMultiplayerPeer.new())
+	multiplayer_sprite.modulate = Color.WHITE
+	stat_player.call("_on_players_changed")
+	_check(multiplayer_sprite.modulate == net.call("get_player_ship_color"),
+		"reapplies the selected multiplayer ship color when the room roster updates")
+	net.set("_peer", previous_peer)
+	stat_player.call("_set_ship_appearance", false)
+	var remote_scene := load("res://scenes/remote_player.tscn") as PackedScene
+	var remote_player := remote_scene.instantiate()
+	lobby.add_child(remote_player)
+	await process_frame
+	var remote_sprite := remote_player.get_node("Ship") as Sprite2D
+	var remote_material := remote_sprite.material as ShaderMaterial
+	_check(remote_sprite.texture.resource_path == "res://assets/ships/phoenix.svg"
+		and remote_material != null
+		and remote_material.shader.resource_path
+			== "res://assets/shaders/ship_multiplayer_palette.gdshader",
+		"remote multiplayer ships use the grayscale palette without changing lobby art")
+	remote_player.queue_free()
 	stat_player.queue_free()
 	ship_game.set("best_run", previous_best_ship_run)
 	ship_game.set("unlocked_ship_ids", ["phoenix"])
