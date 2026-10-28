@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><defs><linearGradient id="card_icon_glint" x1="0" y1="0" x2="0.8" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="0.55" stop-color="#e2e2e2"/><stop offset="1" stop-color="#b8b8b8"/></linearGradient></defs>
 <g transform="translate(32,32)">
-<rect fill="#ffffff" stroke="none" x="-22" y="-11" width="38" height="22" rx="10"/><path fill="#ffffff" stroke="none" d="M16,-11 L28,0 L16,11 Z"/><circle fill="#c8c8c8" stroke="none" cx="-10" cy="-4" r="3.5"/>
+<rect fill="url(#card_icon_glint)" stroke="#858585" stroke-width="0.8" x="-22" y="-11" width="38" height="22" rx="10"/><path fill="url(#card_icon_glint)" stroke="#858585" stroke-width="0.8" d="M16,-11 L28,0 L16,11 Z"/><circle fill="#c8c8c8" stroke="none" cx="-10" cy="-4" r="3.5"/>
 </g>
 </svg>

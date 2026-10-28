@@ -1,513 +1,298 @@
-[gd_scene load_steps=5 format=3 uid="uid://clobby0001"]
+[gd_scene load_steps=6 format=3 uid="uid://clobby0001"]
 
-[ext_resource type="Script" path="res://scripts/lobby.gd" id="1_lobby"]
-[ext_resource type="Script" path="res://scripts/menu_demo.gd" id="2_demo"]
-[ext_resource type="Texture2D" path="res://assets/player.svg" id="3_ship"]
-[ext_resource type="Texture2D" path="res://assets/icons/refresh.svg" id="4_refresh"]
+[ext_resource type="Script" path="res://scripts/lobby_new.gd" id="1_lobby_new"]
+[ext_resource type="Texture2D" path="res://assets/ships/phoenix.svg" id="2_player"]
+[ext_resource type="Texture2D" path="res://assets/bg_star.svg" id="3_star"]
+[ext_resource type="Texture2D" path="res://assets/shape_3.svg" id="4_survival"]
+[ext_resource type="Texture2D" path="res://assets/railgun_enemy.svg" id="5_test"]
 
-[sub_resource type="StyleBoxFlat" id="SlotStyle"]
-bg_color = Color(0.09, 0.11, 0.12, 0.85)
+[sub_resource type="StyleBoxFlat" id="PanelStyle"]
+bg_color = Color(0.07, 0.09, 0.13, 0.94)
 border_width_left = 1
 border_width_top = 1
 border_width_right = 1
 border_width_bottom = 1
-border_color = Color(0.24, 0.33, 0.34, 0.9)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
+border_color = Color(0.35, 0.55, 0.75, 0.6)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
 
 [node name="Lobby" type="CanvasLayer"]
-script = ExtResource("1_lobby")
+script = ExtResource("1_lobby_new")
 
-[node name="Demo" type="Node2D" parent="."]
-script = ExtResource("2_demo")
+[node name="ParallaxBackground" type="ParallaxBackground" parent="."]
+
+[node name="Layer1" type="ParallaxLayer" parent="ParallaxBackground"]
+motion_scale = Vector2(0.12, 0.1)
+motion_mirroring = Vector2(512, 512)
+
+[node name="Stars1" type="Sprite2D" parent="ParallaxBackground/Layer1"]
+texture = ExtResource("3_star")
+centered = false
+modulate = Color(0.65, 0.75, 0.95, 0.45)
+
+[node name="Layer2" type="ParallaxLayer" parent="ParallaxBackground"]
+motion_scale = Vector2(0.28, 0.22)
+motion_mirroring = Vector2(512, 512)
+
+[node name="Stars2" type="Sprite2D" parent="ParallaxBackground/Layer2"]
+texture = ExtResource("3_star")
+centered = false
+modulate = Color(0.85, 0.92, 1.0, 0.7)
+position = Vector2(256, 192)
 
 [node name="UI" type="Control" parent="."]
+anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 
 [node name="Dim" type="ColorRect" parent="UI"]
+anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0.04, 0.06, 0.06, 0.84)
-
-[node name="Header" type="Label" parent="UI"]
-anchor_left = 0.0
-anchor_right = 1.0
-offset_top = 36.0
-offset_bottom = 84.0
 grow_horizontal = 2
-theme_override_font_sizes/font_size = 36
-theme_override_colors/font_color = Color(0.88, 0.92, 0.94, 1)
-text = "LOBBY"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="SubHeader" type="Label" parent="UI"]
-anchor_left = 0.0
-anchor_right = 1.0
-offset_top = 88.0
-offset_bottom = 112.0
-grow_horizontal = 2
-theme_override_font_sizes/font_size = 15
-theme_override_colors/font_color = Color(0.48, 0.55, 0.58, 1)
-text = "select a room, or start your own"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="BackButton" type="Button" parent="UI"]
-anchor_bottom = 0.0
-offset_left = 40.0
-offset_top = 40.0
-offset_right = 172.0
-offset_bottom = 82.0
 grow_vertical = 2
-theme_override_font_sizes/font_size = 17
+color = Color(0.02, 0.04, 0.07, 0.6)
+
+[node name="ShipAnchor" type="Node2D" parent="UI"]
+position = Vector2(420, 350)
+rotation = -0.698132
+
+[node name="Ship" type="Sprite2D" parent="UI/ShipAnchor"]
+texture_filter = 4
+texture = ExtResource("2_player")
+scale = Vector2(0.65, 0.65)
+
+[node name="Thruster" type="Node2D" parent="UI/ShipAnchor"]
+position = Vector2(-13, 0)
+
+[node name="Flame1" type="Polygon2D" parent="UI/ShipAnchor/Thruster"]
+color = Color(0.35, 0.65, 1.0, 0.85)
+polygon = PackedVector2Array(2, -3.5, -17, 0, 2, 3.5)
+
+[node name="Flame2" type="Polygon2D" parent="UI/ShipAnchor/Thruster"]
+color = Color(0.75, 0.9, 1.0, 0.9)
+polygon = PackedVector2Array(2, -2, -11, 0, 2, 2)
+
+[node name="FlameCore" type="Polygon2D" parent="UI/ShipAnchor/Thruster"]
+color = Color(1.0, 1.0, 1.0, 0.85)
+polygon = PackedVector2Array(2, -1, -7, 0, 2, 1)
+
+[node name="Buttons" type="VBoxContainer" parent="UI"]
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -250.0
+offset_top = -145.0
+offset_right = -24.0
+offset_bottom = -24.0
+grow_horizontal = 0
+grow_vertical = 2
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="ModeButton" type="Button" parent="UI/Buttons"]
+custom_minimum_size = Vector2(165, 44)
+size_flags_horizontal = 8
+text = "MODE"
+theme_override_font_sizes/font_size = 18
+
+[node name="PlayButton" type="Button" parent="UI/Buttons"]
+custom_minimum_size = Vector2(220, 72)
+size_flags_horizontal = 4
+text = "PLAY"
+theme_override_font_sizes/font_size = 30
+
+[node name="TopBar" type="HBoxContainer" parent="UI"]
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 20.0
+offset_top = 16.0
+offset_right = -20.0
+offset_bottom = 56.0
+grow_horizontal = 2
+theme_override_constants/separation = 12
+
+[node name="BackButton" type="Button" parent="UI/TopBar"]
+custom_minimum_size = Vector2(100, 40)
 text = "BACK"
 
-[node name="CreateRoomButton" type="Button" parent="UI"]
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -320.0
-offset_top = 40.0
-offset_right = -196.0
-offset_bottom = 82.0
-grow_horizontal = 0
-grow_vertical = 2
-theme_override_font_sizes/font_size = 17
-text = "+ NEW ROOM"
+[node name="Spacer" type="Control" parent="UI/TopBar"]
+layout_mode = 2
+size_flags_horizontal = 3
 
-[node name="JoinRoomButton" type="Button" parent="UI"]
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -176.0
-offset_top = 40.0
-offset_right = -40.0
-offset_bottom = 82.0
-grow_horizontal = 0
-grow_vertical = 2
-theme_override_font_sizes/font_size = 17
-text = "JOIN BY HOST"
-
-[node name="PlaySoloButton" type="Button" parent="UI"]
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -130.0
-offset_top = 220.0
-offset_right = 130.0
-offset_bottom = 266.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_font_sizes/font_size = 18
-text = "PLAY SOLO"
+[node name="TestButton" type="Button" parent="UI/TopBar"]
 visible = false
+custom_minimum_size = Vector2(150, 40)
+text = "TEST SETTINGS"
 
-[node name="RoomsList" type="VBoxContainer" parent="UI"]
+[node name="ModePanel" type="Panel" parent="UI"]
+visible = false
+anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -320.0
-offset_top = -160.0
-offset_right = 320.0
+offset_left = -300.0
+offset_top = -190.0
+offset_right = 300.0
 offset_bottom = 190.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/separation = 6
+theme_override_styles/panel = SubResource("PanelStyle")
 
-[node name="RefreshRoomsButton" type="Button" parent="UI"]
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -384.0
-offset_top = 40.0
-offset_right = -334.0
-offset_bottom = 82.0
-grow_horizontal = 0
-grow_vertical = 2
-icon = ExtResource("4_refresh")
-expand_icon = true
-tooltip_text = "Refresh rooms"
-focus_mode = 0
-
-[node name="EmptyLabel" type="Label" parent="UI"]
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -320.0
-offset_top = -30.0
-offset_right = 320.0
-offset_bottom = 0.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_font_sizes/font_size = 16
-theme_override_colors/font_color = Color(0.45, 0.52, 0.55, 1)
-text = "no rooms yet - create one"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="AddressPanel" type="Control" parent="UI"]
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -460.0
-offset_top = 116.0
-offset_right = -40.0
-offset_bottom = 192.0
-grow_horizontal = 0
-visible = false
-
-[node name="AddressEdit" type="LineEdit" parent="UI/AddressPanel"]
-anchor_right = 1.0
-offset_right = -110.0
-offset_bottom = 44.0
-grow_horizontal = 2
-theme_override_font_sizes/font_size = 17
-alignment = 1
-placeholder_text = "host address, e.g. 192.168.1.5"
-
-[node name="AddressJoin" type="Button" parent="UI/AddressPanel"]
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -100.0
-offset_bottom = 44.0
-grow_horizontal = 0
-theme_override_font_sizes/font_size = 16
-text = "JOIN"
-
-[node name="AddressHint" type="Label" parent="UI/AddressPanel"]
-anchor_right = 1.0
-offset_top = 46.0
-offset_bottom = 68.0
-grow_horizontal = 2
-theme_override_font_sizes/font_size = 13
-theme_override_colors/font_color = Color(0.45, 0.52, 0.55, 1)
-text = "host address - use wss:// when this page is https"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="CreatePanel" type="Control" parent="UI"]
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -260.0
-offset_top = -150.0
-offset_right = 260.0
-offset_bottom = 140.0
-grow_horizontal = 2
-grow_vertical = 2
-visible = false
-
-[node name="Title" type="Label" parent="UI/CreatePanel"]
-anchor_right = 1.0
-offset_top = 0.0
-offset_bottom = 38.0
-grow_horizontal = 2
-theme_override_font_sizes/font_size = 26
-theme_override_colors/font_color = Color(0.9, 0.93, 0.95, 1)
-text = "CREATE ROOM"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="Hint" type="Label" parent="UI/CreatePanel"]
-anchor_right = 1.0
-offset_top = 40.0
-offset_bottom = 62.0
-grow_horizontal = 2
-theme_override_font_sizes/font_size = 14
-theme_override_colors/font_color = Color(0.45, 0.52, 0.55, 1)
-text = "up to 4 players - you are the host"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="NameEdit" type="LineEdit" parent="UI/CreatePanel"]
-anchor_right = 1.0
-offset_top = 78.0
-offset_bottom = 124.0
-grow_horizontal = 2
-theme_override_font_sizes/font_size = 20
-alignment = 1
-placeholder_text = "room name"
-
-[node name="WebModeButton" type="Button" parent="UI/CreatePanel"]
-anchor_right = 1.0
-offset_top = 132.0
-offset_bottom = 166.0
-grow_horizontal = 2
-theme_override_font_sizes/font_size = 14
-text = "CONNECTION: FAST (LAN)"
-
-[node name="CreateConfirm" type="Button" parent="UI/CreatePanel"]
-anchor_left = 0.5
-anchor_right = 0.5
-offset_left = -120.0
-offset_top = 180.0
-offset_right = 120.0
-offset_bottom = 224.0
-grow_horizontal = 2
-theme_override_font_sizes/font_size = 20
-text = "CREATE"
-
-[node name="CreateCancel" type="Button" parent="UI/CreatePanel"]
-anchor_left = 0.5
-anchor_right = 0.5
-offset_left = -120.0
-offset_top = 232.0
-offset_right = 120.0
-offset_bottom = 270.0
-grow_horizontal = 2
-theme_override_font_sizes/font_size = 15
-text = "CANCEL"
-
-[node name="RoomPanel" type="Control" parent="UI"]
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -330.0
-offset_top = -250.0
-offset_right = 330.0
-offset_bottom = 280.0
-grow_horizontal = 2
-grow_vertical = 2
-visible = false
-
-[node name="RoomTitle" type="Label" parent="UI/RoomPanel"]
-anchor_right = 1.0
-offset_top = 0.0
-offset_bottom = 44.0
-grow_horizontal = 2
-theme_override_font_sizes/font_size = 28
-theme_override_colors/font_color = Color(0.92, 0.95, 0.96, 1)
-text = "ROOM"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="Status" type="Label" parent="UI/RoomPanel"]
-anchor_right = 1.0
-offset_top = 46.0
-offset_bottom = 72.0
-grow_horizontal = 2
-theme_override_font_sizes/font_size = 15
-theme_override_colors/font_color = Color(0.5, 0.57, 0.6, 1)
-text = ""
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="SlotTL" type="Panel" parent="UI/RoomPanel"]
-anchor_bottom = 0.0
-offset_left = 0.0
-offset_top = 86.0
-offset_right = 218.0
-offset_bottom = 186.0
-grow_vertical = 2
-theme_override_styles/panel = SubResource("SlotStyle")
-
-[node name="Ship" type="TextureRect" parent="UI/RoomPanel/SlotTL"]
-offset_left = 16.0
-offset_top = 14.0
-offset_right = 72.0
-offset_bottom = 42.0
-expand_mode = 1
-stretch_mode = 5
-texture = ExtResource("3_ship")
-
-[node name="Name" type="Label" parent="UI/RoomPanel/SlotTL"]
-anchor_right = 1.0
-offset_left = 12.0
-offset_top = 52.0
-offset_right = -12.0
-offset_bottom = 76.0
-grow_horizontal = 2
-theme_override_font_sizes/font_size = 16
-theme_override_colors/font_color = Color(0.86, 0.9, 0.92, 1)
-text = "open slot"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="Kick" type="Button" parent="UI/RoomPanel/SlotTL"]
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -32.0
-offset_top = 6.0
-offset_right = -8.0
-offset_bottom = 28.0
-grow_horizontal = 0
-theme_override_font_sizes/font_size = 12
-text = "x"
-
-[node name="SlotTR" type="Panel" parent="UI/RoomPanel"]
-anchor_left = 1.0
-anchor_right = 1.0
-anchor_bottom = 0.0
-offset_left = -218.0
-offset_top = 86.0
-offset_right = 0.0
-offset_bottom = 186.0
-grow_horizontal = 0
-grow_vertical = 2
-theme_override_styles/panel = SubResource("SlotStyle")
-
-[node name="Ship" type="TextureRect" parent="UI/RoomPanel/SlotTR"]
-offset_left = 16.0
-offset_top = 14.0
-offset_right = 72.0
-offset_bottom = 42.0
-expand_mode = 1
-stretch_mode = 5
-texture = ExtResource("3_ship")
-
-[node name="Name" type="Label" parent="UI/RoomPanel/SlotTR"]
-anchor_right = 1.0
-offset_left = 12.0
-offset_top = 52.0
-offset_right = -12.0
-offset_bottom = 76.0
-grow_horizontal = 2
-theme_override_font_sizes/font_size = 16
-theme_override_colors/font_color = Color(0.86, 0.9, 0.92, 1)
-text = "open slot"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="Kick" type="Button" parent="UI/RoomPanel/SlotTR"]
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -32.0
-offset_top = 6.0
-offset_right = -8.0
-offset_bottom = 28.0
-grow_horizontal = 0
-theme_override_font_sizes/font_size = 12
-text = "x"
-
-[node name="SlotBL" type="Panel" parent="UI/RoomPanel"]
-anchor_top = 1.0
-anchor_bottom = 1.0
-offset_left = 0.0
-offset_top = -186.0
-offset_right = 218.0
-offset_bottom = -86.0
-grow_vertical = 0
-theme_override_styles/panel = SubResource("SlotStyle")
-
-[node name="Ship" type="TextureRect" parent="UI/RoomPanel/SlotBL"]
-offset_left = 16.0
-offset_top = 14.0
-offset_right = 72.0
-offset_bottom = 42.0
-expand_mode = 1
-stretch_mode = 5
-texture = ExtResource("3_ship")
-
-[node name="Name" type="Label" parent="UI/RoomPanel/SlotBL"]
-anchor_right = 1.0
-offset_left = 12.0
-offset_top = 52.0
-offset_right = -12.0
-offset_bottom = 76.0
-grow_horizontal = 2
-theme_override_font_sizes/font_size = 16
-theme_override_colors/font_color = Color(0.86, 0.9, 0.92, 1)
-text = "open slot"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="Kick" type="Button" parent="UI/RoomPanel/SlotBL"]
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -32.0
-offset_top = 6.0
-offset_right = -8.0
-offset_bottom = 28.0
-grow_horizontal = 0
-theme_override_font_sizes/font_size = 12
-text = "x"
-
-[node name="SlotBR" type="Panel" parent="UI/RoomPanel"]
-anchor_left = 1.0
-anchor_top = 1.0
+[node name="VBox" type="VBoxContainer" parent="UI/ModePanel"]
+layout_mode = 1
+anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -218.0
-offset_top = -186.0
-offset_right = 0.0
-offset_bottom = -86.0
-grow_horizontal = 0
-grow_vertical = 0
-theme_override_styles/panel = SubResource("SlotStyle")
-
-[node name="Ship" type="TextureRect" parent="UI/RoomPanel/SlotBR"]
-offset_left = 16.0
-offset_top = 14.0
-offset_right = 72.0
-offset_bottom = 42.0
-expand_mode = 1
-stretch_mode = 5
-texture = ExtResource("3_ship")
-
-[node name="Name" type="Label" parent="UI/RoomPanel/SlotBR"]
-anchor_right = 1.0
-offset_left = 12.0
-offset_top = 52.0
-offset_right = -12.0
-offset_bottom = 76.0
+offset_left = 24.0
+offset_top = 18.0
+offset_right = -24.0
+offset_bottom = -18.0
 grow_horizontal = 2
-theme_override_font_sizes/font_size = 16
-theme_override_colors/font_color = Color(0.86, 0.9, 0.92, 1)
-text = "open slot"
+grow_vertical = 2
+theme_override_constants/separation = 18
+
+[node name="Title" type="Label" parent="UI/ModePanel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "SELECT MODE"
 horizontal_alignment = 1
-vertical_alignment = 1
 
-[node name="Kick" type="Button" parent="UI/RoomPanel/SlotBR"]
-anchor_left = 1.0
+[node name="Cards" type="HBoxContainer" parent="UI/ModePanel/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 20
+alignment = 1
+
+[node name="WaveMode" type="Button" parent="UI/ModePanel/VBox/Cards"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+text = "WAVE SURVIVAL"
+theme_override_font_sizes/font_size = 18
+
+[node name="TestMode" type="Button" parent="UI/ModePanel/VBox/Cards"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+text = "TEST MODE"
+theme_override_font_sizes/font_size = 18
+
+[node name="CloseMode" type="Button" parent="UI/ModePanel/VBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 42)
+text = "CLOSE"
+
+[node name="TestPanel" type="Panel" parent="UI"]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -340.0
+offset_top = -240.0
+offset_right = 340.0
+offset_bottom = 240.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("PanelStyle")
+
+[node name="VBox" type="VBoxContainer" parent="UI/TestPanel"]
+layout_mode = 1
+anchors_preset = 15
 anchor_right = 1.0
-offset_left = -32.0
-offset_top = 6.0
-offset_right = -8.0
-offset_bottom = 28.0
-grow_horizontal = 0
-theme_override_font_sizes/font_size = 12
-text = "x"
-
-[node name="StartButton" type="Button" parent="UI/RoomPanel"]
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -100.0
-offset_top = 84.0
-offset_right = 100.0
-offset_bottom = 128.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = 18.0
+offset_right = -24.0
+offset_bottom = -18.0
 grow_horizontal = 2
-theme_override_font_sizes/font_size = 19
-text = "START GAME"
+grow_vertical = 2
+theme_override_constants/separation = 12
 
-[node name="AddPlayerButton" type="Button" parent="UI/RoomPanel"]
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -100.0
-offset_top = 136.0
-offset_right = 100.0
-offset_bottom = 176.0
-grow_horizontal = 2
-theme_override_font_sizes/font_size = 15
-text = "ADD PLAYER"
+[node name="Title" type="Label" parent="UI/TestPanel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "TEST CONTROLS"
+horizontal_alignment = 1
 
-[node name="LeaveButton" type="Button" parent="UI/RoomPanel"]
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -100.0
-offset_top = 184.0
-offset_right = 100.0
-offset_bottom = 224.0
-grow_horizontal = 2
-theme_override_font_sizes/font_size = 15
-text = "LEAVE ROOM"
+[node name="Grid" type="GridContainer" parent="UI/TestPanel/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/h_separation = 14
+theme_override_constants/v_separation = 10
+columns = 2
+
+[node name="WaveLabel" type="Label" parent="UI/TestPanel/VBox/Grid"]
+layout_mode = 2
+text = "Set Wave:"
+
+[node name="WaveSpin" type="SpinBox" parent="UI/TestPanel/VBox/Grid"]
+layout_mode = 2
+min_value = 1.0
+max_value = 999.0
+value = 1.0
+
+[node name="LevelLabel" type="Label" parent="UI/TestPanel/VBox/Grid"]
+layout_mode = 2
+text = "Player Level:"
+
+[node name="LevelSpin" type="SpinBox" parent="UI/TestPanel/VBox/Grid"]
+layout_mode = 2
+min_value = 1.0
+max_value = 99.0
+value = 1.0
+
+[node name="SpawnEnemyLabel" type="Label" parent="UI/TestPanel/VBox/Grid"]
+layout_mode = 2
+text = "Spawn Enemy:"
+
+[node name="SpawnEnemyBtn" type="OptionButton" parent="UI/TestPanel/VBox/Grid"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="SpawnBossLabel" type="Label" parent="UI/TestPanel/VBox/Grid"]
+layout_mode = 2
+text = "Spawn Boss:"
+
+[node name="SpawnBossBtn" type="OptionButton" parent="UI/TestPanel/VBox/Grid"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="GiveCardLabel" type="Label" parent="UI/TestPanel/VBox/Grid"]
+layout_mode = 2
+text = "Give Card:"
+
+[node name="GiveCardBtn" type="OptionButton" parent="UI/TestPanel/VBox/Grid"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="GiveWeaponLabel" type="Label" parent="UI/TestPanel/VBox/Grid"]
+layout_mode = 2
+text = "Give Weapon:"
+
+[node name="GiveWeaponBtn" type="OptionButton" parent="UI/TestPanel/VBox/Grid"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Buttons" type="HBoxContainer" parent="UI/TestPanel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 16
+alignment = 1
+
+[node name="ApplyBtn" type="Button" parent="UI/TestPanel/VBox/Buttons"]
+layout_mode = 2
+custom_minimum_size = Vector2(180, 44)
+text = "APPLY & START"
+
+[node name="CloseTest" type="Button" parent="UI/TestPanel/VBox/Buttons"]
+layout_mode = 2
+custom_minimum_size = Vector2(110, 44)
+text = "CLOSE"

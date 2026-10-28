@@ -1,0 +1,274 @@
+[gd_scene load_steps=4 format=3 uid="uid://dlobby_new"]
+
+[ext_resource type="Script" path="res://scripts/lobby_new.gd" id="1_lobby_new"]
+[ext_resource type="Texture2D" path="res://assets/ships/phoenix.svg" id="2_player"]
+[ext_resource type="Texture2D" path="res://assets/bg_star.svg" id="3_star"]
+
+[node name="LobbyNew" type="CanvasLayer"]
+script = ExtResource("1_lobby_new")
+
+[node name="Background" type="Node2D" parent="."]
+
+[node name="ParallaxLayer" type="ParallaxBackground" parent="."]
+
+[node name="Layer1" type="ParallaxLayer" parent="ParallaxBackground"]
+motion_scale = Vector2(0.15, 0.12)
+motion_mirroring = Vector2(2048, 1536)
+
+[node name="Stars1" type="Sprite2D" parent="ParallaxBackground/Layer1"]
+texture = ExtResource("3_star")
+centered = false
+modulate = Color(0.6, 0.7, 0.9, 0.4)
+
+[node name="Layer2" type="ParallaxLayer" parent="ParallaxBackground"]
+motion_scale = Vector2(0.3, 0.25)
+motion_mirroring = Vector2(2048, 1536)
+
+[node name="Stars2" type="Sprite2D" parent="ParallaxBackground/Layer2"]
+texture = ExtResource("3_star")
+centered = false
+modulate = Color(0.8, 0.9, 1.0, 0.6)
+position = Vector2(256, 192)
+
+[node name="UI" type="Control" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Dim" type="ColorRect" parent="UI"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.03, 0.05, 0.08, 0.75)
+
+[node name="ShipAnchor" type="Node2D" parent="UI"]
+position = Vector2(640, 360)
+
+[node name="Ship" type="Sprite2D" parent="UI/ShipAnchor"]
+texture = ExtResource("2_player")
+scale = Vector2(1.4, 1.4)
+
+[node name="Thruster" type="Node2D" parent="UI/ShipAnchor"]
+position = Vector2(0, 26)
+
+[node name="Flame1" type="Polygon2D" parent="UI/ShipAnchor/Thruster"]
+color = Color(0.4, 0.7, 1.0, 0.9)
+polygon = PackedVector2Array(-4, 0, 0, 14, 4, 0)
+
+[node name="Flame2" type="Polygon2D" parent="UI/ShipAnchor/Thruster"]
+color = Color(0.6, 0.85, 1.0, 0.7)
+polygon = PackedVector2Array(-2, 0, 0, 10, 2, 0)
+scale = Vector2(1, 0.8)
+
+[node name="Glow" type="PointLight2D" parent="UI/ShipAnchor"]
+energy = 0.4
+color = Color(0.4, 0.7, 1.0, 1.0)
+texture_scale = 0.8
+
+[node name="BottomBar" type="HBoxContainer" parent="UI"]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -200.0
+offset_top = -90.0
+offset_right = 200.0
+offset_bottom = -30.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_constants/separation = 16
+alignment = 1
+
+[node name="ModeButton" type="Button" parent="UI/BottomBar"]
+custom_minimum_size = Vector2(140, 48)
+size_flags_horizontal = 3
+text = "SURVIVAL"
+
+[node name="PlayButton" type="Button" parent="UI/BottomBar"]
+custom_minimum_size = Vector2(140, 48)
+size_flags_horizontal = 3
+text = "PLAY"
+
+[node name="TopBar" type="HBoxContainer" parent="UI"]
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 20.0
+offset_top = 20.0
+offset_right = -20.0
+offset_bottom = 60.0
+grow_horizontal = 2
+theme_override_constants/separation = 12
+
+[node name="BackButton" type="Button" parent="UI/TopBar"]
+custom_minimum_size = Vector2(100, 40)
+text = "BACK"
+
+[node name="Spacer" type="Control" parent="UI/TopBar"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="TestButton" type="Button" parent="UI/TopBar"]
+visible = false
+custom_minimum_size = Vector2(120, 40)
+text = "TEST MENU"
+
+[node name="ModePanel" type="Panel" parent="UI"]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -280.0
+offset_top = -180.0
+offset_right = 280.0
+offset_bottom = 180.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Title" type="Label" parent="UI/ModePanel"]
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 12.0
+offset_bottom = 48.0
+theme_override_font_sizes/font_size = 24
+text = "SELECT MODE"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="HBox" type="HBoxContainer" parent="UI/ModePanel"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 20.0
+offset_top = 60.0
+offset_right = -20.0
+offset_bottom = -70.0
+theme_override_constants/separation = 16
+
+[node name="WaveMode" type="Button" parent="UI/ModePanel/HBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 200)
+text = "WAVE SURVIVAL"
+
+[node name="TestMode" type="Button" parent="UI/ModePanel/HBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 200)
+text = "TEST MODE"
+
+[node name="CloseMode" type="Button" parent="UI/ModePanel"]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -80.0
+offset_top = -58.0
+offset_right = 80.0
+offset_bottom = -16.0
+text = "CLOSE"
+
+[node name="TestPanel" type="Panel" parent="UI"]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -320.0
+offset_top = -220.0
+offset_right = 320.0
+offset_bottom = 220.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Title" type="Label" parent="UI/TestPanel"]
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 10.0
+offset_bottom = 44.0
+theme_override_font_sizes/font_size = 22
+text = "TEST CONTROLS"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Grid" type="GridContainer" parent="UI/TestPanel"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 20.0
+offset_top = 56.0
+offset_right = -20.0
+offset_bottom = -70.0
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 10
+columns = 2
+
+[node name="WaveLabel" type="Label" parent="UI/TestPanel/Grid"]
+text = "Set Wave:"
+
+[node name="WaveSpin" type="SpinBox" parent="UI/TestPanel/Grid"]
+min_value = 1.0
+max_value = 99.0
+value = 1.0
+
+[node name="LevelLabel" type="Label" parent="UI/TestPanel/Grid"]
+text = "Player Level:"
+
+[node name="LevelSpin" type="SpinBox" parent="UI/TestPanel/Grid"]
+min_value = 1.0
+max_value = 50.0
+value = 1.0
+
+[node name="SpawnEnemyLabel" type="Label" parent="UI/TestPanel/Grid"]
+text = "Spawn Enemy:"
+
+[node name="SpawnEnemyBtn" type="OptionButton" parent="UI/TestPanel/Grid"]
+size_flags_horizontal = 3
+
+[node name="SpawnBossLabel" type="Label" parent="UI/TestPanel/Grid"]
+text = "Spawn Boss:"
+
+[node name="SpawnBossBtn" type="OptionButton" parent="UI/TestPanel/Grid"]
+size_flags_horizontal = 3
+
+[node name="GiveCardLabel" type="Label" parent="UI/TestPanel/Grid"]
+text = "Give Card:"
+
+[node name="GiveCardBtn" type="OptionButton" parent="UI/TestPanel/Grid"]
+size_flags_horizontal = 3
+
+[node name="GiveWeaponLabel" type="Label" parent="UI/TestPanel/Grid"]
+text = "Give Weapon:"
+
+[node name="GiveWeaponBtn" type="OptionButton" parent="UI/TestPanel/Grid"]
+size_flags_horizontal = 3
+
+[node name="ApplyBtn" type="Button" parent="UI/TestPanel"]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -90.0
+offset_top = -58.0
+offset_right = 90.0
+offset_bottom = -16.0
+text = "APPLY & START"
+
+[node name="CloseTest" type="Button" parent="UI/TestPanel"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -40.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = 40.0
+text = "X"

@@ -14,8 +14,8 @@ config/name="MT Space"
 run/main_scene="res://scenes/menu.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
-version/name="1.1"
-version/code=2
+version/name="1.7"
+version/code=8
 
 [autoload]
 

@@ -3,7 +3,9 @@ extends CharacterBody2D
 const ORB_PROJECTILE := preload("res://scenes/orb_projectile.tscn")
 const XP_DROP := preload("res://scripts/xp_pickup.gd")
 const EXPLOSION_SCENE := preload("res://scenes/explosion.tscn")
+const DAMAGE_NUMBER := preload("res://scenes/damage_number.tscn")
 const NetEnemy := preload("res://scripts/net_enemy.gd")
+const STATUS_VISUAL := preload("res://scripts/status_effect_visual.gd")
 
 @export var max_hp: int = 18
 @export var move_speed: float = 72.0
@@ -12,7 +14,7 @@ const NetEnemy := preload("res://scripts/net_enemy.gd")
 @export var orb_radius: float = 56.0
 @export var orb_lifetime: float = 6.5
 @export var contact_damage: int = 1
-@export var radius: float = 29.0
+@export var radius: float = 34.0
 
 var hp: int = 18
 var net_id: int = 0
@@ -25,6 +27,8 @@ var _player: Node2D = null
 var _charge := 0.0
 var _cooldown := 0.8
 var _burn := 0.0
+var _burn_tick := 0.0
+var _burn_damage := 0.0
 var _slow := 0.0
 var _push := Vector2.ZERO
 var _ai_acc := 0.0
@@ -35,6 +39,7 @@ var elite := false
 @onready var _sprite: Sprite2D = $Sprite2D
 @onready var _bar: HpBar = $HpBar
 var _charge_art: Sprite2D = null
+var _status_visual: Node2D
 
 
 func _ready() -> void:
@@ -45,10 +50,13 @@ func _ready() -> void:
 	collision_mask = 13
 	hp = max_hp
 	_charge_art = get_node_or_null("ChargeArt") as Sprite2D
-	if _charge_art == null:
-		return
-	_charge_art.z_index = -1
-	_charge_art.modulate = Color(0.35, 1.0, 0.75, 0.0)
+	if _charge_art != null:
+		_charge_art.z_index = -1
+		_charge_art.modulate = Color(0.35, 1.0, 0.75, 0.0)
+	_status_visual = STATUS_VISUAL.new()
+	_status_visual.set("radius", radius)
+	_status_visual.z_index = 2
+	add_child(_status_visual)
 	_update_bar()
 
 
@@ -66,13 +74,12 @@ func _physics_process(delta: float) -> void:
 		collision_layer = 2
 		collision_mask = 0
 		NetEnemy.follow(self, delta)
-		_bar.global_position = global_position + Vector2(0, 34)
-		_bar.global_rotation = 0.0
+		_tick_status(delta, false)
+		_bar.place_at(global_position + Vector2(0, radius + 8.0))
 		return
 	if Net.is_online() and not Net.is_host():
 		return
-	_burn = maxf(_burn - delta, 0.0)
-	_slow = maxf(_slow - delta, 0.0)
+	_tick_status(delta)
 	_contact_t = maxf(_contact_t - delta, 0.0)
 	_player = Net.target_player(global_position)
 	if _player != null:
@@ -100,9 +107,7 @@ func _physics_process(delta: float) -> void:
 		velocity = velocity.move_toward(Vector2.ZERO, 90.0 * delta)
 		move_and_slide()
 	_update_charge_art()
-	_bar.global_position = global_position + Vector2(0, 34)
-	_bar.global_rotation = 0.0
-	queue_redraw()
+	_bar.place_at(global_position + Vector2(0, radius + 8.0))
 
 
 func _update_charge_art() -> void:
@@ -137,7 +142,11 @@ func _handle_collisions() -> void:
 
 
 func _launch_orb(dir: Vector2) -> void:
-	var orb := ORB_PROJECTILE.instantiate()
+	Game.sfx("charge", -17.0, 0.68, 0.78)
+	var orb := Pool.acquire(ORB_PROJECTILE,
+		get_tree().current_scene) as OrbProjectile
+	if orb == null:
+		return
 	orb.global_position = global_position + dir * 30.0
 	orb.direction = dir
 	orb.speed = orb_speed
@@ -147,7 +156,7 @@ func _launch_orb(dir: Vector2) -> void:
 	# 0.1 every 0.25s instead of rounding every hit up to one HP.
 	orb.damage = 0.1 * (1.0 + 0.15 * float(maxi(Game.wave - 1, 0)))
 	orb.knockback = 360.0
-	get_tree().current_scene.add_child(orb)
+	orb.prepare_for_flight()
 	if Net.is_online() and Net.is_host():
 		Net.broadcast_orb(global_position + dir * 30.0, dir, orb_speed,
 			orb_radius, orb_lifetime)
@@ -156,19 +165,56 @@ func _launch_orb(dir: Vector2) -> void:
 func take_damage(amount: float, kind: String = "normal") -> void:
 	if NetEnemy.report_hit(self, amount, kind):
 		return
+	if _slow > 0.0:
+		amount *= 1.0 + 0.35 * float(Game.upg_brittle)
+	Game.record_damage(mini(maxi(int(round(amount)), 1), maxi(hp, 0)))
 	hp -= maxi(1, int(round(amount)))
 	_update_bar()
+	_spawn_damage_number(amount, kind)
 	if hp <= 0:
 		_die()
 
 
-func apply_status(burn_stacks: int, freeze_stacks: int) -> void:
-	if NetEnemy.report_status(self, burn_stacks, freeze_stacks):
+func _spawn_damage_number(amount: float, kind: String) -> void:
+	var number := Pool.acquire(DAMAGE_NUMBER,
+		get_tree().current_scene) as DamageNumber
+	if number == null:
 		return
+	number.global_position = global_position + Vector2(
+		randf_range(-24.0, 24.0), -radius - randf_range(8.0, 34.0)
+	)
+	match kind:
+		"crit":
+			number.setup(amount, Color(1.0, 0.85, 0.2), 34)
+		"burn":
+			number.setup(amount, Color(1.0, 0.55, 0.15), 18)
+		_:
+			number.setup(amount, Color(0.82, 0.85, 0.9), 22)
+
+
+func apply_status(burn_stacks: int, freeze_stacks: int) -> void:
+	NetEnemy.report_status(self, burn_stacks, freeze_stacks)
 	if burn_stacks > 0:
-		_burn = maxf(_burn, 2.0)
+		_burn = maxf(_burn, 2.0 + burn_stacks * 0.5)
+		_burn_damage = (0.6 + burn_stacks * 0.4) \
+			* (1.0 + 0.4 * float(Game.upg_inferno))
+		Game.sfx("sizzle", -23.0, 0.9, 1.15)
 	if freeze_stacks > 0:
-		_slow = maxf(_slow, 1.5)
+		_slow = maxf(_slow, 1.2 + freeze_stacks * 0.4)
+		Game.sfx("frost", -23.0, 0.92, 1.12)
+
+
+func _tick_status(delta: float, apply_burn_damage: bool = true) -> void:
+	if _burn > 0.0:
+		_burn = maxf(_burn - delta, 0.0)
+		_burn_tick -= delta
+		if _burn_tick <= 0.0:
+			_burn_tick = 0.4
+			if apply_burn_damage:
+				take_damage(_burn_damage, "burn")
+	if _slow > 0.0:
+		_slow = maxf(_slow - delta, 0.0)
+	_status_visual.call("set_status", _burn > 0.0, _slow > 0.0)
 
 
 func apply_network_elite(network_max_hp: int) -> void:
@@ -192,14 +238,14 @@ func _die() -> void:
 	_net_alive = false
 	var xp := 20
 	var drop := NetEnemy.died(self, xp)
-	var boom := EXPLOSION_SCENE.instantiate()
+	var boom := Pool.acquire(EXPLOSION_SCENE,
+		get_tree().current_scene) as Explosion
+	if boom == null:
+		return
 	boom.global_position = global_position
-	get_tree().current_scene.add_child(boom)
-	Game.on_enemy_killed()
+	boom.setup(1.0, Color(0.55, 1.0, 0.55))
+	Game.combat_impact(0.8)
+	Game.on_enemy_killed("orb")
 	if drop:
 		XP_DROP.drop(get_tree(), global_position, xp)
 	queue_free()
-
-
-func _draw() -> void:
-	pass

@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><defs><linearGradient id="card_icon_glint" x1="0" y1="0" x2="0.8" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="0.55" stop-color="#e2e2e2"/><stop offset="1" stop-color="#b8b8b8"/></linearGradient></defs>
 <g transform="translate(32,32)">
-<circle fill="#ffffff" stroke="none" cx="-7" cy="-4" r="9"/><circle fill="#ffffff" stroke="none" cx="7" cy="-4" r="9"/><path fill="#ffffff" stroke="none" d="M-14,-1 L14,-1 L0,18 Z"/><line fill="none" stroke="#c8c8c8" x1="-3" y1="-20" x2="2" y2="-6" stroke-width="2.5" stroke-linecap="round"/><line fill="none" stroke="#c8c8c8" x1="2" y1="-6" x2="-3" y2="4" stroke-width="2.5" stroke-linecap="round"/>
+<circle fill="url(#card_icon_glint)" stroke="#858585" stroke-width="0.8" cx="-7" cy="-4" r="9"/><circle fill="url(#card_icon_glint)" stroke="#858585" stroke-width="0.8" cx="7" cy="-4" r="9"/><path fill="url(#card_icon_glint)" stroke="#858585" stroke-width="0.8" d="M-14,-1 L14,-1 L0,18 Z"/><line fill="none" stroke="#c8c8c8" x1="-3" y1="-20" x2="2" y2="-6" stroke-width="2.5" stroke-linecap="round"/><line fill="none" stroke="#c8c8c8" x1="2" y1="-6" x2="-3" y2="4" stroke-width="2.5" stroke-linecap="round"/>
 </g>
 </svg>

@@ -1,0 +1,25 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/boss_drone.gd" id="1_drone"]
+[ext_resource type="Texture2D" path="res://assets/boss_drone.svg" id="2_texture"]
+[ext_resource type="Script" path="res://scripts/hp_bar.gd" id="3_hpbar"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_drone"]
+radius = 14.0
+
+[node name="BossDrone" type="CharacterBody2D" groups=["enemy", "monster", "boss_drone"]]
+collision_layer = 8
+collision_mask = 13
+script = ExtResource("1_drone")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture_filter = 2
+texture = ExtResource("2_texture")
+scale = Vector2(0.72, 0.72)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_drone")
+
+[node name="HpBar" type="Node2D" parent="."]
+top_level = true
+script = ExtResource("3_hpbar")

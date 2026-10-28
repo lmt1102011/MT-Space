@@ -1,19 +1,25 @@
 extends CharacterBody2D
 
 @export var acceleration: float = 1400.0
-@export var max_speed: float = 340.0
+@export var max_speed: float = 350.0
 @export var friction: float = 900.0
 @export var turn_speed: float = 14.0
-@export var fire_cooldown: float = 0.14
-@export var bullet_speed: float = 640.0
+@export var fire_cooldown: float = 0.25
+@export var bullet_speed: float = 600.0
 @export var bullet_spread: float = 0.0
-@export var max_hp: int = 10
+@export var max_hp: int = 8
 @export var push_force: float = 180.0
 
 const BULLET_SCENE := preload("res://scenes/bullet.tscn")
+const ENEMY_BULLET_SCENE := preload("res://scenes/enemy_bullet.tscn")
+const BOSS_MISSILE_SCENE := preload("res://scenes/boss_missile.tscn")
 const EXPLOSION_SCENE := preload("res://scenes/explosion.tscn")
+const ORB_PROJECTILE_SCENE := preload("res://scenes/orb_projectile.tscn")
 const STATUS_VISUAL := preload("res://scripts/status_effect_visual.gd")
 const DAMAGE_NUMBER := preload("res://scenes/damage_number.tscn")
+const MULTIPLAYER_PALETTE_SHADER := preload(
+	"res://assets/shaders/ship_multiplayer_palette.gdshader"
+)
 const MAX_BULLETS := 36          # hard cap on live player bullets
 const BULLET_LIFE := 2.0
 
@@ -30,13 +36,22 @@ var _orb_slow_t: float = 0.0
 var _stun_t: float = 0.0
 var _knock_vel: Vector2 = Vector2.ZERO
 var _shield_t: float = 0.0
+var _equipment_timer: float = 0.0
+var _shield_recharge_timer: float = 0.0
+var _shield_charges: int = 0
+var _equipment_drone: Sprite2D
+var _active_store_drone: String = ""
 var _flame_out: Polygon2D = null
 var _flame_in: Polygon2D = null
 var _hp_drawn: int = -1
 
-var _base_max_speed: float = 340.0
-var _base_bullet_speed: float = 640.0
-var _base_fire_cooldown: float = 0.14
+var _base_max_speed: float = 350.0
+var _base_bullet_speed: float = 600.0
+var _base_fire_cooldown: float = 0.25
+var _ship_damage_multiplier: float = 1.0
+var _ship_crit_bonus: float = 0.0
+var _ship_pierce_bonus: int = 0
+var _ship_burn_bonus: int = 0
 
 var _cooldown: float = 0.0
 var _thrust: float = 0.0
@@ -56,12 +71,24 @@ func _ready() -> void:
 	# must not physically collide with interpolated remote enemies, otherwise
 	# movement jitters, while bullets still use their own mask to hit layer 8.
 	collision_mask = 4
+	var ship_stats: Dictionary = Game.get_effective_ship_combat_stats()
+	max_speed = float(ship_stats["max_speed"])
+	max_hp = int(ship_stats["max_hp"])
+	bullet_speed = float(ship_stats["bullet_speed"])
+	_ship_damage_multiplier = float(ship_stats["damage_multiplier"])
+	_ship_crit_bonus = float(ship_stats["crit_chance"])
+	_ship_pierce_bonus = int(ship_stats["pierce_bonus"])
+	_ship_burn_bonus = int(ship_stats["burn_bonus"])
+	fire_cooldown = 1.0 / float(ship_stats["fire_rate"])
 	_base_max_speed = max_speed
 	_base_bullet_speed = bullet_speed
 	_base_fire_cooldown = fire_cooldown
-	hp = max_hp
+	_set_ship_appearance(Net.is_online())
+	hp = max_hp_total()
+	_prewarm_combat_pool.call_deferred()
 	_flame_out = _make_flame(5.0)
 	_flame_in = _make_flame(2.5)
+	_setup_store_equipment()
 	_status_visual = STATUS_VISUAL.new()
 	_status_visual.set("radius", 26.0)
 	_status_visual.z_index = 2
@@ -73,6 +100,27 @@ func _ready() -> void:
 	# the on screen stick and fire button live in the game scene, the player
 	# only asks for them
 	_setup_touch.call_deferred()
+
+
+func _set_ship_appearance(multiplayer: bool) -> void:
+	if multiplayer:
+		var palette := ShaderMaterial.new()
+		palette.shader = MULTIPLAYER_PALETTE_SHADER
+		_sprite.material = palette
+		_sprite.modulate = Net.get_player_ship_color()
+	else:
+		_sprite.material = null
+		_sprite.modulate = Color.WHITE
+
+
+func _prewarm_combat_pool() -> void:
+	var world := get_tree().current_scene
+	Pool.prewarm(BULLET_SCENE, MAX_BULLETS, world)
+	Pool.prewarm(ENEMY_BULLET_SCENE, 24, world)
+	Pool.prewarm(BOSS_MISSILE_SCENE, 4, world)
+	Pool.prewarm(EXPLOSION_SCENE, 12, world)
+	Pool.prewarm(DAMAGE_NUMBER, 22, world)
+	Pool.prewarm(ORB_PROJECTILE_SCENE, 4, world)
 
 
 # The on screen sticks live in the game scene, the player only asks for them.
@@ -98,6 +146,7 @@ func _shoot_held() -> bool:
 
 
 func _on_players_changed() -> void:
+	_set_ship_appearance(Net.is_online())
 	_refresh_name_label()
 
 
@@ -139,8 +188,80 @@ func max_hp_total() -> int:
 	return max_hp + Game.upg_bonus_hp + maxi(Game.level - 1, 0)
 
 
+func _setup_store_equipment() -> void:
+	_active_store_drone = Game.get_active_store_drone()
+	if _active_store_drone.is_empty():
+		return
+	var icon_by_drone := {
+		"strike_drone": "store_attack_drone",
+		"repair_drone": "store_repair_drone",
+		"hex_guard_drone": "store_defense_drone",
+	}
+	_equipment_drone = Sprite2D.new()
+	_equipment_drone.name = "EquippedSupportDrone"
+	_equipment_drone.texture = load(
+		"res://assets/icons/%s.svg" % str(icon_by_drone[_active_store_drone])
+	) as Texture2D
+	_equipment_drone.scale = Vector2(0.27, 0.27)
+	_equipment_drone.z_index = 1
+	add_child(_equipment_drone)
+	if _active_store_drone == "hex_guard_drone":
+		_shield_charges = 3
+	queue_redraw()
+
+
+func _tick_store_equipment(delta: float) -> void:
+	if _equipment_drone != null:
+		_equipment_drone.position = Vector2(0.0, -37.0).rotated(
+			_flame_time * 0.75
+		)
+	if _active_store_drone == "repair_drone":
+		_equipment_timer += delta
+		if _equipment_timer >= 6.0:
+			_equipment_timer = 0.0
+			if hp < max_hp_total():
+				heal(1)
+	elif _active_store_drone == "strike_drone":
+		_equipment_timer += delta
+		if _equipment_timer >= 1.4:
+			_equipment_timer = 0.0
+			_fire_strike_drone()
+	if _active_store_drone == "hex_guard_drone" and _shield_charges < 3:
+		_shield_recharge_timer += delta
+		if _shield_recharge_timer >= 8.0:
+			_shield_recharge_timer = 0.0
+			_shield_charges += 1
+			queue_redraw()
+
+
+func _fire_strike_drone() -> void:
+	const ENEMY_INDEX := preload("res://scripts/enemy_spatial_index.gd")
+	var radius := 460.0
+	var search := Rect2(global_position - Vector2.ONE * radius,
+		Vector2.ONE * radius * 2.0)
+	var nearest: Node2D
+	var nearest_distance := radius * radius
+	for candidate in ENEMY_INDEX.query_rect(get_tree(), search):
+		var target := candidate as Node2D
+		if target == null or not is_instance_valid(target) \
+				or not target.has_method("take_damage"):
+			continue
+		var distance := global_position.distance_squared_to(target.global_position)
+		if distance < nearest_distance:
+			nearest = target
+			nearest_distance = distance
+	if nearest == null:
+		return
+	var direction := (nearest.global_position - global_position).normalized()
+	_spawn_bullet(direction, _base_bullet_speed * 0.82,
+		Game.upg_damage * _ship_damage_multiplier * 0.45,
+		0, 0, 0.0, Vector2.ZERO, 0.8, 0, 18.0, 3.5,
+		Color(0.38, 0.88, 1.0))
+
+
 func heal(amount: int) -> void:
 	hp = mini(hp + amount, max_hp_total())
+	_refresh_hp_bar()
 
 
 func apply_status(burn: int, freeze: int) -> void:
@@ -168,6 +289,21 @@ func apply_knockback(impulse: Vector2, stun_time: float = 0.5) -> void:
 		return
 	_knock_vel = impulse
 	_stun_t = maxf(_stun_t, stun_time)
+
+
+func apply_hit(amount: float, burn: int = 0, freeze: int = 0,
+		knockback: Vector2 = Vector2.ZERO, stun_time: float = 0.0,
+		orb_damage: bool = false) -> void:
+	if orb_damage:
+		apply_orb_damage(amount)
+	else:
+		take_damage(amount)
+	if _dead:
+		return
+	if burn > 0 or freeze > 0:
+		apply_status(burn, freeze)
+	if stun_time > 0.0 or not knockback.is_zero_approx():
+		apply_knockback(knockback, stun_time)
 
 
 func _physics_process(delta: float) -> void:
@@ -199,6 +335,7 @@ func _physics_process(delta: float) -> void:
 		velocity = _knock_vel
 		_knock_vel = _knock_vel.move_toward(Vector2.ZERO, 1100.0 * delta)
 		_flame_time += delta
+		_tick_store_equipment(delta)
 		_update_flame()
 		if _status_visual != null:
 			_status_visual.call("set_status", _burn > 0.0, _slow > 0.0)
@@ -243,6 +380,7 @@ func _physics_process(delta: float) -> void:
 	_sprite.rotation = lerp_angle(_sprite.rotation, aim, turn_speed * delta)
 
 	_flame_time += delta
+	_tick_store_equipment(delta)
 	if _shield_t > 0.0:
 		_shield_t = maxf(_shield_t - delta, 0.0)
 	_update_flame()
@@ -289,7 +427,8 @@ func _shoot(delta: float) -> void:
 	if Game._burst_left > 0 and _cooldown <= 0.0:
 		_cooldown = 0.06
 		Game._burst_left -= 1
-		_spawn_bullet(dir, _base_bullet_speed * Game.upg_bullet_speed, Game.upg_damage, 0, 0, 0.0)
+		_spawn_bullet(dir, _base_bullet_speed * Game.upg_bullet_speed,
+			Game.upg_damage * _ship_damage_multiplier, 0, 0, 0.0)
 		velocity -= dir * 30.0
 		return
 
@@ -297,8 +436,9 @@ func _shoot(delta: float) -> void:
 		return
 
 	var base_speed := _base_bullet_speed * Game.upg_bullet_speed * (1.0 - 0.12 * float(Game.upg_rushed))
-	var dmg := Game.upg_damage * (1.0 + 0.25 * float(Game.upg_heavy_caliber))
-	var burn := Game.upg_burn
+	var dmg := Game.upg_damage * _ship_damage_multiplier \
+		* (1.0 + 0.25 * float(Game.upg_heavy_caliber))
+	var burn := Game.upg_burn + _ship_burn_bonus
 	var freeze := Game.upg_freeze
 	var rate := Game.upg_fire_rate \
 		* (1.0 + 0.20 * float(Game.upg_rushed)) \
@@ -342,14 +482,18 @@ func _shoot(delta: float) -> void:
 func _spawn_bullet(dir: Vector2, spd: float, dmg: float, burn: int, freeze: int,
 		_spread: float, offset: Vector2 = Vector2.ZERO, life_mult: float = 1.0,
 		pierce: int = 0, length: float = 26.0, width: float = 5.0, col: Color = Color(1.0, 0.9, 0.2)) -> void:
-	var bullet := BULLET_SCENE.instantiate()
+	_limit_bullets()
+	var bullet := Pool.acquire(BULLET_SCENE, get_tree().current_scene) as PlayerBullet
+	if bullet == null:
+		return
+	bullet.hide()
 	bullet.global_position = global_position + dir * 26.0 + offset
 	bullet.direction = dir.rotated(randf_range(-bullet_spread, bullet_spread))
 	bullet.speed = spd
 	# crit
 	var final_dmg := dmg
 	var is_crit := false
-	var crit_chance := Game.upg_crit
+	var crit_chance := Game.upg_crit + _ship_crit_bonus
 	# Cold Blood: the closer to death, the sharper the shots
 	if Game.upg_cold_blood > 0:
 		crit_chance += 0.08 * float(Game.upg_cold_blood) * (1.0 - float(hp) / float(max_hp_total()))
@@ -362,12 +506,15 @@ func _spawn_bullet(dir: Vector2, spd: float, dmg: float, burn: int, freeze: int,
 	bullet.burn = burn
 	bullet.freeze = freeze
 	bullet.lifetime = BULLET_LIFE * life_mult
-	bullet.pierce = pierce + Game.upg_pierce
+	bullet.pierce = pierce + Game.upg_pierce + _ship_pierce_bonus
 	bullet.beam_length = length
 	bullet.beam_width = width * (1.7 if is_crit else 1.0)
 	bullet.beam_color = col
-	_limit_bullets()
-	get_tree().current_scene.add_child(bullet)
+	bullet.source_position = global_position
+	bullet.prepare_for_flight()
+	if Game.upg_momentum > 0 and velocity.length() >= _base_max_speed * 0.6:
+		bullet.damage *= 1.0 + 0.15 * float(Game.upg_momentum)
+	bullet.lifetime *= 1.0 + Game.upg_range
 	Net.broadcast_player_bullet(bullet.global_position, bullet.direction, bullet.speed,
 		bullet.lifetime, bullet.beam_length, bullet.beam_width, bullet.beam_color)
 	Game.sfx("shoot", -14.0, 0.97, 1.04)
@@ -387,7 +534,10 @@ func _limit_bullets() -> void:
 			best = lt
 			oldest = b
 	if oldest != null:
-		oldest.queue_free()
+		if oldest.has_method("recycle"):
+			oldest.call("recycle")
+		else:
+			oldest.queue_free()
 
 
 func _process(delta: float) -> void:
@@ -427,9 +577,17 @@ func apply_orb_damage(amount: float) -> void:
 func _take_whole_damage(amount: int) -> void:
 	if _dead:
 		return
+	if _active_store_drone == "hex_guard_drone" and _shield_charges > 0:
+		_shield_charges -= 1
+		_shield_recharge_timer = 0.0
+		invuln = 0.45
+		queue_redraw()
+		Game.sfx("frost", -12.0, 1.08, 1.2)
+		return
 	# Hull Plating: soften every incoming hit a little
 	amount = maxi(1, amount - Game.upg_plating)
 	hp -= amount
+	_refresh_hp_bar()
 	# Thorns: being hit hurts whatever is standing close
 	if Game.upg_thorns > 0:
 		_damage_nearby(float(amount) * 0.3, 80.0 + 15.0 * float(Game.upg_thorns))
@@ -441,19 +599,29 @@ func _take_whole_damage(amount: int) -> void:
 	tw.tween_property(_sprite, "modulate", Color.WHITE, 0.18)
 	if hp <= 0:
 		hp = 0
+		_refresh_hp_bar()
 		_die()
 
 
+func _refresh_hp_bar() -> void:
+	_hp_drawn = hp
+	queue_redraw()
+
+
 func _spawn_damage_number(amount: float, color: Color, font_size: int = 24) -> void:
-	var n := DAMAGE_NUMBER.instantiate() as DamageNumber
+	var n := Pool.acquire(DAMAGE_NUMBER, get_tree().current_scene) as DamageNumber
+	if n == null:
+		return
 	n.global_position = global_position + Vector2(randf_range(-26.0, 26.0), randf_range(-34.0, -12.0))
 	n.setup(amount, color, font_size)
-	get_tree().current_scene.add_child(n)
 
 
 func _damage_nearby(amount: float, radius: float) -> void:
+	const ENEMY_INDEX := preload("res://scripts/enemy_spatial_index.gd")
 	var r2 := radius * radius
-	for e in get_tree().get_nodes_in_group("enemy"):
+	var search := Rect2(global_position - Vector2.ONE * radius,
+		Vector2.ONE * radius * 2.0)
+	for e in ENEMY_INDEX.query_rect(get_tree(), search):
 		var n := e as Node2D
 		if n == null or not is_instance_valid(n):
 			continue
@@ -468,6 +636,7 @@ func _dot_damage(amount: float) -> void:
 		return
 	var dmg: float = ceilf(amount)
 	hp -= int(dmg)
+	_refresh_hp_bar()
 	_spawn_damage_number(dmg, Color(1.0, 0.6, 0.2), 18)
 	if hp <= 0:
 		hp = 0
@@ -481,6 +650,7 @@ func _die() -> void:
 		hp = maxi(1, int(round(float(max_hp_total()) * 0.5)))
 		invuln = 1.5
 		_shield_t = 1.2
+		_refresh_hp_bar()
 		Game.sfx("cardget", -8.0, 0.98, 1.05)
 		return
 	_dead = true
@@ -497,10 +667,11 @@ func _die() -> void:
 	set_physics_process(false)
 	_shake_t = 1.0
 	await get_tree().create_timer(1.0).timeout
-	var boom := EXPLOSION_SCENE.instantiate() as Explosion
-	boom.setup(3.0)
-	boom.global_position = global_position
-	get_tree().current_scene.add_child(boom)
+	var boom := Pool.acquire(EXPLOSION_SCENE,
+		get_tree().current_scene) as Explosion
+	if boom != null:
+		boom.setup(3.0, Color(1.0, 0.42, 0.35))
+		boom.global_position = global_position
 	Game.sfx("boom_big", -8.0, 0.85, 1.02)
 	_sprite.visible = false
 	# the name under the ship is not needed while the ship is a ghost
@@ -544,9 +715,13 @@ func revive_for_wave() -> void:
 	_knock_vel = Vector2.ZERO
 	velocity = Vector2.ZERO
 	_thrust = 0.0
+	_equipment_timer = 0.0
+	_shield_recharge_timer = 0.0
+	if _active_store_drone == "hex_guard_drone":
+		_shield_charges = 3
 	invuln = 1.5
 	_sprite.visible = true
-	_sprite.modulate = Color.WHITE
+	_set_ship_appearance(Net.is_online())
 	var name_label := get_node_or_null("NameLabel") as Label
 	if name_label:
 		name_label.visible = true
@@ -665,6 +840,22 @@ func _draw() -> void:
 	if _shield_t > 0.0:
 		var a := _shield_t / 1.2
 		draw_arc(Vector2.ZERO, 30.0, 0.0, TAU, 48, Color(0.9, 0.95, 1.0, 0.75 * a), 4.0, true)
+	if _active_store_drone == "hex_guard_drone":
+		for cell_index in 6:
+			var angle := TAU * float(cell_index) / 6.0 - PI / 2.0
+			var center := Vector2.from_angle(angle) * 34.0
+			var vertices := PackedVector2Array()
+			for side in 6:
+				var vertex_angle := TAU * float(side) / 6.0
+				vertices.append(center + Vector2.from_angle(vertex_angle) * 7.0)
+			var lit := cell_index < _shield_charges * 2
+			var color := Color(0.25, 0.88, 1.0, 0.28) if lit \
+				else Color(0.20, 0.47, 0.62, 0.12)
+			draw_colored_polygon(vertices, color)
+			var outline := vertices.duplicate()
+			outline.append(vertices[0])
+			draw_polyline(outline,
+				Color(0.58, 0.93, 1.0, 0.82 if lit else 0.24), 1.4, true)
 
 
 func _make_flame(width: float) -> Polygon2D:
@@ -685,11 +876,13 @@ func _update_flame() -> void:
 	_flame_out.position = back
 	_flame_out.rotation = _sprite.rotation
 	_flame_out.scale = Vector2(length, 1.0)
-	_flame_out.color = Color(1.0, 0.75, 0.25, 0.35 + 0.5 * _thrust)
+	var flame_color := Net.get_player_flame_color()
+	flame_color.a = 0.35 + 0.5 * _thrust
+	_flame_out.color = flame_color
 	_flame_out.visible = lit
 	_flame_in.position = back
 	_flame_in.rotation = _sprite.rotation
 	_flame_in.scale = Vector2(length * 0.55, 1.0)
-	_flame_in.color = Color(1.0, 1.0, 0.8, 0.6 + 0.4 * _thrust)
+	_flame_in.color = flame_color.lerp(Color.WHITE, 0.55)
+	_flame_in.color.a = 0.6 + 0.4 * _thrust
 	_flame_in.visible = lit
-

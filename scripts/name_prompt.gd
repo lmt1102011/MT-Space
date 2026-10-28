@@ -14,9 +14,16 @@ const MAX_NAME := 14
 
 
 func show_name_taken() -> void:
-	_title.text = "NAME ALREADY IN USE"
-	_hint.text = "choose a different name to join this room"
-	_play_btn.text = "CHANGE NAME"
+	_set_localized(_title, "NAME ALREADY IN USE")
+	_set_localized(_hint, "choose a different name to join this room")
+	_set_localized(_play_btn, "CHANGE NAME")
+
+
+func show_rename_mode() -> void:
+	_edit.text = Net.player_name
+	_set_localized(_title, "CHANGE PILOT NAME")
+	_set_localized(_hint, "your name is saved for future sessions")
+	_set_localized(_play_btn, "SAVE NAME")
 
 
 func _ready() -> void:
@@ -24,7 +31,14 @@ func _ready() -> void:
 	_edit.text_submitted.connect(func(_t): _on_play())
 	# start with the name that was used last, if there was one
 	_edit.text = Net.player_name if Net.player_name != "" else ""
-	_edit.placeholder_text = "your name"
+	var locale := get_node_or_null("/root/Locale")
+	if locale:
+		locale.localize_control(_title, "WHAT IS YOUR NAME?")
+		locale.localize_control(_hint, "the other players will see this under your ship")
+		locale.localize_control(_play_btn, "PLAY")
+		locale.set_control_placeholder(_edit, "your name")
+	else:
+		_edit.placeholder_text = "your name"
 	_edit.max_length = MAX_NAME
 	_edit.grab_focus()
 	_ui_fade_in()
@@ -37,15 +51,23 @@ func _ui_fade_in() -> void:
 
 
 func _on_play() -> void:
-	var name := _edit.text.strip_edges()
-	if name == "":
+	var player_name := _edit.text.strip_edges()
+	if player_name == "":
 		# no name typed: the field turns red for a moment
 		_edit.modulate = Color(1.0, 0.5, 0.5)
 		var tw := create_tween()
 		tw.tween_property(_edit, "modulate", Color.WHITE, 0.4)
 		Game.sfx("click", -12.0, 0.9, 1.0)
 		return
-	Net.player_name = name
+	Net.player_name = player_name
 	Game.sfx("cardget", -10.0, 0.98, 1.04)
-	name_chosen.emit(name)
+	name_chosen.emit(player_name)
 	queue_free()
+
+
+func _set_localized(control: Control, source_text: String) -> void:
+	var locale := get_node_or_null("/root/Locale")
+	if locale:
+		locale.localize_control(control, source_text)
+	else:
+		control.set("text", source_text)

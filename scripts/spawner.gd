@@ -20,6 +20,11 @@ const DOUBLE_SCENE := preload("res://scenes/double_enemy.tscn")
 const RAILGUN_SCENE := preload("res://scenes/railgun_enemy.tscn")
 const CHARGER_SCENE := preload("res://scenes/charger_enemy.tscn")
 const ORB_ENEMY_SCENE := preload("res://scenes/orb_enemy.tscn")
+const BOSS_SCENE := preload("res://scenes/boss_1.tscn")
+const BOSS2_SCENE := preload("res://scenes/boss_2.tscn")
+const BEAM_ENEMY_SCENE := preload("res://scenes/beam_enemy.tscn")
+const BOSS_DRONE_SCENE := preload("res://scenes/boss_drone.tscn")
+const BOSS_WAVE_INTERVAL := 10
 
 signal wave_cleared_text(show: bool)
 
@@ -31,11 +36,49 @@ var _shape_timer: float = 0.0
 
 
 func _ready() -> void:
+	Game.start_run()
 	# the host runs the waves, a client only follows what the host says
 	if _is_client():
 		return
 	await get_tree().create_timer(0.5).timeout
+	var gm = get_node_or_null("/root/Game")
+	if gm != null and bool(gm.get("test_mode")):
+		var td = gm.get("test_data")
+		if typeof(td) == TYPE_DICTIONARY and int(td.get("wave", 0)) > 0:
+			gm.wave = int(td.get("wave", 1)) - 1
 	_start_next_wave()
+
+# In test mode the wave spawns exactly what the test menu picked instead of
+# the normal wave composition, so a test run stays predictable.
+func _test_wave_spawns() -> Array:
+	if not Game.test_mode:
+		return []
+	var td: Dictionary = Game.test_data
+	var out: Array = []
+	var enemy := str(td.get("spawn_enemy", ""))
+	var boss := str(td.get("spawn_boss", ""))
+	if enemy != "":
+		for i in 3:
+			out.append(enemy)
+	if boss != "":
+		out.append(boss)
+	return out
+
+
+# Jump straight to a wave (used by the in-game TEST MENU).
+func test_jump_wave(n: int) -> void:
+	if _is_client():
+		return
+	Game.wave = maxi(n - 1, 0)
+	_spawn_queue.clear()
+	_start_next_wave()
+
+
+# Spawn one enemy right now (used by the in-game TEST MENU).
+func test_spawn_now(kind: String) -> void:
+	if _is_client():
+		return
+	_spawn_enemy(kind)
 
 
 # True when this machine is a client in a network game.
@@ -46,6 +89,18 @@ func _is_client() -> bool:
 func _process(delta: float) -> void:
 	# a client does not think for itself, the host tells it what to show
 	if _is_client():
+		return
+	if Game.test_mode:
+		if _phase == "spawning":
+			_spawn_timer -= delta
+			if _spawn_timer <= 0.0 and not _spawn_queue.is_empty():
+				_spawn_timer = spawn_interval
+				_spawn_from_queue()
+			if _spawn_queue.is_empty():
+				_phase = "clearing"
+		elif _phase == "clearing" \
+				and get_tree().get_nodes_in_group("monster").is_empty():
+			_phase = "test_idle"
 		return
 	# the swarm shapes keep coming on their own, they are not part of a wave
 	_spawn_shapes(delta)
@@ -66,6 +121,7 @@ func _process(delta: float) -> void:
 				_countdown = intermission
 				Game.wave_cleared.emit(Game.wave)
 				wave_cleared_text.emit(true)
+				_revive_dead_players()
 
 		"countdown":
 			_countdown -= delta
@@ -77,6 +133,10 @@ func _process(delta: float) -> void:
 
 # Trickles in the ambient swarm shapes, up to the cap on how many are alive.
 func _spawn_shapes(delta: float) -> void:
+	if Game.test_mode:
+		return
+	if Game.wave > 0 and Game.wave % BOSS_WAVE_INTERVAL == 0:
+		return
 	_shape_timer -= delta
 	if _shape_timer > 0.0:
 		return
@@ -90,11 +150,26 @@ func _shape_count_alive() -> int:
 	return get_tree().get_nodes_in_group("shape_enemy").size()
 
 
+func _revive_dead_players() -> void:
+	var local_player := get_tree().current_scene.get_node_or_null("Player")
+	if local_player != null and local_player.get("_dead") == true \
+			and local_player.has_method("revive_for_wave"):
+		local_player.call("revive_for_wave")
+	var world := get_tree().get_first_node_in_group("net_world")
+	if world != null and world.has_method("revive_remote_players"):
+		world.call("revive_remote_players")
+	Net.send_revive_dead_players()
+
+
 func _start_next_wave() -> void:
 	var local_player := get_tree().current_scene.get_node_or_null("Player")
 	if local_player != null and local_player.has_method("revive_for_wave"):
 		local_player.call("revive_for_wave")
+	var world := get_tree().get_first_node_in_group("net_world")
+	if world != null and world.has_method("revive_remote_players"):
+		world.call("revive_remote_players")
 	Game.wave += 1
+	Game.record_wave(Game.wave)
 	Game.wave_changed.emit(Game.wave)
 	Game.sfx("alert", -17.0, 0.97, 1.05)
 	_build_queue(Game.wave)
@@ -106,6 +181,16 @@ func _start_next_wave() -> void:
 
 func _build_queue(wave: int) -> int:
 	_spawn_queue.clear()
+	if Game.test_mode:
+		_spawn_queue.append_array(_test_wave_spawns())
+		return _spawn_queue.size()
+	if wave % 20 == 0:
+		for i in randi_range(1, 3):
+			_spawn_queue.append("boss2")
+		return _spawn_queue.size()
+	if wave % BOSS_WAVE_INTERVAL == 0:
+		_spawn_queue.append("boss")
+		return _spawn_queue.size()
 	for i in _shooter_count(wave):
 		_spawn_queue.append("shooter")
 	for i in _double_count(wave):
@@ -116,6 +201,8 @@ func _build_queue(wave: int) -> int:
 		_spawn_queue.append("charger")
 	for i in _orb_count(wave):
 		_spawn_queue.append("orb")
+	for i in _beam_count(wave):
+		_spawn_queue.append("beam_enemy")
 	_spawn_queue.shuffle()
 	return _spawn_queue.size()
 
@@ -159,13 +246,24 @@ func _orb_count(wave: int) -> int:
 	return clampi(1 + (wave - 4) / 2, 1, 5)
 
 
+func _beam_count(wave: int) -> int:
+	if wave < 6:
+		return 0
+	return clampi(1 + (wave - 6) / 5, 1, 3)
+
+
 func _total_count(wave: int) -> int:
+	if wave % 20 == 0:
+		return 2
+	if wave % BOSS_WAVE_INTERVAL == 0:
+		return 1
 	# only the wave enemies, the shapes are ambient
 	return _shooter_count(wave) + _double_count(wave) \
-		+ _railgun_count(wave) + _charger_count(wave) + _orb_count(wave)
+		+ _railgun_count(wave) + _charger_count(wave) + _orb_count(wave) \
+		+ _beam_count(wave)
 
 
-func _spawn_enemy(kind: String) -> void:
+func _spawn_enemy(kind: String, boss_minion: bool = false) -> void:
 	# the host owns the world, the clients get the enemies from it
 	if Net.is_online() and not Net.is_host():
 		return
@@ -201,7 +299,7 @@ func _spawn_enemy(kind: String) -> void:
 		var dist := randf_range(near, far)
 		pos = center + Vector2.from_angle(angle) * dist
 		pos = pos.clamp(Vector2(-2630, -1530), Vector2(2630, 1530))
-		if pos.distance_to(center) >= near:
+		if pos.distance_squared_to(center) >= near * near:
 			break
 
 	var speed_mult := Game.enemy_speed_mult()
@@ -237,8 +335,49 @@ func _spawn_enemy(kind: String) -> void:
 		var shape := cs.shape.duplicate() as CircleShape2D
 		shape.radius = radius
 		cs.shape = shape
-	if kind != "shape":
+	if kind != "shape" and kind != "boss":
 		_maybe_elite(enemy)
+	if boss_minion:
+		enemy.add_to_group("boss_minion")
+
+
+func spawn_boss_minions() -> void:
+	if _is_client():
+		return
+	if not get_tree().get_nodes_in_group("boss_minion").is_empty():
+		return
+	var minion_kinds := ["shooter", "double", "railgun", "charger", "orb"]
+	var minion_count := randi_range(2, 4)
+	for i in minion_count:
+		var kind: String = minion_kinds.pick_random()
+		_spawn_enemy(kind, true)
+
+
+func spawn_boss_drones(origin: Vector2) -> void:
+	if _is_client() or not get_tree().get_nodes_in_group("boss_drone").is_empty():
+		return
+	var count := randi_range(2, 4)
+	var params := {
+		"speed_mult": Game.enemy_speed_mult(),
+		"dmg_bonus": Game.enemy_damage_bonus(),
+		"fire_mult": Game.enemy_fire_mult(),
+		"hp_mult": 1.0 + (Game.wave - 1) * 0.1,
+	}
+	for index in count:
+		if get_tree().get_nodes_in_group("monster").size() >= MAX_TOTAL:
+			return
+		var pos := origin + Vector2.from_angle(randf() * TAU) * randf_range(24.0, 44.0)
+		if Net.is_online():
+			var world := _net_world()
+			if world != null:
+				world.call("spawn_enemy", "boss_drone", pos, params)
+		else:
+			var drone := BOSS_DRONE_SCENE.instantiate() as Node2D
+			drone.global_position = pos
+			add_child(drone)
+			drone.call("setup", float(params["speed_mult"]),
+				int(params["dmg_bonus"]), float(params["fire_mult"]),
+				float(params["hp_mult"]))
 
 
 func _net_world() -> Node:
@@ -261,6 +400,14 @@ func _spawn_local(kind: String, pos: Vector2, params: Dictionary) -> Node2D:
 			scene = CHARGER_SCENE
 		"orb":
 			scene = ORB_ENEMY_SCENE
+		"boss":
+			scene = BOSS_SCENE
+		"boss2":
+			scene = BOSS2_SCENE
+		"beam_enemy":
+			scene = BEAM_ENEMY_SCENE
+		"boss_drone":
+			scene = BOSS_DRONE_SCENE
 	if scene == null:
 		return null
 	var enemy := scene.instantiate() as Node2D

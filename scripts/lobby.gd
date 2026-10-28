@@ -14,7 +14,7 @@ const ROOM_NAMES := [
 	"DEATH MACHINE", "NOOB ZONE", "LAST ONE STANDING", "COFFEE BREAK", "NIGHT SHIFT",
 ]
 
-@onready var _rooms_list: VBoxContainer = $UI/RoomsList
+@onready var _rooms_list: VBoxContainer = $UI/RoomsScroll/RoomsList
 @onready var _empty_label: Label = $UI/EmptyLabel
 @onready var _create_btn: Button = $UI/CreateRoomButton
 @onready var _solo_btn: Button = $UI/PlaySoloButton
@@ -34,7 +34,10 @@ const ROOM_NAMES := [
 @onready var _room_panel: Control = $UI/RoomPanel
 @onready var _room_title: Label = $UI/RoomPanel/RoomTitle
 @onready var _status: Label = $UI/RoomPanel/Status
+@onready var _room_address: Label = $UI/RoomPanel/RoomAddress
+@onready var _copy_address_btn: Button = $UI/RoomPanel/CopyAddressButton
 @onready var _start_btn: Button = $UI/RoomPanel/StartButton
+@onready var _color_options_btn: Button = $UI/RoomPanel/ColorOptionsButton
 @onready var _add_btn: Button = $UI/RoomPanel/AddPlayerButton
 @onready var _leave_btn: Button = $UI/RoomPanel/LeaveButton
 @onready var _slots: Array = [
@@ -42,26 +45,33 @@ const ROOM_NAMES := [
 	$UI/RoomPanel/SlotBL, $UI/RoomPanel/SlotBR,
 ]
 
-var _my_room: int = -1          # index into Net.rooms
 var _creating: bool = false
 var _in_room: bool = false
+var _joining: bool = false
 # the address box is only open after the join by host button was pressed
 var _address_open: bool = false
 # a room that speaks websocket can be joined from a browser
 var _web_mode: bool = false
 var _name_prompt: Control
+var _color_popup: Control
+var _color_popup_panel: PanelContainer
+var _ship_color_grid: GridContainer
+var _flame_color_grid: GridContainer
 
 
 func _ready() -> void:
 	if Web.has_update():
 		Web.show_web_update_button()
+	_style_room_interface()
 	_create_btn.pressed.connect(_on_create)
 	_join_btn.pressed.connect(_on_join_pressed)
 	_refresh_btn.pressed.connect(_on_refresh_rooms)
 	_back_btn.pressed.connect(_on_back)
 	_leave_btn.pressed.connect(_on_leave)
+	_copy_address_btn.pressed.connect(_on_copy_room_address)
 	_add_btn.pressed.connect(_on_add_player)
 	_start_btn.pressed.connect(_on_start)
+	_color_options_btn.pressed.connect(_show_color_popup)
 	_create_confirm.pressed.connect(_on_create_confirm)
 	_create_cancel.pressed.connect(_on_create_cancel)
 	_web_mode_btn.pressed.connect(_on_toggle_web_mode)
@@ -74,8 +84,12 @@ func _ready() -> void:
 	Net.room_left.connect(_on_room_left)
 	Net.session_failed.connect(_on_session_failed)
 	Net.player_name_taken.connect(_on_player_name_taken)
+	get_viewport().size_changed.connect(_layout_room_interface)
 	_refresh()
+	_build_color_popup()
+	_set_localized(_header, "ROOM")
 	_refresh_web_mode()
+	_layout_room_interface()
 	if Net.name_change_required:
 		_on_player_name_taken()
 	_solo_btn.pressed.connect(_on_play_solo)
@@ -83,8 +97,11 @@ func _ready() -> void:
 	# a browser cannot host, and it cannot look for rooms either
 	if not Net.can_host():
 		_create_btn.disabled = true
-		_create_btn.text = "CANNOT HOST HERE"
-		_sub_header.text = "a browser can only join a desktop host - use JOIN BY HOST"
+		_set_localized(_create_btn, "CANNOT HOST HERE")
+		_set_localized(
+			_sub_header,
+			"a browser can only join a desktop host - use JOIN BY HOST"
+		)
 	# Let the lobby finish entering the scene before opening UDP discovery.
 	# This avoids blocking/crashing during scene creation on Android and keeps
 	# the Play transition safe on desktop.
@@ -101,8 +118,13 @@ func _refresh() -> void:
 	if _creating:
 		_show_create_view()
 		return
+	if not _in_room and is_instance_valid(_color_popup):
+		_color_popup.hide()
 	_create_panel.visible = false
 	_room_panel.visible = _in_room
+	_create_btn.disabled = _joining
+	_join_btn.disabled = _joining
+	_refresh_btn.disabled = _joining
 	_header.visible = not _in_room
 	_sub_header.visible = not _in_room
 	_rooms_list.visible = not _in_room
@@ -114,49 +136,75 @@ func _refresh() -> void:
 	_solo_btn.visible = OS.has_feature("web") and not _in_room
 	# the address box only shows after the join by host button was pressed
 	_address_panel.visible = _address_open and not _in_room
+	_sync_glass_surfaces()
 	if _in_room:
 		_refresh_room()
 	else:
 		_refresh_room_list()
+		_sync_glass_surfaces()
 
 
 func _refresh_web_mode() -> void:
-	_web_mode_btn.text = "CONNECTION: BROWSER FRIENDLY" if _web_mode \
+	var text := "CONNECTION: BROWSER FRIENDLY" if _web_mode \
 		else "CONNECTION: FAST (LAN)"
+	_web_mode_btn.text = _localized_text(text)
 
 
 func _refresh_room_list() -> void:
 	for c in _rooms_list.get_children():
 		c.queue_free()
+	var rooms_scroll := $UI/RoomsScroll as ScrollContainer
+	rooms_scroll.visible = not Net.rooms.is_empty()
 	_empty_label.visible = Net.rooms.is_empty()
 	if Net.rooms.is_empty():
 		if Net.can_host():
-			_empty_label.text = "no rooms found - create one, or use JOIN BY HOST\n" \
+			var text := "no rooms found - create one, or use JOIN BY HOST\n" \
 				+ "auto-discovery needs the same Wi-Fi/LAN; otherwise enter the host IP"
+			_empty_label.text = _localized_text(text)
 		else:
-			_empty_label.text = "a browser cannot find rooms - use JOIN BY HOST"
+			_empty_label.text = _localized_text("a browser cannot find rooms - use JOIN BY HOST")
 	for i in Net.rooms.size():
 		var room: Dictionary = Net.rooms[i]
 		var count := int(room["count"])
 		var b := Button.new()
 		var tag := " (browser)" if bool(room.get("web", false)) else ""
-		b.text = "%s%s        %d / %d        %s" % [
+		var text := "%s%s        %d / %d        %s" % [
 			str(room["name"]), tag, count, MAX_PLAYERS, str(room["address"])]
+		b.text = _localized_text(text)
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.custom_minimum_size = Vector2(0, 40)
+		b.custom_minimum_size = Vector2(
+			0, 48 if get_viewport().get_visible_rect().size.x < 600.0 else 44
+		)
 		b.add_theme_font_size_override("font_size", 17)
-		b.disabled = count >= MAX_PLAYERS
+		b.disabled = count >= MAX_PLAYERS or _joining
+		_style_room_button(b, false)
 		b.pressed.connect(_on_join.bind(i))
 		_rooms_list.add_child(b)
+	_scale_mobile_room_text(
+		$UI, get_viewport().get_visible_rect().size.x < 600.0
+	)
 
 
 func _refresh_room() -> void:
-	_room_title.text = Net.room_name if Net.room_name != "" else "ROOM"
+	_room_title.text = _localized_text(Net.room_name if Net.room_name != "" else "ROOM")
 	var players: Array = Net.players
 	var host := _is_host()
+	var room_address := Net.room_connect_address()
+	_room_address.text = _localized_text("JOIN ADDRESS: %s" % room_address)
+	_copy_address_btn.visible = host
+	_copy_address_btn.tooltip_text = room_address
+	_color_options_btn.visible = true
+	_color_options_btn.text = "SHIP: %s   /   ENGINE: %s" % [
+		Net.SHIP_COLOR_NAMES[Net.player_ship_color_index],
+		Net.FLAME_COLOR_NAMES[Net.player_flame_color_index],
+	]
+	_color_options_btn.set_meta(
+		"locale_source_text", _color_options_btn.text
+	)
 
 	for i in _slots.size():
 		var slot: Panel = _slots[i]
+		_style_slot(slot, i < players.size())
 		var ship: TextureRect = slot.get_node("Ship")
 		var lbl: Label = slot.get_node("Name")
 		var kick: Button = slot.get_node("Kick")
@@ -167,10 +215,11 @@ func _refresh_room() -> void:
 			ship.visible = true
 			ship.modulate = info["color"]
 			kick.visible = host and id != Net.my_id()
+			_style_room_button(kick, false, true)
 			if not kick.pressed.is_connected(_on_kick.bind(id)):
 				kick.pressed.connect(_on_kick.bind(id))
 		else:
-			lbl.text = "open slot"
+			lbl.text = _localized_text("open slot")
 			ship.visible = false
 			kick.visible = false
 
@@ -181,11 +230,211 @@ func _refresh_room() -> void:
 	_start_btn.disabled = false
 	if host:
 		if full:
-			_status.text = "ready to start  -  %d / %d" % [players.size(), MAX_PLAYERS]
+			_status.text = _localized_text(
+				"ready to start  -  %d / %d" % [players.size(), MAX_PLAYERS]
+			)
 		else:
-			_status.text = "%d / %d players - start whenever you like" % [players.size(), MAX_PLAYERS]
+			_status.text = _localized_text(
+				"%d / %d players - start whenever you like" % [players.size(), MAX_PLAYERS]
+			)
 	else:
-		_status.text = "waiting for the host to start..."
+		_status.text = _localized_text("waiting for the host to start...")
+	if is_instance_valid(_color_popup) and _color_popup.visible:
+		_refresh_color_popup()
+
+
+func _build_color_popup() -> void:
+	_color_popup = Control.new()
+	_color_popup.name = "ShipColorPopup"
+	_color_popup.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_color_popup.z_index = 30
+	_color_popup.mouse_filter = Control.MOUSE_FILTER_STOP
+	_color_popup.hide()
+	add_child(_color_popup)
+	var dim := ColorRect.new()
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.color = Color(0.005, 0.014, 0.03, 0.82)
+	_color_popup.add_child(dim)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_color_popup.add_child(center)
+	var panel := PanelContainer.new()
+	panel.name = "ShipColorPopupPanel"
+	panel.custom_minimum_size = Vector2(560, 330)
+	_color_popup_panel = panel
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.025, 0.065, 0.11, 0.98)
+	panel_style.border_color = Color(0.26, 0.67, 0.84, 0.9)
+	panel_style.set_border_width_all(1)
+	panel_style.set_border_width(SIDE_LEFT, 3)
+	panel_style.set_corner_radius_all(12)
+	panel.add_theme_stylebox_override("panel", panel_style)
+	center.add_child(panel)
+	var margin := MarginContainer.new()
+	for side in ["left", "top", "right", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 22)
+	panel.add_child(margin)
+	var layout := VBoxContainer.new()
+	layout.add_theme_constant_override("separation", 12)
+	margin.add_child(layout)
+	var title_row := HBoxContainer.new()
+	layout.add_child(title_row)
+	var title := Label.new()
+	title.text = "SHIP & ENGINE COLORS"
+	title.add_theme_font_size_override("font_size", 18)
+	title.add_theme_color_override("font_color", Color(0.91, 0.96, 1.0))
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_row.add_child(title)
+	var close := _make_popup_button("×")
+	close.custom_minimum_size = Vector2(38, 34)
+	close.pressed.connect(_color_popup.hide)
+	title_row.add_child(close)
+	var ship_title := _color_section_title("SHIP COLOR  /  ONE PLAYER PER COLOR")
+	layout.add_child(ship_title)
+	_ship_color_grid = GridContainer.new()
+	_ship_color_grid.name = "ShipColorChoices"
+	_ship_color_grid.columns = Net.PLAYER_COLORS.size()
+	_ship_color_grid.add_theme_constant_override("h_separation", 12)
+	_ship_color_grid.add_theme_constant_override("v_separation", 8)
+	layout.add_child(_ship_color_grid)
+	var flame_title := _color_section_title("ENGINE FLAME  /  SHARED COLORS ALLOWED")
+	layout.add_child(flame_title)
+	_flame_color_grid = GridContainer.new()
+	_flame_color_grid.name = "FlameColorChoices"
+	_flame_color_grid.columns = Net.FLAME_COLORS.size()
+	_flame_color_grid.add_theme_constant_override("h_separation", 8)
+	_flame_color_grid.add_theme_constant_override("v_separation", 8)
+	layout.add_child(_flame_color_grid)
+	_refresh_color_popup()
+
+
+func _color_section_title(text: String) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", 10)
+	label.add_theme_color_override("font_color", Color(0.48, 0.73, 0.84))
+	return label
+
+
+func _make_popup_button(text: String) -> Button:
+	var button := Button.new()
+	button.text = text
+	button.focus_mode = Control.FOCUS_NONE
+	button.add_theme_color_override("font_color", Color(0.88, 0.95, 1.0))
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color(0.045, 0.11, 0.17, 0.97)
+	normal.border_color = Color(0.25, 0.61, 0.77, 0.82)
+	normal.set_border_width_all(1)
+	normal.set_corner_radius_all(7)
+	var hover := normal.duplicate() as StyleBoxFlat
+	hover.bg_color = Color(0.075, 0.18, 0.25, 1.0)
+	hover.border_color = Color(0.42, 0.83, 0.96)
+	button.add_theme_stylebox_override("normal", normal)
+	button.add_theme_stylebox_override("hover", hover)
+	button.add_theme_stylebox_override("pressed", hover)
+	return button
+
+
+func _show_color_popup() -> void:
+	_refresh_color_popup()
+	_color_popup.show()
+
+
+func _refresh_color_popup() -> void:
+	if _ship_color_grid == null or _flame_color_grid == null:
+		return
+	var popup_width := minf(
+		560.0, maxf(280.0, get_viewport().get_visible_rect().size.x - 32.0)
+	)
+	var flame_columns := Net.FLAME_COLORS.size() if popup_width >= 500.0 else 3
+	_ship_color_grid.columns = Net.PLAYER_COLORS.size()
+	_flame_color_grid.columns = flame_columns
+	var ship_swatch_width := maxf(
+		48.0, (popup_width - 44.0 - 12.0 * 3.0) / 4.0
+	)
+	var flame_swatch_width := maxf(
+		44.0,
+		(popup_width - 44.0 - 8.0 * (flame_columns - 1))
+			/ float(flame_columns)
+	)
+	for index in Net.PLAYER_COLORS.size():
+		if index >= _ship_color_grid.get_child_count():
+			var new_button := _make_color_swatch()
+			new_button.pressed.connect(_on_ship_color_selected.bind(index))
+			_ship_color_grid.add_child(new_button)
+		var color_button := _ship_color_grid.get_child(index) as Button
+		_update_color_swatch(
+			color_button,
+			Net.PLAYER_COLORS[index],
+			Net.SHIP_COLOR_NAMES[index],
+			index == Net.player_ship_color_index,
+			not Net.is_ship_color_available(index, Net.my_id()),
+			ship_swatch_width
+		)
+	for index in Net.FLAME_COLORS.size():
+		if index >= _flame_color_grid.get_child_count():
+			var new_button := _make_color_swatch()
+			new_button.pressed.connect(_on_flame_color_selected.bind(index))
+			_flame_color_grid.add_child(new_button)
+		var color_button := _flame_color_grid.get_child(index) as Button
+		_update_color_swatch(
+			color_button,
+			Net.FLAME_COLORS[index],
+			Net.FLAME_COLOR_NAMES[index],
+			index == Net.player_flame_color_index,
+			false,
+			flame_swatch_width
+		)
+
+
+func _make_color_swatch() -> Button:
+	var button := Button.new()
+	button.focus_mode = Control.FOCUS_NONE
+	button.add_theme_font_size_override("font_size", 20)
+	button.add_theme_color_override("font_color", Color.WHITE)
+	button.add_theme_color_override("font_disabled_color", Color(0.85, 0.88, 0.92, 0.9))
+	return button
+
+
+func _update_color_swatch(
+		button: Button, color: Color, label: String, selected: bool,
+		unavailable: bool, swatch_width: float) -> void:
+	button.custom_minimum_size = Vector2(swatch_width, 46)
+	button.text = "×" if unavailable else ("✓" if selected else "")
+	button.tooltip_text = label
+	button.disabled = unavailable
+	var fill := color.darkened(0.45) if unavailable else color
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = fill
+	normal.border_color = Color.WHITE if selected else color.lightened(0.18)
+	normal.set_border_width_all(2 if selected else 1)
+	normal.set_corner_radius_all(7)
+	button.add_theme_stylebox_override("normal", normal)
+	var hover := normal.duplicate() as StyleBoxFlat
+	hover.border_color = Color.WHITE
+	hover.set_border_width_all(2)
+	button.add_theme_stylebox_override("hover", hover)
+	var disabled := normal.duplicate() as StyleBoxFlat
+	disabled.bg_color = Color(fill.r, fill.g, fill.b, 0.42)
+	disabled.border_color = Color(0.42, 0.57, 0.66, 0.6)
+	button.add_theme_stylebox_override("disabled", disabled)
+
+
+func _on_ship_color_selected(index: int) -> void:
+	if not Net.set_player_colors(index, Net.player_flame_color_index):
+		_refresh_color_popup()
+
+
+func _on_flame_color_selected(index: int) -> void:
+	if not Net.set_player_colors(Net.player_ship_color_index, index):
+		_refresh_color_popup()
+
+
+func _on_copy_room_address() -> void:
+	var address := Net.room_connect_address()
+	DisplayServer.clipboard_set(address)
+	_copy_address_btn.text = _localized_text("COPIED")
 
 
 func _show_create_view() -> void:
@@ -202,6 +451,7 @@ func _show_create_view() -> void:
 	_address_open = false
 	_address_panel.visible = false
 	_create_panel.visible = true
+	_sync_glass_surfaces()
 	_name_edit.grab_focus()
 
 
@@ -226,11 +476,11 @@ func _on_create_cancel() -> void:
 func _on_create_confirm() -> void:
 	Game.sfx("cardget", -9.0, 0.98, 1.05)
 	_creating = false
-	var name := _name_edit.text.strip_edges()
-	if name == "":
-		name = ROOM_NAMES[randi() % ROOM_NAMES.size()]
+	var room_name := _name_edit.text.strip_edges()
+	if room_name == "":
+		room_name = ROOM_NAMES[randi() % ROOM_NAMES.size()]
 	Net.player_name = _player_name()
-	if not Net.host_room(name, Net.DEFAULT_PORT, _web_mode):
+	if not Net.host_room(room_name, Net.DEFAULT_PORT, _web_mode):
 		_refresh()
 		return
 	_in_room = true
@@ -250,6 +500,7 @@ func _on_join_pressed() -> void:
 	# the address box opens right under the buttons, not in the middle
 	_address_open = not _address_open
 	_address_panel.visible = _address_open
+	_sync_glass_surface(_address_panel)
 	if _address_open and _address_edit:
 		_address_edit.grab_focus()
 
@@ -260,6 +511,8 @@ func _on_refresh_rooms() -> void:
 
 
 func _on_join_address() -> void:
+	if _joining or _in_room:
+		return
 	Game.sfx("click", -10.0, 0.95, 1.05)
 	var text := _address_edit.text.strip_edges()
 	if text == "":
@@ -285,12 +538,16 @@ func _on_join_address() -> void:
 	var probe := address if address.begins_with("ws://") else "ws://" + address
 	if web and Web.page_is_secure() and not address.begins_with("wss://") \
 			and not _is_local_address(probe):
-		_sub_header.text = "this page is https - type a secure wss:// host address"
+		_set_localized(
+			_sub_header,
+			"this page is https - type a secure wss:// host address"
+		)
 		return
 	Net.player_name = _player_name()
 	if not Net.join_room(address, port, web):
 		return
-	_in_room = true
+	_joining = true
+	_set_localized(_sub_header, "CONNECTING TO ROOM...")
 	_address_open = false
 	_address_panel.visible = false
 	_refresh()
@@ -327,6 +584,8 @@ func _is_local_address(url: String) -> bool:
 
 
 func _on_join(index: int) -> void:
+	if _joining or _in_room:
+		return
 	Game.sfx("click", -10.0, 0.95, 1.05)
 	if index < 0 or index >= Net.rooms.size():
 		return
@@ -336,9 +595,8 @@ func _on_join(index: int) -> void:
 	var web := bool(room.get("web", false))
 	if not Net.join_room(str(room["address"]), int(room["port"]), web):
 		return
-	_in_room = true
-	_address_open = false
-	_address_panel.visible = false
+	_joining = true
+	_set_localized(_sub_header, "CONNECTING TO ROOM...")
 	_refresh()
 
 
@@ -383,15 +641,16 @@ func _on_start() -> void:
 func _on_back() -> void:
 	Game.sfx("click", -10.0, 0.95, 1.05)
 	Net.leave()
-	call_deferred("_change_to_menu")
+	call_deferred("_change_to_mode_lobby")
 
 
-func _change_to_menu() -> void:
-	get_tree().change_scene_to_file("res://scenes/menu.tscn")
+func _change_to_mode_lobby() -> void:
+	get_tree().change_scene_to_file("res://scenes/lobby.tscn")
 
 
 # --- net callbacks --------------------------------------------------------
 func _on_room_joined() -> void:
+	_joining = false
 	_in_room = true
 	_address_open = false
 	_address_panel.visible = false
@@ -405,8 +664,9 @@ func _on_room_left() -> void:
 
 func _on_session_failed(reason: String) -> void:
 	_in_room = false
+	_joining = false
 	_creating = false
-	_sub_header.text = reason
+	_set_localized(_sub_header, reason)
 	_refresh()
 
 
@@ -433,3 +693,249 @@ func _player_name() -> String:
 	var pick: String = names[randi() % names.size()]
 	Net.player_name = pick
 	return pick
+
+
+func _localized_text(text: String) -> String:
+	var locale := get_node_or_null("/root/Locale")
+	return locale.translate_text(text) if locale else text
+
+
+func _set_localized(control: Control, source_text: String) -> void:
+	var locale := get_node_or_null("/root/Locale")
+	if locale:
+		locale.localize_control(control, source_text)
+	else:
+		control.set("text", source_text)
+
+
+func _style_room_interface() -> void:
+	var ui := $UI as Control
+	var dim := ui.get_node("Dim") as ColorRect
+	dim.color = Color(0.008, 0.02, 0.045, 0.78)
+	_header.add_theme_color_override("font_color", Color(0.90, 0.96, 1.0))
+	_sub_header.add_theme_color_override("font_color", Color(0.48, 0.73, 0.84))
+	_empty_label.add_theme_color_override("font_color", Color(0.57, 0.73, 0.84))
+	_room_title.add_theme_color_override("font_color", Color(0.92, 0.97, 1.0))
+	_status.add_theme_color_override("font_color", Color(0.36, 0.84, 0.95))
+	_room_address.add_theme_color_override("font_color", Color(0.58, 0.82, 0.92))
+	for control: Control in [
+		$UI/RoomsScroll, _create_panel, _address_panel, _room_panel,
+	]:
+		_add_glass_surface(ui, control)
+	for button: Button in [
+		_create_btn, _join_btn, _refresh_btn, _solo_btn, _back_btn,
+		_web_mode_btn, _create_confirm, _create_cancel, _address_join,
+		_copy_address_btn, _start_btn, _add_btn, _leave_btn,
+		_color_options_btn,
+	]:
+		_style_room_button(button, false)
+	for button: Button in [_create_btn, _create_confirm, _start_btn]:
+		_style_room_button(button, true)
+	_style_room_input(_name_edit)
+	_style_room_input(_address_edit)
+	for slot: Panel in _slots:
+		_style_slot(slot, false)
+		_style_room_button(slot.get_node("Kick") as Button, false, true)
+
+
+func _add_glass_surface(parent: Control, target: Control) -> void:
+	var surface := Panel.new()
+	surface.name = target.name + "GlassSurface"
+	surface.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	surface.anchor_left = target.anchor_left
+	surface.anchor_top = target.anchor_top
+	surface.anchor_right = target.anchor_right
+	surface.anchor_bottom = target.anchor_bottom
+	surface.offset_left = target.offset_left
+	surface.offset_top = target.offset_top
+	surface.offset_right = target.offset_right
+	surface.offset_bottom = target.offset_bottom
+	surface.grow_horizontal = target.grow_horizontal
+	surface.grow_vertical = target.grow_vertical
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.025, 0.065, 0.11, 0.91)
+	style.border_color = Color(0.20, 0.54, 0.70, 0.72)
+	style.set_border_width_all(1)
+	style.set_border_width(SIDE_LEFT, 3)
+	style.set_corner_radius_all(12)
+	style.shadow_color = Color(0.0, 0.015, 0.045, 0.55)
+	style.shadow_size = 16
+	surface.add_theme_stylebox_override("panel", style)
+	var target_index := target.get_index()
+	parent.add_child(surface)
+	parent.move_child(surface, target_index)
+
+
+func _style_room_button(button: Button, primary: bool, utility: bool = false) -> void:
+	button.focus_mode = Control.FOCUS_NONE
+	button.add_theme_font_size_override("font_size", 14 if utility else 15)
+	button.add_theme_color_override("font_color",
+		Color(0.08, 0.10, 0.13) if primary else Color(0.84, 0.94, 1.0))
+	button.add_theme_color_override("font_hover_color",
+		Color(0.08, 0.10, 0.13) if primary else Color(0.96, 0.99, 1.0))
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color(0.68, 0.42, 0.22, 1.0) if primary \
+		else Color(0.045, 0.11, 0.17, 0.97)
+	normal.border_color = Color(0.96, 0.67, 0.37, 0.96) if primary \
+		else Color(0.25, 0.61, 0.77, 0.82)
+	normal.set_border_width_all(1)
+	normal.set_corner_radius_all(7)
+	var hover := normal.duplicate() as StyleBoxFlat
+	hover.bg_color = Color(0.81, 0.51, 0.28, 1.0) if primary \
+		else Color(0.075, 0.18, 0.25, 1.0)
+	hover.border_color = Color(1.0, 0.78, 0.48) if primary \
+		else Color(0.42, 0.83, 0.96)
+	var pressed := normal.duplicate() as StyleBoxFlat
+	pressed.bg_color = Color(0.52, 0.31, 0.17, 1.0) if primary \
+		else Color(0.025, 0.075, 0.12, 1.0)
+	var disabled := normal.duplicate() as StyleBoxFlat
+	disabled.bg_color = Color(0.07, 0.11, 0.15, 0.9)
+	disabled.border_color = Color(0.17, 0.31, 0.39, 0.55)
+	button.add_theme_stylebox_override("normal", normal)
+	button.add_theme_stylebox_override("hover", hover)
+	button.add_theme_stylebox_override("pressed", pressed)
+	button.add_theme_stylebox_override("disabled", disabled)
+	if utility:
+		button.add_theme_font_size_override("font_size", 12)
+
+
+func _style_room_input(input: LineEdit) -> void:
+	input.add_theme_color_override("font_color", Color(0.88, 0.95, 1.0))
+	input.add_theme_color_override("font_placeholder_color", Color(0.43, 0.61, 0.72))
+	input.add_theme_color_override("caret_color", Color(0.38, 0.84, 0.97))
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color(0.018, 0.045, 0.075, 0.96)
+	normal.border_color = Color(0.20, 0.47, 0.62, 0.82)
+	normal.set_border_width_all(1)
+	normal.set_corner_radius_all(6)
+	var focus := normal.duplicate() as StyleBoxFlat
+	focus.border_color = Color(0.34, 0.82, 0.95, 0.98)
+	input.add_theme_stylebox_override("normal", normal)
+	input.add_theme_stylebox_override("focus", focus)
+	input.add_theme_stylebox_override("read_only", normal)
+
+
+func _style_slot(slot: Panel, occupied: bool) -> void:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.055, 0.13, 0.18, 0.96) if occupied \
+		else Color(0.025, 0.075, 0.12, 0.84)
+	style.border_color = Color(0.27, 0.70, 0.83, 0.82) if occupied \
+		else Color(0.17, 0.39, 0.52, 0.68)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(9)
+	slot.add_theme_stylebox_override("panel", style)
+
+
+func _sync_glass_surface(target: Control) -> void:
+	var surface := target.get_parent().get_node_or_null(
+		target.name + "GlassSurface") as Control
+	if surface != null:
+		surface.anchor_left = target.anchor_left
+		surface.anchor_top = target.anchor_top
+		surface.anchor_right = target.anchor_right
+		surface.anchor_bottom = target.anchor_bottom
+		surface.offset_left = target.offset_left
+		surface.offset_top = target.offset_top
+		surface.offset_right = target.offset_right
+		surface.offset_bottom = target.offset_bottom
+		surface.visible = target.visible
+
+
+func _sync_glass_surfaces() -> void:
+	for target: Control in [
+		$UI/RoomsScroll, _create_panel, _address_panel, _room_panel,
+	]:
+		_sync_glass_surface(target)
+
+
+func _layout_room_interface() -> void:
+	var viewport_size := get_viewport().get_visible_rect().size
+	var mobile := viewport_size.x < 600.0
+	var margin := 12.0 if mobile else 20.0
+	var rooms_scroll := $UI/RoomsScroll as ScrollContainer
+	var room_list_size := Vector2(
+		minf(820.0, maxf(280.0, viewport_size.x - margin * 2.0)),
+		minf(420.0, maxf(120.0, viewport_size.y - 270.0))
+	)
+	rooms_scroll.offset_left = -room_list_size.x * 0.5
+	rooms_scroll.offset_top = -160.0
+	rooms_scroll.offset_right = room_list_size.x * 0.5
+	rooms_scroll.offset_bottom = -160.0 + room_list_size.y
+	var create_size := Vector2(
+		minf(620.0, maxf(288.0, viewport_size.x - margin * 2.0)),
+		minf(320.0, maxf(280.0, viewport_size.y - margin * 2.0))
+	)
+	_create_panel.offset_left = -create_size.x * 0.5
+	_create_panel.offset_top = -create_size.y * 0.5
+	_create_panel.offset_right = create_size.x * 0.5
+	_create_panel.offset_bottom = create_size.y * 0.5
+	var room_size := Vector2(
+		minf(840.0, maxf(288.0, viewport_size.x - margin * 2.0)),
+		minf(590.0, maxf(360.0, viewport_size.y - margin * 2.0))
+	)
+	_room_panel.offset_left = -room_size.x * 0.5
+	_room_panel.offset_top = -room_size.y * 0.5
+	_room_panel.offset_right = room_size.x * 0.5
+	_room_panel.offset_bottom = room_size.y * 0.5
+	var slot_width := minf(260.0, room_size.x * 0.34)
+	var slot_height := 112.0
+	for index in _slots.size():
+		var slot := _slots[index] as Control
+		var left_slot := index % 2 == 0
+		var top_slot := index < 2
+		slot.offset_left = 0.0 if left_slot else -slot_width
+		slot.offset_right = slot_width if left_slot else 0.0
+		slot.offset_top = 112.0 if top_slot else -slot_height - 112.0
+		slot.offset_bottom = 112.0 + slot_height if top_slot else -112.0
+		var ship := slot.get_node("Ship") as TextureRect
+		ship.offset_left = (slot_width - 56.0) * 0.5
+		ship.offset_right = ship.offset_left + 56.0
+		var kick := slot.get_node("Kick") as Button
+		kick.offset_left = -32.0
+		kick.offset_right = -8.0
+	_scale_mobile_room_text($UI, mobile)
+	if is_instance_valid(_color_popup_panel):
+		var popup_width := minf(560.0, maxf(280.0, viewport_size.x - 32.0))
+		var popup_height := minf(330.0, maxf(280.0, viewport_size.y - 32.0))
+		_color_popup_panel.custom_minimum_size = Vector2(
+			popup_width, popup_height
+		)
+		_refresh_color_popup()
+	var address_width := minf(420.0, maxf(280.0, viewport_size.x - margin * 2.0))
+	_address_panel.offset_left = -address_width - margin
+	_address_panel.offset_right = -margin
+	_sync_glass_surfaces()
+
+
+func _scale_mobile_room_text(root_control: Control, mobile: bool) -> void:
+	for node: Node in root_control.find_children("*", "Control", true, false):
+		var control := node as Control
+		if control is Label or control is Button or control is LineEdit:
+			if not control.has_meta("mobile_base_font_size"):
+				control.set_meta(
+					"mobile_base_font_size",
+					control.get_theme_font_size("font_size")
+				)
+				control.set_meta(
+					"mobile_base_minimum_size", control.custom_minimum_size
+				)
+			var base_size := int(control.get_meta("mobile_base_font_size"))
+			var mobile_font_size := maxi(
+				1, base_size + (2 if mobile else 0)
+			)
+			control.set_meta("mobile_applied_font_size", mobile_font_size)
+			control.add_theme_font_size_override(
+				"font_size", mobile_font_size
+			)
+			if mobile and control is Button:
+				control.custom_minimum_size.y = maxf(
+					control.custom_minimum_size.y, 48.0
+				)
+			elif not mobile:
+				control.custom_minimum_size = control.get_meta(
+					"mobile_base_minimum_size"
+				)
+	for room_button: Node in _rooms_list.get_children():
+		if room_button is Button:
+			(room_button as Button).custom_minimum_size.y = \
+				48.0 if mobile else 44.0

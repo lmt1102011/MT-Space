@@ -96,16 +96,30 @@ body {
 	top: 10px;
 	right: 10px;
 	z-index: 10;
-	padding: 8px 14px;
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 9px 14px;
 	border: 1px solid rgba(255, 255, 255, 0.35);
 	border-radius: 6px;
 	background: rgba(10, 14, 16, 0.55);
 	color: rgba(255, 255, 255, 0.85);
 	font-size: 13px;
+	font-weight: 700;
 	letter-spacing: 0.06em;
 	cursor: pointer;
 	user-select: none;
 	-webkit-user-select: none;
+}
+
+#fullscreen svg {
+	width: 18px;
+	height: 18px;
+	fill: none;
+	stroke: currentColor;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	stroke-width: 2;
 }
 
 #fullscreen:hover {
@@ -195,7 +209,12 @@ $GODOT_HEAD_INCLUDE
 			<div id="status-notice"></div>
 		</div>
 
-		<button id="fullscreen" type="button" title="Fullscreen (F11)" class="hidden">FULLSCREEN</button>
+		<button id="fullscreen" type="button" title="Fullscreen (F11)" aria-label="Enter fullscreen">
+			<svg viewBox="0 0 24 24" aria-hidden="true">
+				<path d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M3 16v3a2 2 0 0 0 2 2h3m13-5v3a2 2 0 0 1-2 2h-3"/>
+			</svg>
+			<span id="fullscreen-label">FULL SCREEN</span>
+		</button>
 		<div id="update-note">a new version is being downloaded...</div>
 		<button id="update-button" type="button">
 			<span class="spin">&#8635;</span><span id="update-label">NEW VERSION - UPDATE</span>
@@ -212,6 +231,7 @@ const engine = new Engine(GODOT_CONFIG);
 	const statusProgress = document.getElementById('status-progress');
 	const statusNotice = document.getElementById('status-notice');
 	const fullscreenButton = document.getElementById('fullscreen');
+	const fullscreenLabel = document.getElementById('fullscreen-label');
 	const updateNote = document.getElementById('update-note');
 
 	let initializing = true;
@@ -262,7 +282,10 @@ const engine = new Engine(GODOT_CONFIG);
 	}
 
 	function refreshFullscreenButton() {
-		fullscreenButton.textContent = isFullscreen() ? 'WINDOW' : 'FULLSCREEN';
+		const fullscreen = isFullscreen();
+		fullscreenLabel.textContent = fullscreen ? 'EXIT FULL SCREEN' : 'FULL SCREEN';
+		fullscreenButton.setAttribute('aria-label',
+			fullscreen ? 'Exit fullscreen' : 'Enter fullscreen');
 	}
 
 	function toggleFullscreen() {
@@ -285,9 +308,6 @@ const engine = new Engine(GODOT_CONFIG);
 			toggleFullscreen();
 		}
 	});
-	// the button stays hidden, the key is enough
-	fullscreenButton.classList.add('hidden');
-
 	// --- the new version check ------------------------------------------------
 	// When a newer build is on the server the old one is dropped, the caches
 	// are cleared and the page starts over with the new files. The player

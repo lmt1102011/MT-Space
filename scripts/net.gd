@@ -17,7 +17,10 @@ const XP_DROP := preload("res://scripts/xp_pickup.gd")
 const UPGRADE_DROP := preload("res://scenes/upgrade_drop.tscn")
 const CARD_DB := preload("res://scripts/card_db.gd")
 const ENEMY_BULLET := preload("res://scenes/enemy_bullet.tscn")
+const BOSS_MISSILE := preload("res://scenes/boss_missile.tscn")
 const ORB_PROJECTILE := preload("res://scenes/orb_projectile.tscn")
+const BOSS_SONIC_WAVE := preload("res://scenes/boss_sonic_wave.tscn")
+const EXPLOSION_SCENE := preload("res://scenes/explosion.tscn")
 # a room that stopped answering is dropped after this many seconds
 const ROOM_TTL := 15.0
 # A refresh sends a few quick discovery bursts so a host that misses one UDP
@@ -30,9 +33,19 @@ const NET_TICK := 1.0 / 30.0
 const ENEMY_TICK := 1.0 / 30.0
 
 const PLAYER_COLORS := [
-	Color(0.45, 0.85, 1.0), Color(1.0, 0.6, 0.35),
-	Color(0.6, 1.0, 0.55), Color(1.0, 0.55, 0.9),
+	Color(0.28, 0.78, 1.0), Color(1.0, 0.52, 0.27),
+	Color(0.42, 0.92, 0.62), Color(0.88, 0.48, 1.0),
 ]
+const SHIP_COLOR_NAMES := ["AZURE", "EMBER", "MINT", "VIOLET"]
+const FLAME_COLORS := [
+	Color(1.0, 0.68, 0.28), Color(0.25, 0.78, 1.0),
+	Color(0.45, 1.0, 0.52), Color(1.0, 0.35, 0.42),
+	Color(0.80, 0.44, 1.0), Color(0.96, 0.93, 0.72),
+]
+const FLAME_COLOR_NAMES := [
+	"AMBER", "CYAN", "LIME", "RED", "VIOLET", "WHITE",
+]
+const IDENTITY_PATH := "user://pilot_identity.cfg"
 
 signal players_changed()
 signal room_joined()
@@ -43,7 +56,18 @@ signal player_name_taken()
 
 # --- local state ------------------------------------------------------------
 # the name of the local player, empty until they are asked for it
-var player_name: String = ""
+var player_name: String = "":
+	set(value):
+		player_name = value.strip_edges()
+		_save_identity()
+var player_ship_color_index: int = 0:
+	set(value):
+		player_ship_color_index = posmod(value, PLAYER_COLORS.size())
+		_save_identity()
+var player_flame_color_index: int = 0:
+	set(value):
+		player_flame_color_index = posmod(value, FLAME_COLORS.size())
+		_save_identity()
 var room_name: String = ""
 # the players of the current room: {id, name, color}
 var players: Array = []
@@ -70,6 +94,10 @@ var _net_timer: float = 0.0
 var _heartbeat_timer: float = 0.0
 var _enemy_timer: float = 0.0
 var _next_enemy_id: int = 1
+var _next_discarded_card_id: int = 1
+var _discarded_card_drops: Dictionary = {}
+var _player_nodes_cache: Array = []
+var _player_nodes_cache_frame: int = -1
 # how often the client says hello again until the host knows it
 var _hello_timer: float = 0.0
 # true while a session is being torn down, the old callbacks are ignored
@@ -86,10 +114,96 @@ const RECONNECT_WAIT := 3.0
 var _reconnect_timer: float = 0.0
 # true while the client is trying to get back into the room
 var _reconnecting: bool = false
+var _loading_identity := false
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	_load_identity()
+
+
+func _load_identity() -> void:
+	var config := ConfigFile.new()
+	var error := config.load(IDENTITY_PATH)
+	if error == ERR_FILE_NOT_FOUND:
+		return
+	if error != OK:
+		push_error("Unable to load pilot identity: %s" % error_string(error))
+		return
+	_loading_identity = true
+	player_name = str(config.get_value("pilot", "name", "")).strip_edges()
+	player_ship_color_index = posmod(
+		int(config.get_value("pilot", "ship_color", 0)),
+		PLAYER_COLORS.size()
+	)
+	player_flame_color_index = posmod(
+		int(config.get_value("pilot", "flame_color", 0)),
+		FLAME_COLORS.size()
+	)
+	_loading_identity = false
+
+
+func _save_identity() -> void:
+	if _loading_identity:
+		return
+	var config := ConfigFile.new()
+	var load_error := config.load(IDENTITY_PATH)
+	if load_error != OK and load_error != ERR_FILE_NOT_FOUND:
+		push_error("Unable to load pilot identity before saving: %s" \
+			% error_string(load_error))
+		return
+	config.set_value("pilot", "name", player_name)
+	config.set_value("pilot", "ship_color", player_ship_color_index)
+	config.set_value("pilot", "flame_color", player_flame_color_index)
+	var error := config.save(IDENTITY_PATH)
+	if error != OK:
+		push_error("Unable to save pilot identity: %s" % error_string(error))
+
+
+func get_player_ship_color() -> Color:
+	return PLAYER_COLORS[player_ship_color_index]
+
+
+func get_player_flame_color() -> Color:
+	return FLAME_COLORS[player_flame_color_index]
+
+
+func is_ship_color_available(color_index: int, except_player_id: int = -1) -> bool:
+	if color_index < 0 or color_index >= PLAYER_COLORS.size():
+		return false
+	for player: Dictionary in players:
+		if int(player.get("id", -1)) == except_player_id:
+			continue
+		if int(player.get("ship_color_index", -1)) == color_index:
+			return false
+	return true
+
+
+func set_player_colors(ship_color_index: int, flame_color_index: int) -> bool:
+	if ship_color_index < 0 or ship_color_index >= PLAYER_COLORS.size() \
+			or flame_color_index < 0 or flame_color_index >= FLAME_COLORS.size():
+		return false
+	if not is_ship_color_available(ship_color_index, my_id()):
+		return false
+	if _hosting:
+		var own_index := _find_player(my_id())
+		if own_index < 0:
+			return false
+		players[own_index]["ship_color_index"] = ship_color_index
+		players[own_index]["flame_color_index"] = flame_color_index
+		players[own_index]["color"] = PLAYER_COLORS[ship_color_index]
+		players[own_index]["flame_color"] = FLAME_COLORS[flame_color_index]
+		player_ship_color_index = ship_color_index
+		player_flame_color_index = flame_color_index
+		_broadcast_players()
+		players_changed.emit()
+	else:
+		player_ship_color_index = ship_color_index
+		player_flame_color_index = flame_color_index
+		if is_online():
+			rpc_id(1, "_srv_set_player_colors",
+				ship_color_index, flame_color_index)
+	return true
 
 
 # Puts the peer into the multiplayer api of the scene tree.
@@ -188,7 +302,7 @@ func my_id() -> int:
 # The room speaks enet by default, that is the fast one. A room that speaks
 # websocket can be joined from a browser, because a browser cannot open a
 # udp port.
-func host_room(name: String, port: int = DEFAULT_PORT, web_mode: bool = false) -> bool:
+func host_room(room_title: String, port: int = DEFAULT_PORT, web_mode: bool = false) -> bool:
 	if not can_host():
 		session_failed.emit("a browser cannot host a room")
 		return false
@@ -216,8 +330,15 @@ func host_room(name: String, port: int = DEFAULT_PORT, web_mode: bool = false) -
 	# the flag is set before the api, so nothing thinks it is a client
 	_hosting = true
 	_new_api(peer)
-	room_name = name
-	players = [{"id": my_id(), "name": _my_name(), "color": _color_for(0)}]
+	room_name = room_title
+	players = [{
+		"id": my_id(),
+		"name": _my_name(),
+		"color": get_player_ship_color(),
+		"flame_color": get_player_flame_color(),
+		"ship_color_index": player_ship_color_index,
+		"flame_color_index": player_flame_color_index,
+	}]
 	_start_discovery(true)
 	room_joined.emit()
 	_broadcast_players()
@@ -331,6 +452,8 @@ func _reset_session() -> void:
 	name_change_required = false
 	room_name = ""
 	players = []
+	_discarded_card_drops.clear()
+	_next_discarded_card_id = 1
 	if _discovery != null:
 		_discovery.close()
 		_discovery = null
@@ -437,6 +560,15 @@ func local_lan_ip() -> String:
 	return "127.0.0.1"
 
 
+func room_connect_address() -> String:
+	var address := local_lan_ip() if _hosting else _last_address
+	if address.begins_with("ws://") or address.begins_with("wss://"):
+		return address
+	if address == "":
+		address = local_lan_ip()
+	return "%s:%d" % [address, _last_port if not _hosting else _room_port]
+
+
 func _process(delta: float) -> void:
 	# a heartbeat keeps the connection alive even when nothing else is sent
 	if _peer != null and _peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED:
@@ -533,11 +665,11 @@ func _add_own_room() -> void:
 	rooms_changed.emit()
 
 
-func _add_room(ip: String, port: int, text: String) -> void:
+func _add_room(ip: String, _port: int, text: String) -> void:
 	var parts := text.split(":")
 	if parts.size() < 4:
 		return
-	var name := parts[1]
+	var room_title := parts[1]
 	var game_port := int(parts[2])
 	var count := int(parts[3])
 	# the room tells how it talks, a browser can only join a websocket room
@@ -545,12 +677,12 @@ func _add_room(ip: String, port: int, text: String) -> void:
 	for r in rooms:
 		# The host can receive its own broadcast through both 127.0.0.1 and
 		# its LAN address. Treat those as one room.
-		if _room_identity_matches(r, name, game_port, web) \
+		if _room_identity_matches(r, room_title, game_port, web) \
 			and (str(r["address"]) == ip or _is_room_alias(str(r["address"]), ip)):
 			var address := str(r["address"])
 			if _prefer_room_address(address, ip):
 				address = ip
-			var changed := str(r["name"]) != name or int(r["count"]) != count \
+			var changed := str(r["name"]) != room_title or int(r["count"]) != count \
 				or bool(r["web"]) != web or str(r["address"]) != address
 			r["address"] = address
 			r["count"] = count
@@ -561,7 +693,7 @@ func _add_room(ip: String, port: int, text: String) -> void:
 				rooms_changed.emit()
 			return
 	rooms.append({
-		"name": name,
+		"name": room_title,
 		"address": ip,
 		"port": game_port,
 		"count": count,
@@ -572,8 +704,8 @@ func _add_room(ip: String, port: int, text: String) -> void:
 	rooms_changed.emit()
 
 
-func _room_identity_matches(room: Dictionary, name: String, port: int, web: bool) -> bool:
-	return str(room.get("name", "")) == name \
+func _room_identity_matches(room: Dictionary, room_title: String, port: int, web: bool) -> bool:
+	return str(room.get("name", "")) == room_title \
 		and int(room.get("port", 0)) == port \
 		and bool(room.get("web", false)) == web
 
@@ -616,10 +748,6 @@ func _deduplicate_rooms() -> void:
 
 
 # --- player registry --------------------------------------------------------
-func _color_for(slot: int) -> Color:
-	return PLAYER_COLORS[slot % PLAYER_COLORS.size()]
-
-
 func _on_peer_connected(_id: int) -> void:
 	# the new player sends their name right after connecting
 	pass
@@ -654,7 +782,8 @@ func _send_hello() -> void:
 		return
 	if _peer == null or _peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
 		return
-	rpc_id(1, "_srv_hello", _my_name())
+	rpc_id(1, "_srv_hello", _my_name(),
+		player_ship_color_index, player_flame_color_index)
 
 
 func retry_hello() -> void:
@@ -704,18 +833,63 @@ func _on_server_disconnected() -> void:
 
 
 @rpc("any_peer", "call_remote", "reliable", 0)
-func _srv_hello(name: String) -> void:
+func _srv_hello(
+		requested_name: String, requested_ship_color: int,
+		requested_flame_color: int) -> void:
 	if not _hosting:
 		return
 	var id := _api.get_remote_sender_id()
 	if _find_player(id) >= 0:
 		return
-	if is_player_name_taken(name):
+	if is_player_name_taken(requested_name):
 		rpc_id(id, "_cli_name_taken")
 		return
-	players.append({"id": id, "name": name, "color": _color_for(players.size())})
+	var ship_color_index := requested_ship_color
+	if not is_ship_color_available(ship_color_index):
+		ship_color_index = -1
+		for color_index in PLAYER_COLORS.size():
+			if is_ship_color_available(color_index):
+				ship_color_index = color_index
+				break
+	if ship_color_index < 0:
+		rpc_id(id, "_cli_name_taken")
+		return
+	var flame_color_index := posmod(
+		requested_flame_color, FLAME_COLORS.size()
+	)
+	players.append({
+		"id": id,
+		"name": requested_name,
+		"color": PLAYER_COLORS[ship_color_index],
+		"flame_color": FLAME_COLORS[flame_color_index],
+		"ship_color_index": ship_color_index,
+		"flame_color_index": flame_color_index,
+	})
 	_broadcast_players()
 	_add_own_room()
+	players_changed.emit()
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func _srv_set_player_colors(ship_color_index: int,
+		flame_color_index: int) -> void:
+	if not _hosting or ship_color_index < 0 \
+			or ship_color_index >= PLAYER_COLORS.size() \
+			or flame_color_index < 0 \
+			or flame_color_index >= FLAME_COLORS.size():
+		return
+	var sender_id := _api.get_remote_sender_id()
+	var player_index := _find_player(sender_id)
+	if player_index < 0 or not is_ship_color_available(
+		ship_color_index, sender_id
+	):
+		_broadcast_players()
+		return
+	players[player_index]["ship_color_index"] = ship_color_index
+	players[player_index]["flame_color_index"] = flame_color_index
+	players[player_index]["color"] = PLAYER_COLORS[ship_color_index]
+	players[player_index]["flame_color"] = FLAME_COLORS[flame_color_index]
+	_broadcast_players()
 	players_changed.emit()
 
 
@@ -731,10 +905,14 @@ func _cli_name_taken() -> void:
 func _broadcast_players() -> void:
 	if not _hosting:
 		return
-	# the colours are looked up on the other side, so only the names travel
+	# Send palette indexes so every peer can resolve the same ship and flame colors.
 	var plain: Array = []
 	for p in players:
-		plain.append([int(p["id"]), str(p["name"])])
+		plain.append([
+			int(p["id"]), str(p["name"]),
+			int(p.get("ship_color_index", 0)),
+			int(p.get("flame_color_index", 0)),
+		])
 	for pid in _client_ids():
 		rpc_id(pid, "_cli_players", plain)
 
@@ -742,15 +920,33 @@ func _broadcast_players() -> void:
 @rpc("any_peer", "call_remote", "reliable", 0)
 func _cli_players(list: Array) -> void:
 	var out: Array = []
+	var local_player_in_room := false
 	for i in list.size():
 		var row: Array = list[i]
-		out.append({"id": int(row[0]), "name": str(row[1]),
-			"color": _color_for(i)})
+		var ship_color_index := posmod(int(row[2]), PLAYER_COLORS.size()) \
+			if row.size() > 2 else i % PLAYER_COLORS.size()
+		var flame_color_index := posmod(int(row[3]), FLAME_COLORS.size()) \
+			if row.size() > 3 else 0
+		var player_id := int(row[0])
+		out.append({
+			"id": player_id,
+			"name": str(row[1]),
+			"color": PLAYER_COLORS[ship_color_index],
+			"flame_color": FLAME_COLORS[flame_color_index],
+			"ship_color_index": ship_color_index,
+			"flame_color_index": flame_color_index,
+		})
+		if player_id == my_id():
+			local_player_in_room = true
+			player_ship_color_index = ship_color_index
+			player_flame_color_index = flame_color_index
 	players = out
 	# the host has us in the room now, the greetings can stop
 	_wait_for_hello = false
 	name_change_required = false
 	players_changed.emit()
+	if local_player_in_room:
+		room_joined.emit()
 
 
 # A client says hello every now and then, so the host knows it is still there.
@@ -792,12 +988,18 @@ func player_color_of(id: int) -> Color:
 	return players[i]["color"] if i >= 0 else Color.WHITE
 
 
+func player_flame_color_of(id: int) -> Color:
+	var i := _find_player(id)
+	return players[i].get("flame_color", get_player_flame_color()) \
+		if i >= 0 else get_player_flame_color()
+
+
 # The host chooses among the local player and the remote-player proxies. This
 # keeps enemy AI from always locking onto the host's character.
 func target_player(from_position: Vector2) -> Node2D:
 	var best: Node2D = null
 	var best_distance := INF
-	for candidate in get_tree().get_nodes_in_group("player"):
+	for candidate in players_for_physics_frame():
 		var node := candidate as Node2D
 		if node == null or not is_instance_valid(node):
 			continue
@@ -811,7 +1013,7 @@ func target_player(from_position: Vector2) -> Node2D:
 
 
 func any_player_alive() -> bool:
-	for candidate in get_tree().get_nodes_in_group("player"):
+	for candidate in players_for_physics_frame():
 		var node := candidate as Node2D
 		if node == null or not is_instance_valid(node):
 			continue
@@ -819,6 +1021,14 @@ func any_player_alive() -> bool:
 			continue
 		return true
 	return false
+
+
+func players_for_physics_frame() -> Array:
+	var frame := Engine.get_physics_frames()
+	if frame != _player_nodes_cache_frame:
+		_player_nodes_cache = get_tree().get_nodes_in_group("player")
+		_player_nodes_cache_frame = frame
+	return _player_nodes_cache
 
 
 # Damage to a remote player is decided by the host and applied by that player's
@@ -835,10 +1045,11 @@ func damage_remote_player_orb(id: int, amount: float) -> void:
 
 func damage_remote_player_with_effect(id: int, amount: float, burn: int = 0,
 		freeze: int = 0, knockback: Vector2 = Vector2.ZERO,
-		stun_time: float = 0.0) -> void:
+		stun_time: float = 0.0, orb_damage: bool = false) -> void:
 	if not _hosting or id <= 1:
 		return
-	rpc_id(id, "_cli_damage_player", amount, burn, freeze, knockback, stun_time)
+	rpc_id(id, "_cli_damage_player", amount, burn, freeze, knockback,
+		stun_time, orb_damage)
 
 
 func slow_remote_player(id: int, duration: float = 0.5) -> void:
@@ -857,6 +1068,62 @@ func broadcast_enemy_bullet(pos: Vector2, direction: Vector2, speed: float,
 			burn, freeze, lifetime, beam_length, beam_width)
 
 
+func broadcast_boss_missile(pos: Vector2, direction: Vector2, speed: float,
+		turn_rate: float, lifetime: float) -> void:
+	if not _hosting:
+		return
+	for pid in _client_ids():
+		rpc_id(pid, "_cli_boss_missile", pos, direction, speed, turn_rate, lifetime)
+
+
+func spawn_boss_sonic_wave(pos: Vector2, max_radius: float, duration: float,
+		direction: Vector2, half_angle_degrees: float) -> void:
+	_create_boss_sonic_wave(pos, max_radius, duration, direction,
+		half_angle_degrees, false)
+	if not _hosting:
+		return
+	for pid in _client_ids():
+		rpc_id(pid, "_cli_boss_sonic_wave", pos, max_radius, duration,
+			direction, half_angle_degrees)
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _cli_boss_sonic_wave(pos: Vector2, max_radius: float, duration: float,
+		direction: Vector2, half_angle_degrees: float) -> void:
+	_create_boss_sonic_wave(pos, max_radius, duration, direction,
+		half_angle_degrees, true)
+
+
+func _create_boss_sonic_wave(pos: Vector2, max_radius: float,
+		duration: float, direction: Vector2, half_angle_degrees: float,
+		visual_only: bool) -> void:
+	var wave := BOSS_SONIC_WAVE.instantiate()
+	wave.global_position = pos
+	wave.max_radius = max_radius
+	wave.duration = duration
+	wave.direction = direction
+	wave.half_angle_degrees = half_angle_degrees
+	wave.visual_only = visual_only
+	get_tree().current_scene.add_child(wave)
+
+
+func broadcast_boss_drone_explosion(pos: Vector2, large: bool) -> void:
+	if not _hosting:
+		return
+	for pid in _client_ids():
+		rpc_id(pid, "_cli_boss_drone_explosion", pos, large)
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _cli_boss_drone_explosion(pos: Vector2, large: bool) -> void:
+	var explosion := Pool.acquire(EXPLOSION_SCENE,
+		get_tree().current_scene) as Explosion
+	if explosion == null:
+		return
+	explosion.global_position = pos
+	explosion.setup(1.8 if large else 0.9)
+
+
 func broadcast_orb(pos: Vector2, direction: Vector2, speed: float,
 		radius: float, lifetime: float) -> void:
 	if not _hosting:
@@ -868,14 +1135,17 @@ func broadcast_orb(pos: Vector2, direction: Vector2, speed: float,
 @rpc("authority", "call_remote", "unreliable_ordered", 1)
 func _cli_orb(pos: Vector2, direction: Vector2, speed: float,
 		radius: float, lifetime: float) -> void:
-	var orb := ORB_PROJECTILE.instantiate()
+	var orb := Pool.acquire(ORB_PROJECTILE,
+		get_tree().current_scene) as OrbProjectile
+	if orb == null:
+		return
 	orb.global_position = pos
 	orb.direction = direction
 	orb.speed = speed
 	orb.radius = radius
 	orb.lifetime = lifetime
 	orb.network_visual = true
-	get_tree().current_scene.add_child(orb)
+	orb.prepare_for_flight()
 
 
 # Player bullets are simulated by their owner for damage. Other peers receive
@@ -929,6 +1199,21 @@ func remove_enemy(id: int) -> void:
 		rpc_id(pid, "_cli_enemy_removed", id)
 
 
+func broadcast_enemy_attack_state(id: int, state: String, duration: float,
+		point: Vector2 = Vector2.ZERO) -> void:
+	if not _hosting or id <= 0:
+		return
+	for pid in _client_ids():
+		rpc_id(pid, "_cli_enemy_attack_state", id, state, duration, point)
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _cli_enemy_attack_state(id: int, state: String, duration: float,
+		point: Vector2) -> void:
+	if world != null and world.has_method("enemy_attack_state"):
+		world.call("enemy_attack_state", id, state, duration, point)
+
+
 # A client says "this enemy took a hit", the host applies it.
 func report_hit(id: int, amount: float, kind: String) -> void:
 	# the host deals with its own enemies, it never asks itself
@@ -979,6 +1264,20 @@ func send_wave(wave: int) -> void:
 		rpc_id(pid, "_cli_wave", wave)
 
 
+func broadcast_boss_death_effect(position: Vector2, tint: Color,
+		size_scale: float) -> void:
+	if not _hosting:
+		return
+	for pid in _client_ids():
+		rpc_id(pid, "_cli_boss_death_effect", position, tint, size_scale)
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _cli_boss_death_effect(position: Vector2, tint: Color,
+		size_scale: float) -> void:
+	Game.spawn_boss_death_effect(position, tint, size_scale)
+
+
 @rpc("authority", "call_remote", "reliable", 0)
 func _cli_wave(wave: int) -> void:
 	if world != null and world.has_method("clear_host_ghost"):
@@ -989,7 +1288,25 @@ func _cli_wave(wave: int) -> void:
 	if world != null and world.has_method("revive_remote_players"):
 		world.call("revive_remote_players")
 	Game.wave = wave
+	Game.record_wave(wave)
 	Game.wave_changed.emit(wave)
+
+
+func send_revive_dead_players() -> void:
+	if not _hosting:
+		return
+	for pid in _client_ids():
+		rpc_id(pid, "_cli_revive_dead_players")
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _cli_revive_dead_players() -> void:
+	var local_player := get_tree().current_scene.get_node_or_null("Player")
+	if local_player != null and local_player.get("_dead") == true \
+			and local_player.has_method("revive_for_wave"):
+		local_player.call("revive_for_wave")
+	if world != null and world.has_method("revive_remote_players"):
+		world.call("revive_remote_players")
 
 
 # The host tells the player who got the kill to create their local XP orbs.
@@ -1014,17 +1331,119 @@ func send_elite_card(peer: int, pos: Vector2, card_id: String) -> void:
 
 @rpc("authority", "call_remote", "reliable", 0)
 func _cli_elite_card(pos: Vector2, card_id: String) -> void:
-	var card: Dictionary = {}
-	for candidate in CARD_DB.passives():
-		if str(candidate.get("id", "")) == card_id:
-			card = candidate
-			break
+	var card := _find_upgrade_card(card_id)
 	if card.is_empty():
 		return
 	var drop := UPGRADE_DROP.instantiate() as UpgradeDrop
 	drop.card = card
 	drop.global_position = pos + Vector2.from_angle(randf() * TAU) * randf_range(0.0, 20.0)
 	get_tree().current_scene.add_child(drop)
+
+
+func request_discarded_card(card_id: String, pos: Vector2, direction: Vector2) -> bool:
+	if _find_upgrade_card(card_id).is_empty() or direction.is_zero_approx():
+		return false
+	if not is_online():
+		_spawn_discarded_card(0, my_id(), pos, direction, card_id)
+		return true
+	if _hosting:
+		_create_discarded_card_drop(my_id(), pos, direction, card_id)
+		return true
+	if _peer == null or _peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
+		return false
+	rpc_id(1, "_srv_discard_card", card_id, pos, direction.normalized())
+	return true
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func _srv_discard_card(card_id: String, pos: Vector2, direction: Vector2) -> void:
+	if not _hosting or _api == null or not pos.is_finite() \
+			or not direction.is_finite() or direction.is_zero_approx():
+		return
+	var sender := _api.get_remote_sender_id()
+	if sender <= 1 or _find_player(sender) < 0 or _find_upgrade_card(card_id).is_empty():
+		return
+	_create_discarded_card_drop(sender, pos, direction, card_id)
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _cli_discarded_card(drop_id: int, owner_id: int, pos: Vector2,
+		direction: Vector2, card_id: String) -> void:
+	_spawn_discarded_card(drop_id, owner_id, pos, direction, card_id)
+
+
+func _create_discarded_card_drop(owner_id: int, pos: Vector2,
+		direction: Vector2, card_id: String) -> void:
+	var drop_id := _next_discarded_card_id
+	_next_discarded_card_id += 1
+	_discarded_card_drops[drop_id] = card_id
+	_spawn_discarded_card(drop_id, owner_id, pos, direction, card_id)
+	for pid in _client_ids():
+		rpc_id(pid, "_cli_discarded_card", drop_id, owner_id, pos,
+			direction.normalized(), card_id)
+
+
+func _spawn_discarded_card(drop_id: int, owner_id: int, pos: Vector2,
+		direction: Vector2, card_id: String) -> void:
+	var card := _find_upgrade_card(card_id)
+	if card.is_empty() or direction.is_zero_approx():
+		return
+	var drop := UPGRADE_DROP.instantiate() as UpgradeDrop
+	drop.card = card
+	drop.network_drop_id = drop_id
+	drop.global_position = pos + direction.normalized() * 82.0
+	drop.configure_thrown(owner_id, direction)
+	get_tree().current_scene.add_child(drop)
+
+
+func claim_discarded_card(drop_id: int, player_id: int) -> void:
+	if not _hosting or not _discarded_card_drops.has(drop_id):
+		return
+	if player_id <= 0 or (player_id > 1 and _find_player(player_id) < 0):
+		return
+	var card_id := str(_discarded_card_drops[drop_id])
+	_discarded_card_drops.erase(drop_id)
+	if player_id == 1:
+		_grant_discarded_card(card_id)
+	else:
+		rpc_id(player_id, "_cli_grant_discarded_card", card_id)
+	_remove_discarded_card_drop(drop_id)
+	for pid in _client_ids():
+		rpc_id(pid, "_cli_remove_discarded_card", drop_id)
+
+
+func _grant_discarded_card(card_id: String) -> void:
+	var card := _find_upgrade_card(card_id)
+	if card.is_empty() or not Game.grant_card(card):
+		return
+	Game.card_collected.emit(card)
+	Game.sfx("cardget", -11.0, 0.95, 1.06)
+
+
+func _remove_discarded_card_drop(drop_id: int) -> void:
+	for node in get_tree().get_nodes_in_group("upgrade_drop"):
+		if int(node.get("network_drop_id")) == drop_id:
+			node.queue_free()
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _cli_grant_discarded_card(card_id: String) -> void:
+	_grant_discarded_card(card_id)
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _cli_remove_discarded_card(drop_id: int) -> void:
+	_remove_discarded_card_drop(drop_id)
+
+
+func _find_upgrade_card(card_id: String) -> Dictionary:
+	for card in CARD_DB.passives():
+		if str(card.get("id", "")) == card_id:
+			return card
+	for card in CARD_DB.weapon_cards():
+		if str(card.get("id", "")) == card_id:
+			return card
+	return {}
 
 
 # Sends the enemy positions, the host runs the world.
@@ -1199,14 +1618,19 @@ func _cli_clear_host_ghost() -> void:
 
 @rpc("authority", "call_remote", "reliable", 0)
 func _cli_damage_player(amount: float, burn: int, freeze: int,
-		knockback: Vector2 = Vector2.ZERO, stun_time: float = 0.0) -> void:
+		knockback: Vector2 = Vector2.ZERO, stun_time: float = 0.0,
+		orb_damage: bool = false) -> void:
 	var local_player := get_tree().current_scene.get_node_or_null("Player")
-	if local_player == null or not local_player.has_method("take_damage"):
+	if local_player == null:
 		return
-	local_player.take_damage(amount)
+	if orb_damage and local_player.has_method("apply_orb_damage"):
+		local_player.apply_orb_damage(amount)
+	elif local_player.has_method("take_damage"):
+		local_player.take_damage(amount)
 	if local_player.has_method("apply_status"):
 		local_player.apply_status(burn, freeze)
-	if stun_time > 0.0 and local_player.has_method("apply_knockback"):
+	if (stun_time > 0.0 or not knockback.is_zero_approx()) \
+			and local_player.has_method("apply_knockback"):
 		local_player.apply_knockback(knockback, stun_time)
 
 
@@ -1228,7 +1652,11 @@ func _cli_orb_slow(duration: float = 0.5) -> void:
 func _cli_enemy_bullet(pos: Vector2, direction: Vector2, speed: float,
 		damage: int, burn: int, freeze: int, lifetime: float,
 		beam_length: float, beam_width: float) -> void:
-	var bullet := ENEMY_BULLET.instantiate()
+	var bullet := Pool.acquire(ENEMY_BULLET,
+		get_tree().current_scene) as EnemyBullet
+	if bullet == null:
+		return
+	bullet.hide()
 	bullet.global_position = pos
 	bullet.direction = direction
 	bullet.speed = speed
@@ -1239,7 +1667,25 @@ func _cli_enemy_bullet(pos: Vector2, direction: Vector2, speed: float,
 	bullet.beam_length = beam_length
 	bullet.beam_width = beam_width
 	bullet.network_visual = true
-	get_tree().current_scene.add_child(bullet)
+	bullet.prepare_for_flight()
+
+
+@rpc("authority", "call_remote", "unreliable_ordered", 1)
+func _cli_boss_missile(pos: Vector2, direction: Vector2, speed: float,
+		turn_rate: float, lifetime: float) -> void:
+	var missile := Pool.acquire(BOSS_MISSILE,
+		get_tree().current_scene) as BossMissile
+	if missile == null:
+		return
+	missile.global_position = pos
+	missile.direction = direction
+	missile.speed = speed
+	missile.turn_rate = turn_rate
+	missile.lifetime = lifetime
+	missile.network_visual = true
+	missile.collision_layer = 0
+	missile.collision_mask = 0
+	missile.prepare_for_flight()
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered", 1)
@@ -1270,7 +1716,10 @@ func _add_network_player_bullet(pos: Vector2, direction: Vector2, speed: float,
 	var scene := load("res://scenes/bullet.tscn") as PackedScene
 	if scene == null or get_tree().current_scene == null:
 		return
-	var bullet := scene.instantiate()
+	var bullet := Pool.acquire(scene, get_tree().current_scene) as PlayerBullet
+	if bullet == null:
+		return
+	bullet.hide()
 	bullet.global_position = pos
 	bullet.direction = direction
 	bullet.speed = speed
@@ -1279,7 +1728,7 @@ func _add_network_player_bullet(pos: Vector2, direction: Vector2, speed: float,
 	bullet.beam_width = beam_width
 	bullet.beam_color = beam_color
 	bullet.network_visual = true
-	get_tree().current_scene.add_child(bullet)
+	bullet.prepare_for_flight()
 
 
 # --- session ----------------------------------------------------------------

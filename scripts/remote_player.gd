@@ -9,10 +9,14 @@ const FOLLOW_SPEED := 38.0
 # the rotation is followed a bit slower so it does not snap
 const FOLLOW_TURN := 10.0
 const STATUS_VISUAL := preload("res://scripts/status_effect_visual.gd")
+const MULTIPLAYER_PALETTE_SHADER := preload(
+	"res://assets/shaders/ship_multiplayer_palette.gdshader"
+)
 
 var net_id: int = 0
 var net_name: String = ""
 var net_color: Color = Color.WHITE
+var net_flame_color: Color = Color(1.0, 0.68, 0.28)
 var net_hp: float = 1.0
 var net_alive: bool = true
 var net_spectate_target: int = 0
@@ -51,6 +55,9 @@ func _ready() -> void:
 	_status_visual.set("radius", 24.0)
 	_status_visual.z_index = 2
 	add_child(_status_visual)
+	var palette := ShaderMaterial.new()
+	palette.shader = MULTIPLAYER_PALETTE_SHADER
+	_sprite.material = palette
 	_sprite.modulate = net_color
 	_name_label = $Name
 	_refresh_name()
@@ -79,6 +86,7 @@ func _physics_process(delta: float) -> void:
 		collision_mask = 0
 	else:
 		visible = true
+	var follow_alpha := 1.0 - exp(-12.0 * delta)
 	# Predict from the replicated velocity and gently correct snapshot error.
 	# This removes the stop/start motion between 30 Hz network packets.
 	if net_alive or net_spectate_target <= 0:
@@ -86,16 +94,15 @@ func _physics_process(delta: float) -> void:
 		if error.length() > 520.0:
 			global_position = _net_target
 		else:
-			var correction := error * (1.0 - exp(-16.0 * delta))
-			_render_velocity = _render_velocity.lerp(net_velocity,
-				1.0 - exp(-14.0 * delta))
+			var correction := error * follow_alpha
+			_render_velocity = _render_velocity.lerp(net_velocity, follow_alpha)
 			var step := _render_velocity * delta * 0.92 + correction
 			if step.length() > 26.0:
 				step = step.normalized() * 26.0
 			global_position += step
 		# Only the ship rotates. The name, HP bar and ghost remain upright.
 		_sprite.rotation = lerp_angle(_sprite.rotation, _net_rot,
-			1.0 - exp(-14.0 * delta))
+			follow_alpha)
 	# the ship fades out when its owner dies
 	var want := 1.0 if net_alive else 0.0
 	_sprite.modulate.a = lerpf(_sprite.modulate.a, want, 0.1)
@@ -138,6 +145,14 @@ func apply_knockback(impulse: Vector2, stun_time: float = 0.5) -> void:
 		Net.damage_remote_player_with_effect(net_id, 0, 0, 0, impulse, stun_time)
 
 
+func apply_hit(amount: float, burn: int = 0, freeze: int = 0,
+		knockback: Vector2 = Vector2.ZERO, stun_time: float = 0.0,
+		orb_damage: bool = false) -> void:
+	if Net.is_host():
+		Net.damage_remote_player_with_effect(
+			net_id, amount, burn, freeze, knockback, stun_time, orb_damage)
+
+
 func apply_orb_slow(duration: float = 0.5) -> void:
 	if Net.is_host():
 		Net.slow_remote_player(net_id, duration)
@@ -177,10 +192,12 @@ func _update_flame() -> void:
 	_flame_out.position = back
 	_flame_out.rotation = _sprite.rotation
 	_flame_out.scale = Vector2(length, 1.0)
-	_flame_out.color = Color(1.0, 0.75, 0.25, 0.35 + 0.5 * _thrust)
+	_flame_out.color = net_flame_color
+	_flame_out.color.a = 0.35 + 0.5 * _thrust
 	_flame_out.visible = lit
 	_flame_in.position = back
 	_flame_in.rotation = _sprite.rotation
 	_flame_in.scale = Vector2(length * 0.55, 1.0)
-	_flame_in.color = Color(1.0, 1.0, 0.8, 0.6 + 0.4 * _thrust)
+	_flame_in.color = net_flame_color.lerp(Color.WHITE, 0.55)
+	_flame_in.color.a = 0.6 + 0.4 * _thrust
 	_flame_in.visible = lit

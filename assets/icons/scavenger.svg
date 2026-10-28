@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><defs><linearGradient id="card_icon_glint" x1="0" y1="0" x2="0.8" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="0.55" stop-color="#e2e2e2"/><stop offset="1" stop-color="#b8b8b8"/></linearGradient></defs>
 <g transform="translate(32,32)">
-<path fill="#ffffff" stroke="none" d="M-18,16 L18,16 L13,8 L-13,8 Z"/><path fill="#ffffff" stroke="none" d="M-18,4 L18,4 L13,-4 L-13,-4 Z"/><path fill="#ffffff" stroke="none" d="M-18,-8 L18,-8 L13,-16 L-13,-16 Z"/><line fill="none" stroke="#c8c8c8" x1="-13" y1="-8" x2="13" y2="-8" stroke-width="2" stroke-linecap="round"/>
+<path fill="url(#card_icon_glint)" stroke="#858585" stroke-width="0.8" d="M-18,16 L18,16 L13,8 L-13,8 Z"/><path fill="url(#card_icon_glint)" stroke="#858585" stroke-width="0.8" d="M-18,4 L18,4 L13,-4 L-13,-4 Z"/><path fill="url(#card_icon_glint)" stroke="#858585" stroke-width="0.8" d="M-18,-8 L18,-8 L13,-16 L-13,-16 Z"/><line fill="none" stroke="#c8c8c8" x1="-13" y1="-8" x2="13" y2="-8" stroke-width="2" stroke-linecap="round"/>
 </g>
 </svg>

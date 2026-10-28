@@ -187,10 +187,20 @@ func _update_hint_badge() -> void:
 func _place_hint() -> void:
 	var viewport_size := get_viewport().get_visible_rect().size
 	_hint.size = Vector2(HINT_W, HINT_H)
-	_hint.position = Vector2(
-		viewport_size.x - HINT_W - 18.0,
-		(viewport_size.y - HINT_H) * 0.5
-	)
+	var position := Vector2(viewport_size.x - HINT_W - 18.0,
+		(viewport_size.y - HINT_H) * 0.5)
+	var backpack := get_node_or_null("../HUD/BackpackButton") as Control
+	if backpack:
+		var hint_rect := Rect2(position, _hint.size)
+		var backpack_rect := Rect2(backpack.position, backpack.size)
+		if hint_rect.intersects(backpack_rect):
+			var below_y := backpack_rect.end.y + 14.0
+			if below_y + HINT_H <= viewport_size.y - 12.0:
+				position.y = below_y
+			else:
+				position.x -= HINT_W + 12.0
+	position.x = maxf(position.x, 12.0)
+	_hint.position = position
 
 
 func _on_hint_pressed() -> void:
@@ -289,6 +299,9 @@ func _show() -> void:
 		_title.text = "LEVEL 5 — CHOOSE YOUR WEAPON"
 	else:
 		_title.text = "LEVEL UP — CHOOSE A CARD"
+	var locale := get_node_or_null("/root/Locale")
+	if locale:
+		_title.text = locale.translate_text(_title.text)
 
 	var total_width: float = picks.size() * CARD_W + (picks.size() - 1) * SPACING
 	var start_x: float = -total_width / 2.0

@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><defs><linearGradient id="card_icon_glint" x1="0" y1="0" x2="0.8" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="0.55" stop-color="#e2e2e2"/><stop offset="1" stop-color="#b8b8b8"/></linearGradient></defs>
 <g transform="translate(32,32)">
-<path fill="#ffffff" stroke="none" d="M0,-18 L15,0 L0,18 L-15,0 Z"/><line fill="none" stroke="#ffffff" x1="22" y1="0" x2="30" y2="0" stroke-width="3" stroke-linecap="round"/><line fill="none" stroke="#ffffff" x1="0" y1="22" x2="0" y2="30" stroke-width="3" stroke-linecap="round"/><line fill="none" stroke="#ffffff" x1="-22" y1="0" x2="-30" y2="0" stroke-width="3" stroke-linecap="round"/><line fill="none" stroke="#ffffff" x1="-0" y1="-22" x2="-0" y2="-30" stroke-width="3" stroke-linecap="round"/>
+<path fill="url(#card_icon_glint)" stroke="#858585" stroke-width="0.8" d="M0,-18 L15,0 L0,18 L-15,0 Z"/><line fill="none" stroke="url(#card_icon_glint)" x1="22" y1="0" x2="30" y2="0" stroke-width="3" stroke-linecap="round"/><line fill="none" stroke="url(#card_icon_glint)" x1="0" y1="22" x2="0" y2="30" stroke-width="3" stroke-linecap="round"/><line fill="none" stroke="url(#card_icon_glint)" x1="-22" y1="0" x2="-30" y2="0" stroke-width="3" stroke-linecap="round"/><line fill="none" stroke="url(#card_icon_glint)" x1="-0" y1="-22" x2="-0" y2="-30" stroke-width="3" stroke-linecap="round"/>
 </g>
 </svg>

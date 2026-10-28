@@ -5,10 +5,11 @@ class_name HpBar
 # The bar and the fill are two sprites sharing one tiny white texture, so
 # nothing is re-recorded when the health changes - only the fill is resized.
 
+@export var bar_width: float = 50.0
+
 var ratio: float = 1.0
 var fill_color: Color = Color(0.35, 0.9, 0.4, 1.0)
 
-const BAR_WIDTH := 50.0
 const BAR_HEIGHT := 6.0
 const Ba_COLOR := Color(0.05, 0.07, 0.06, 0.85)
 
@@ -27,22 +28,33 @@ var _bg: Sprite2D = null
 var _fill: Sprite2D = null
 
 
+func _init() -> void:
+	hide()
+
+
 func _ready() -> void:
+	hide()
 	var tex := _pixel_tex()
 	_bg = Sprite2D.new()
 	_bg.texture = tex
 	_bg.centered = false
 	_bg.modulate = Ba_COLOR
-	_bg.position = Vector2(-BAR_WIDTH * 0.5, 0.0)
-	_bg.scale = Vector2(BAR_WIDTH, BAR_HEIGHT)
+	_bg.position = Vector2(-bar_width * 0.5, 0.0)
+	_bg.scale = Vector2(bar_width, BAR_HEIGHT)
 	add_child(_bg)
 	_fill = Sprite2D.new()
 	_fill.texture = tex
 	_fill.centered = false
 	_fill.modulate = fill_color
-	_fill.position = Vector2(-BAR_WIDTH * 0.5 + 1.0, 1.0)
+	_fill.position = Vector2(-bar_width * 0.5 + 1.0, 1.0)
 	add_child(_fill)
 	_apply()
+
+
+func place_at(world_position: Vector2) -> void:
+	global_position = world_position
+	global_rotation = 0.0
+	show()
 
 
 func set_ratio(value: float, color: Color = Color(0, 0, 0, 0)) -> void:
@@ -59,4 +71,4 @@ func _apply() -> void:
 	if _fill == null:
 		return
 	_fill.modulate = fill_color
-	_fill.scale = Vector2(maxf((BAR_WIDTH - 2.0) * ratio, 0.0), BAR_HEIGHT - 2.0)
+	_fill.scale = Vector2(maxf((bar_width - 2.0) * ratio, 0.0), BAR_HEIGHT - 2.0)

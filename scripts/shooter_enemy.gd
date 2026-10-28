@@ -121,7 +121,7 @@ func _update_bar() -> void:
 
 
 func _get_player() -> Node2D:
-	if not Net.is_host():
+	if Net.is_online() and not Net.is_host():
 		return null
 	# Re-evaluate every frame so the nearest living player gets priority.
 	_player = Net.target_player(global_position)
@@ -139,8 +139,7 @@ func _physics_process(delta: float) -> void:
 			clampf(net_velocity.length() / maxf(move_speed, 1.0), 0.0, 1.0), delta * 8.0)
 		_flame_time += delta
 		_update_flame()
-		_bar.global_position = global_position + Vector2(0, 30.0)
-		_bar.global_rotation = 0.0
+		_bar.place_at(global_position + Vector2(0, 30.0))
 		return
 	_cooldown -= delta
 	_flame_time += delta
@@ -176,7 +175,7 @@ func _physics_process(delta: float) -> void:
 			# the expensive steering only runs at 20Hz, movement stays smooth
 			_ai_acc -= delta
 			if _ai_acc <= 0.0:
-				_ai_acc = 0.05
+				_ai_acc = 0.05 if _on_screen else 0.16
 				_update_goal(target, delta)
 			velocity = velocity.lerp(_goal, clampf(6.0 * delta, 0.0, 1.0))
 			move_and_slide()
@@ -202,8 +201,7 @@ func _physics_process(delta: float) -> void:
 	_update_flame()
 
 	if _on_screen:
-		_bar.global_position = global_position + Vector2(0, 32.0)
-		_bar.global_rotation = 0.0
+		_bar.place_at(global_position + Vector2(0, 32.0))
 
 
 func _update_goal(target: Node2D, delta: float) -> void:
@@ -233,16 +231,21 @@ func _cull(delta: float) -> void:
 
 
 func _fire(dir: Vector2) -> void:
-	var b := ENEMY_BULLET.instantiate()
+	Game.sfx("shoot", -22.0, 0.92, 1.08)
+	var b := Pool.acquire(ENEMY_BULLET,
+		get_tree().current_scene) as EnemyBullet
+	if b == null:
+		return
+	b.hide()
 	b.global_position = global_position + dir * 26.0
 	b.direction = dir
 	b.speed = bullet_speed
 	b.damage = contact_damage
 	b.burn = _elite_burn
 	b.freeze = _elite_freeze
+	b.prepare_for_flight()
 	if _elite_crit > 0.0 and randf() < _elite_crit:
 		b.damage = int(round(b.damage * 2.0))
-	get_tree().current_scene.add_child(b)
 	Net.broadcast_enemy_bullet(b.global_position, b.direction, b.speed, b.damage,
 		b.burn, b.freeze, b.lifetime, b.beam_length, b.beam_width)
 
@@ -277,7 +280,9 @@ func _tick_status(delta: float, apply_burn_damage: bool = true) -> void:
 
 
 func _spawn_damage_number(amount: float, kind: String) -> void:
-	var n := DAMAGE_NUMBER.instantiate() as DamageNumber
+	var n := Pool.acquire(DAMAGE_NUMBER, get_tree().current_scene) as DamageNumber
+	if n == null:
+		return
 	n.global_position = global_position + Vector2(randf_range(-24.0, 24.0), randf_range(-36.0, -12.0))
 	match kind:
 		"crit":
@@ -286,7 +291,6 @@ func _spawn_damage_number(amount: float, kind: String) -> void:
 			n.setup(amount, Color(1.0, 0.55, 0.15), 18)
 		_:
 			n.setup(amount, Color(0.82, 0.85, 0.9), 22)
-	get_tree().current_scene.add_child(n)
 
 
 func take_damage(amount: float, kind: String = "normal") -> void:
@@ -296,6 +300,7 @@ func take_damage(amount: float, kind: String = "normal") -> void:
 	# Brittle: frozen targets are softer
 	if _slow > 0.0:
 		amount *= 1.0 + 0.35 * float(Game.upg_brittle)
+	Game.record_damage(mini(maxi(int(round(amount)), 0), maxi(hp, 0)))
 	hp -= int(round(amount))
 	_update_bar()
 	_spawn_damage_number(amount, kind)
@@ -375,15 +380,19 @@ func _die() -> void:
 	if elite:
 		xp *= 3
 	var drop := NetEnemy.died(self, xp)
-	var boom := preload("res://scenes/explosion.tscn").instantiate() as Explosion
+	var boom := Pool.acquire(preload("res://scenes/explosion.tscn"),
+		get_tree().current_scene) as Explosion
+	if boom == null:
+		return
 	boom.global_position = global_position
-	get_tree().current_scene.add_child(boom)
 	Game.sfx("crunch", -15.0, 0.85, 1.18)
 	if Game.upg_lifesteal:
 		var pl := get_tree().get_first_node_in_group("player")
 		if pl and pl.has_method("heal"):
 			pl.heal(1)
-	Game.on_enemy_killed()
+	boom.setup(1.0, Color(1.0, 0.55, 0.3))
+	Game.combat_impact(0.8)
+	Game.on_enemy_killed("shooter")
 	if elite:
 		drop_elite_card()
 	if drop:
@@ -397,5 +406,3 @@ func drop_xp(amount: int) -> void:
 
 func _draw() -> void:
 	pass
-
-

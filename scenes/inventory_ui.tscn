@@ -1,0 +1,206 @@
+[gd_scene format=3 uid="uid://cgg048xp6dism"]
+
+[ext_resource type="Script" uid="uid://c8bd1m2xn1u1o" path="res://scripts/inventory_ui.gd" id="1_inv"]
+[ext_resource type="Script" path="res://scripts/card.gd" id="2_card"]
+[ext_resource type="Script" path="res://scripts/touch_scroll_container.gd" id="3_touch_scroll"]
+
+[node name="InventoryUI" type="CanvasLayer"]
+layer = 80
+script = ExtResource("1_inv")
+
+[node name="Dim" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.008, 0.02, 0.045, 0.82)
+mouse_filter = 0
+
+[node name="Panel" type="PanelContainer" parent="."]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -560.0
+offset_top = -340.0
+offset_right = 560.0
+offset_bottom = 340.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="MainLayout" type="VBoxContainer" parent="Panel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Header" type="HBoxContainer" parent="Panel/MainLayout"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Heading" type="VBoxContainer" parent="Panel/MainLayout/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 2
+
+[node name="Title" type="Label" parent="Panel/MainLayout/Header/Heading"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.91, 0.96, 1, 1)
+theme_override_font_sizes/font_size = 24
+text = "PILOT INVENTORY"
+vertical_alignment = 1
+
+[node name="Subtitle" type="Label" parent="Panel/MainLayout/Header/Heading"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.51, 0.68, 0.8, 1)
+theme_override_font_sizes/font_size = 11
+text = "COLLECTED SYSTEMS  /  SELECT A CARD TO INSPECT"
+
+[node name="CloseButton" type="Button" parent="Panel/MainLayout/Header"]
+custom_minimum_size = Vector2(42, 42)
+layout_mode = 2
+theme_override_font_sizes/font_size = 17
+text = "×"
+
+[node name="Accent" type="ColorRect" parent="Panel/MainLayout"]
+custom_minimum_size = Vector2(0, 2)
+layout_mode = 2
+color = Color(0.31, 0.77, 0.95, 0.84)
+mouse_filter = 2
+
+[node name="WideBody" type="HBoxContainer" parent="Panel/MainLayout"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 14
+
+[node name="Left" type="PanelContainer" parent="Panel/MainLayout/WideBody"]
+custom_minimum_size = Vector2(0, 260)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+size_flags_stretch_ratio = 1.6
+
+[node name="ScrollContainer" type="ScrollContainer" parent="Panel/MainLayout/WideBody/Left"]
+script = ExtResource("3_touch_scroll")
+layout_mode = 2
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 1
+
+[node name="List" type="GridContainer" parent="Panel/MainLayout/WideBody/Left/ScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 1
+theme_override_constants/h_separation = 10
+theme_override_constants/v_separation = 10
+columns = 5
+
+[node name="Right" type="PanelContainer" parent="Panel/MainLayout/WideBody"]
+custom_minimum_size = Vector2(300, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="DetailLayout" type="VBoxContainer" parent="Panel/MainLayout/WideBody/Right"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="DetailHeading" type="Label" parent="Panel/MainLayout/WideBody/Right/DetailLayout"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.34, 0.82, 0.94, 1)
+theme_override_font_sizes/font_size = 12
+text = "CARD DETAILS"
+horizontal_alignment = 1
+
+[node name="Preview" type="Control" parent="Panel/MainLayout/WideBody/Right/DetailLayout"]
+custom_minimum_size = Vector2(200, 280)
+layout_mode = 2
+size_flags_horizontal = 4
+mouse_filter = 2
+script = ExtResource("2_card")
+
+[node name="Stacks" type="Label" parent="Panel/MainLayout/WideBody/Right/DetailLayout"]
+custom_minimum_size = Vector2(0, 30)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.9, 0.96, 1)
+theme_override_font_sizes/font_size = 13
+text = "UPGRADE STACKS: 0 / 1"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="DiscardButton" type="Button" parent="Panel/MainLayout/WideBody/Right/DetailLayout"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "DISCARD CARD"
+
+[node name="MobileBody" type="VBoxContainer" parent="Panel/MainLayout"]
+visible = false
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 10
+
+[node name="MobileLeft" type="PanelContainer" parent="Panel/MainLayout/MobileBody"]
+custom_minimum_size = Vector2(0, 250)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ScrollContainer" type="ScrollContainer" parent="Panel/MainLayout/MobileBody/MobileLeft"]
+script = ExtResource("3_touch_scroll")
+layout_mode = 2
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 1
+
+[node name="List" type="GridContainer" parent="Panel/MainLayout/MobileBody/MobileLeft/ScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 1
+theme_override_constants/h_separation = 8
+theme_override_constants/v_separation = 8
+columns = 3
+
+[node name="MobileRight" type="PanelContainer" parent="Panel/MainLayout/MobileBody"]
+custom_minimum_size = Vector2(0, 300)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="DetailLayout" type="VBoxContainer" parent="Panel/MainLayout/MobileBody/MobileRight"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="DetailHeading" type="Label" parent="Panel/MainLayout/MobileBody/MobileRight/DetailLayout"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.34, 0.82, 0.94, 1)
+theme_override_font_sizes/font_size = 11
+text = "CARD DETAILS"
+horizontal_alignment = 1
+
+[node name="Preview" type="Control" parent="Panel/MainLayout/MobileBody/MobileRight/DetailLayout"]
+custom_minimum_size = Vector2(150, 210)
+layout_mode = 2
+size_flags_horizontal = 4
+mouse_filter = 2
+script = ExtResource("2_card")
+
+[node name="Stacks" type="Label" parent="Panel/MainLayout/MobileBody/MobileRight/DetailLayout"]
+custom_minimum_size = Vector2(0, 26)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.9, 0.96, 1)
+theme_override_font_sizes/font_size = 12
+text = "UPGRADE STACKS: 0 / 1"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="DiscardButton" type="Button" parent="Panel/MainLayout/MobileBody/MobileRight/DetailLayout"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "DISCARD CARD"
+
+[node name="Footer" type="Label" parent="Panel/MainLayout"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.43, 0.57, 0.68, 1)
+theme_override_font_sizes/font_size = 10
+text = "ESC  /  CLOSE INVENTORY"
+horizontal_alignment = 1

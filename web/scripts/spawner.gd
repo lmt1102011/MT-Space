@@ -63,6 +63,7 @@ func _process(delta: float) -> void:
 				_countdown = intermission
 				Game.wave_cleared.emit(Game.wave)
 				wave_cleared_text.emit(true)
+				_revive_dead_players()
 
 		"countdown":
 			_countdown -= delta
@@ -87,7 +88,16 @@ func _shape_count_alive() -> int:
 	return get_tree().get_nodes_in_group("shape_enemy").size()
 
 
+func _revive_dead_players() -> void:
+	var local_player := get_tree().current_scene.get_node_or_null("Player")
+	if local_player != null and local_player.get("_dead") == true \
+			and local_player.has_method("revive_for_wave"):
+		local_player.call("revive_for_wave")
+	Net.send_revive_dead_players()
+
+
 func _start_next_wave() -> void:
+	_revive_dead_players()
 	Game.wave += 1
 	Game.wave_changed.emit(Game.wave)
 	Game.sfx("alert", -17.0, 0.97, 1.05)

@@ -28,17 +28,18 @@ static func is_remote(node: Node) -> bool:
 static func follow(node: Node2D, delta: float) -> void:
 	var target: Vector2 = node.get("_net_target")
 	var network_velocity: Vector2 = node.get_meta("net_velocity", Vector2.ZERO)
+	var follow_alpha := 1.0 - exp(-12.0 * delta)
 	var error := target + network_velocity * 0.06 - node.global_position
 	if error.length() > 520.0:
 		node.global_position = target
 	else:
-		var correction := error * (1.0 - exp(-16.0 * delta))
+		var correction := error * follow_alpha
 		var step := network_velocity * delta * 0.92 + correction
 		if step.length() > 26.0:
 			step = step.normalized() * 26.0
 		node.global_position += step
 	node.global_rotation = lerp_angle(node.global_rotation, float(node.get("_net_rot")),
-		1.0 - exp(-14.0 * delta))
+			follow_alpha)
 
 
 # A client asks the host to deal the damage, the host is the one who decides.

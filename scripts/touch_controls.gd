@@ -68,7 +68,8 @@ func _on_touch(t: InputEventScreenTouch) -> void:
 		_touched = true
 		visible = true
 		# the left half moves, the right half aims and shoots
-		if t.position.x < get_viewport_rect().size.x * 0.5:
+		var vp := get_viewport_rect().size
+		if t.position.x < vp.x * 0.5:
 			if _move_touch == -1:
 				_move_touch = t.index
 				_move_center = t.position
@@ -78,6 +79,9 @@ func _on_touch(t: InputEventScreenTouch) -> void:
 				_aim_touch = t.index
 				_aim_center = t.position
 				_aim_pos = t.position
+				var direction := _stick_vector(_aim_pos - _aim_center)
+				if direction != Vector2.ZERO:
+					_last_aim_dir = direction
 	else:
 		if t.index == _move_touch:
 			_move_touch = -1

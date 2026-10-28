@@ -1,4 +1,5 @@
 extends Area2D
+class_name PlayerBullet
 
 @export var speed: float = 640.0
 @export var lifetime: float = 2.6
@@ -13,8 +14,10 @@ extends Area2D
 
 var direction: Vector2 = Vector2.RIGHT
 var network_visual: bool = false
+var source_position: Vector2 = Vector2.ZERO
 
 const EXPLOSION_SCENE := preload("res://scenes/explosion.tscn")
+const ENEMY_INDEX := preload("res://scripts/enemy_spatial_index.gd")
 const BEAM_TEX := preload("res://assets/beam.svg")
 const BEAM_CORE_TEX := preload("res://assets/beam_core.svg")
 # the size of the beam textures
@@ -22,6 +25,7 @@ const BEAM_W := 64.0
 const BEAM_H := 16.0
 const HOMING_RANGE := 520.0
 const HOMING_TURN := 4.6
+const HOMING_TURN_FIRST := 0.8
 const HOMING_SEARCH := 0.08
 const HOMING_CONE := 1.75        # acquire a target in a broad front arc
 const HOMING_MAX_TIME := 2.4     # enough time to make a real correction
@@ -32,9 +36,16 @@ var _home_t: float = 0.0
 var _home_age: float = 0.0
 var _home_target: Node2D = null
 var _beam: Sprite2D = null
+var _beam_core: Sprite2D = null
+var _pooled: bool = false
+
+
+func _init() -> void:
+	hide()
 
 
 func _ready() -> void:
+	hide()
 	add_to_group("player_bullet")
 	rotation = direction.angle()
 	body_entered.connect(_on_body_entered)
@@ -45,14 +56,58 @@ func _ready() -> void:
 	_beam.scale = Vector2(beam_length / BEAM_W, beam_width / BEAM_H)
 	add_child(_beam)
 	# bright core
-	var core := Sprite2D.new()
-	core.texture = BEAM_CORE_TEX
-	core.modulate = Color(1.0, 1.0, 0.85, 1.0)
-	core.scale = Vector2(beam_length / BEAM_W, beam_width * 0.4 / BEAM_H)
-	add_child(core)
+	_beam_core = Sprite2D.new()
+	_beam_core.texture = BEAM_CORE_TEX
+	_beam_core.modulate = Color(1.0, 1.0, 0.85, 1.0)
+	_beam_core.scale = Vector2(beam_length / BEAM_W,
+		beam_width * 0.4 / BEAM_H)
+	add_child(_beam_core)
+
+
+func pool_activate() -> void:
+	_pooled = false
+	speed = 640.0
+	lifetime = 2.6
+	damage = 1.0
+	burn = 0
+	freeze = 0
+	pierce = 0
+	crit = false
+	beam_length = 26.0
+	beam_width = 5.0
+	beam_color = Color(1.0, 0.9, 0.2)
+	direction = Vector2.RIGHT
+	network_visual = false
+	source_position = Vector2.ZERO
+	_hit.clear()
+	_home_t = 0.0
+	_home_age = 0.0
+	_home_target = null
+	rotation = direction.angle()
+	collision_layer = 2
+	collision_mask = 14
+	set_deferred("monitoring", true)
+	set_deferred("monitorable", true)
+	add_to_group("player_bullet")
+	hide()
+
+
+func prepare_for_flight() -> void:
+	_sync_beam_visuals()
+	show()
+
+
+func pool_deactivate() -> void:
+	_pooled = true
+	remove_from_group("player_bullet")
+	_hit.clear()
+	_home_target = null
 
 
 func _physics_process(delta: float) -> void:
+	if _pooled:
+		return
+	_sync_beam_visuals()
 	_home(delta)
 	var previous := global_position
 	position += direction * speed * delta
@@ -62,9 +117,20 @@ func _physics_process(delta: float) -> void:
 		_detonate()
 
 
+func _sync_beam_visuals() -> void:
+	if _beam == null:
+		return
+	rotation = direction.angle()
+	_beam.modulate = beam_color
+	_beam.scale = Vector2(beam_length / BEAM_W, beam_width / BEAM_H)
+	if _beam_core != null:
+		_beam_core.scale = Vector2(beam_length / BEAM_W,
+			beam_width * 0.4 / BEAM_H)
+
+
 # --- homing ---------------------------------------------------------------
 func _home(delta: float) -> void:
-	if Game.upg_homing <= 0:
+	if network_visual or Game.upg_homing <= 0:
 		return
 	_home_age += delta
 	if _home_age > HOMING_MAX_TIME:
@@ -90,7 +156,8 @@ func _home(delta: float) -> void:
 	# never turn around: a target behind us is simply not chased
 	if absf(diff) > 2.4:
 		return
-	var turn := HOMING_TURN * (1.0 + 0.25 * float(Game.upg_homing - 1))
+	var turn := HOMING_TURN_FIRST if Game.upg_homing == 1 else \
+		HOMING_TURN * (1.0 + 0.25 * float(Game.upg_homing - 2))
 	direction = direction.rotated(diff * clampf(turn * delta, 0.0, 1.0))
 	rotation = direction.angle()   # keep the beam pointing where it flies
 	speed *= 0.999   # barely bleeds speed so it still reaches the target
@@ -102,7 +169,11 @@ func _pick_target() -> Node2D:
 	var best: Node2D = null
 	var best_score := INF
 	var fwd := direction.angle()
-	for e in get_tree().get_nodes_in_group("enemy"):
+	var search := Rect2(
+		global_position - Vector2(HOMING_RANGE, HOMING_RANGE),
+		Vector2(HOMING_RANGE * 2.0, HOMING_RANGE * 2.0)
+	)
+	for e in ENEMY_INDEX.query_rect(get_tree(), search):
 		var n := e as Node2D
 		if n == null or not is_instance_valid(n):
 			continue
@@ -130,12 +201,23 @@ func _target_velocity(target: Node2D) -> Vector2:
 
 # --- damage ---------------------------------------------------------------
 func _hurt(target: Node2D) -> void:
+	if Net.is_host() and target.get("_net_copy") != true:
+		target.set("_net_hitter", Net.my_id())
 	var dmg := damage
+	if Game.upg_close_quarters > 0 \
+			and source_position.distance_squared_to(target.global_position) <= 150.0 * 150.0:
+		dmg *= 1.0 + 0.15 * float(Game.upg_close_quarters)
 	# Elite Hunter: extra damage against elites
 	if Game.upg_elite_hunter > 0 and target.is_in_group("elite"):
 		dmg *= 1.0 + 0.5 * float(Game.upg_elite_hunter)
 	if target.has_method("take_damage"):
+		var impact_position := target.global_position
 		target.take_damage(dmg, "crit" if crit else "normal")
+		Game.spawn_hit_effect(
+			impact_position,
+			Color(1.0, 0.82, 0.38) if crit else Color(0.55, 0.82, 1.0)
+		)
+		Game.combat_impact(0.72 if crit else 0.42)
 		Game.sfx("hit", -20.0, 0.9, 1.2)
 	if target.has_method("apply_status"):
 		target.apply_status(burn, freeze)
@@ -148,7 +230,8 @@ func _splash(origin: Node2D, dmg: float) -> void:
 	var radius := 50.0 + 10.0 * float(Game.upg_splash)
 	var r2 := radius * radius
 	var o_pos := origin.global_position
-	for e in get_tree().get_nodes_in_group("enemy"):
+	var search := Rect2(o_pos - Vector2.ONE * radius, Vector2.ONE * radius * 2.0)
+	for e in ENEMY_INDEX.query_rect(get_tree(), search):
 		if e == origin:
 			continue
 		var n := e as Node2D
@@ -156,11 +239,15 @@ func _splash(origin: Node2D, dmg: float) -> void:
 			continue
 		if n.global_position.distance_squared_to(o_pos) > r2:
 			continue
+		if Net.is_host() and n.get("_net_copy") != true:
+			n.set("_net_hitter", Net.my_id())
 		if n.has_method("take_damage"):
 			n.take_damage(dmg * 0.4, "normal")
 
 
 func _on_body_entered(body: Node2D) -> void:
+	if _pooled:
+		return
 	if network_visual:
 		_detonate()
 		return
@@ -169,8 +256,12 @@ func _on_body_entered(body: Node2D) -> void:
 			return
 		_hit.append(body)
 		_hurt(body)
-		if pierce <= 0:
-			_detonate()
+		if pierce > 0:
+			pierce -= 1
+			if Game.upg_pierce_focus > 0:
+				damage *= 1.0 + 0.25 * float(Game.upg_pierce_focus)
+			return
+		_detonate()
 	elif body.is_in_group("obstacle"):
 		_detonate()
 
@@ -183,7 +274,10 @@ func _check_swept_enemy_hits(from: Vector2, to: Vector2) -> void:
 		return
 	var travel := to - from
 	var length_sq := travel.length_squared()
-	for enemy in get_tree().get_nodes_in_group("enemy"):
+	var start := from.min(to)
+	var end := from.max(to)
+	var search := Rect2(start, end - start)
+	for enemy in ENEMY_INDEX.query_rect(get_tree(), search, 48.0):
 		var target := enemy as Node2D
 		if target == null or not is_instance_valid(target) or _hit.has(target):
 			continue
@@ -191,33 +285,38 @@ func _check_swept_enemy_hits(from: Vector2, to: Vector2) -> void:
 		if length_sq > 0.001:
 			u = clampf((target.global_position - from).dot(travel) / length_sq, 0.0, 1.0)
 		var closest := from + travel * u
-		var hit_radius := 24.0
+		var hit_radius := 14.0
 		var shape := target.get_node_or_null("CollisionShape2D") as CollisionShape2D
 		if shape != null and shape.shape is CircleShape2D:
-			hit_radius += (shape.shape as CircleShape2D).radius
-		if closest.distance_to(target.global_position) <= hit_radius:
+			hit_radius += (shape.shape as CircleShape2D).radius * 0.6
+		if closest.distance_squared_to(target.global_position) <= hit_radius * hit_radius:
 			_on_body_entered(target)
-			if not is_instance_valid(self):
+			if not is_instance_valid(self) or _pooled:
 				return
-		else:
-			pierce -= 1
-			# Piercing Focus: every enemy it goes through makes it hit harder
-			if Game.upg_pierce_focus > 0:
-				damage *= 1.0 + 0.25 * float(Game.upg_pierce_focus)
+
+
+func recycle() -> void:
+	Pool.release(self)
+
+
 func _detonate() -> void:
+	if _pooled:
+		return
 	# Explosive Rounds: a small burst when the round dies
 	if Game.upg_explosive > 0:
 		_burst(global_position, damage * 0.3, 45.0 + 8.0 * float(Game.upg_explosive))
-	var boom := EXPLOSION_SCENE.instantiate() as Explosion
+	var boom := Pool.acquire(EXPLOSION_SCENE, get_tree().current_scene) as Explosion
+	if boom == null:
+		return
 	boom.global_position = global_position
-	get_tree().current_scene.add_child(boom)
-	queue_free()
+	Pool.release(self)
 
 
 # Damages every enemy inside the radius (used by Shatter and Explosive Rounds).
 func _burst(center: Vector2, dmg: float, radius: float) -> void:
 	var r2 := radius * radius
-	for e in get_tree().get_nodes_in_group("enemy"):
+	var search := Rect2(center - Vector2.ONE * radius, Vector2.ONE * radius * 2.0)
+	for e in ENEMY_INDEX.query_rect(get_tree(), search):
 		var n := e as Node2D
 		if n == null or not is_instance_valid(n):
 			continue

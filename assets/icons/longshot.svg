@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><defs><linearGradient id="card_icon_glint" x1="0" y1="0" x2="0.8" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="0.55" stop-color="#e2e2e2"/><stop offset="1" stop-color="#b8b8b8"/></linearGradient></defs>
+<g fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M8 32h39" stroke="#777777" stroke-width="7"/>
+<path d="M51 32L39 24v16z" fill="url(#card_icon_glint)" stroke="url(#card_icon_glint)" stroke-width="2"/>
+<path d="M12 18h13M8 24h10M12 46h13M8 40h10" stroke="#bdbdbd" stroke-width="3"/>
+</g>
+</svg>

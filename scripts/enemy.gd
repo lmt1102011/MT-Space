@@ -66,6 +66,8 @@ func _ready() -> void:
 func setup(p_sides: int, p_radius: float, speed_mult: float = 1.0, dmg_bonus: int = 0) -> void:
 	sides = p_sides
 	radius = p_radius
+	if _status_visual != null:
+		_status_visual.call("set_radius", radius)
 	var edge_hp: int = maxi(p_sides - 2, 1)
 	var size_hp: int = int(round(radius / 12.0))
 	max_hp = edge_hp + size_hp
@@ -132,8 +134,7 @@ func _physics_process(delta: float) -> void:
 		# a copy of a host enemy just walks to where the host says it is
 		NetEnemy.follow(self, delta)
 		_tick_status(delta, false)
-		_bar.global_position = global_position + Vector2(0, 30.0)
-		_bar.global_rotation = 0.0
+		_bar.place_at(global_position + Vector2(0, 30.0))
 		return
 	_anim_t += delta
 	_cull(delta)
@@ -146,7 +147,7 @@ func _physics_process(delta: float) -> void:
 	# steer around obstacles and other enemies (the expensive part runs at 20Hz)
 	_ai_acc -= delta
 	if _ai_acc <= 0.0:
-		_ai_acc = 0.05
+		_ai_acc = 0.05 if _on_screen else 0.16
 		_steer = EnemyAI.steer(self, _drift)
 	# blend steering into drift while keeping rough speed
 	var target_vel := _drift * slow_factor + _steer * slow_factor + _push
@@ -172,8 +173,7 @@ func _physics_process(delta: float) -> void:
 			_drift = _drift.bounce(c.get_normal())
 			break
 
-	_bar.global_position = global_position + Vector2(0, radius + 14.0)
-	_bar.global_rotation = 0.0
+	_bar.place_at(global_position + Vector2(0, radius + 14.0))
 
 
 func _cull(delta: float) -> void:
@@ -230,7 +230,9 @@ func touch_player() -> void:
 
 
 func _spawn_damage_number(amount: float, kind: String) -> void:
-	var n := DAMAGE_NUMBER.instantiate() as DamageNumber
+	var n := Pool.acquire(DAMAGE_NUMBER, get_tree().current_scene) as DamageNumber
+	if n == null:
+		return
 	n.global_position = global_position + Vector2(randf_range(-24.0, 24.0), -radius - randf_range(8.0, 34.0))
 	match kind:
 		"crit":
@@ -239,7 +241,6 @@ func _spawn_damage_number(amount: float, kind: String) -> void:
 			n.setup(amount, Color(1.0, 0.55, 0.15), 18)
 		_:
 			n.setup(amount, Color(0.82, 0.85, 0.9), 22)
-	get_tree().current_scene.add_child(n)
 
 
 func take_damage(amount: float, kind: String = "normal") -> void:
@@ -249,6 +250,7 @@ func take_damage(amount: float, kind: String = "normal") -> void:
 	# Brittle: frozen targets are softer
 	if _slow > 0.0:
 		amount *= 1.0 + 0.35 * float(Game.upg_brittle)
+	Game.record_damage(mini(maxi(int(round(amount)), 0), maxi(hp, 0)))
 	hp -= int(round(amount))
 	_update_bar()
 	_spawn_damage_number(amount, kind)
@@ -271,10 +273,14 @@ func _die() -> void:
 		return
 	var xp := (1 + maxi(sides - 3, 0)) * 5
 	var drop := NetEnemy.died(self, xp)
-	var boom := preload("res://scenes/explosion.tscn").instantiate() as Explosion
+	var boom := Pool.acquire(preload("res://scenes/explosion.tscn"),
+		get_tree().current_scene) as Explosion
+	if boom == null:
+		return
 	boom.global_position = global_position
-	get_tree().current_scene.add_child(boom)
-	Game.on_enemy_killed()
+	boom.setup(1.0, Color(0.45, 0.9, 1.0))
+	Game.combat_impact(0.8)
+	Game.on_enemy_killed("shape_%d" % sides)
 	Game.sfx("shatter", -15.0, 0.85, 1.2)
 	_on_kill()
 	if drop:

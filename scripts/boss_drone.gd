@@ -1,0 +1,190 @@
+extends CharacterBody2D
+
+@export var max_hp: int = 4
+@export var speed: float = 250.0
+@export var lifetime: float = 5.0
+
+var hp: int = 4
+var net_id: int = 0
+var _net_target := Vector2.ZERO
+var _net_rot: float = 0.0
+var _net_alive: bool = true
+var _net_copy: bool = false
+var _net_hitter: int = 0
+var _age: float = 0.0
+var _push := Vector2.ZERO
+var _burn: float = 0.0
+var _burn_tick: float = 0.0
+var _burn_damage: float = 0.0
+var _slow: float = 0.0
+
+const NetEnemy := preload("res://scripts/net_enemy.gd")
+const DAMAGE_NUMBER := preload("res://scenes/damage_number.tscn")
+const EXPLOSION_SCENE := preload("res://scenes/explosion.tscn")
+const XP_DROP := preload("res://scripts/xp_pickup.gd")
+const STATUS_VISUAL := preload("res://scripts/status_effect_visual.gd")
+
+@onready var _sprite: Sprite2D = $Sprite2D
+@onready var _bar: HpBar = $HpBar
+var _status_visual: Node2D
+
+
+func _ready() -> void:
+	add_to_group("enemy")
+	add_to_group("monster")
+	add_to_group("boss_drone")
+	collision_layer = 8
+	collision_mask = 13
+	hp = max_hp
+	_status_visual = STATUS_VISUAL.new()
+	_status_visual.set("radius", 24.0)
+	_status_visual.z_index = 2
+	add_child(_status_visual)
+	_update_bar()
+
+
+func setup(speed_mult: float = 1.0, dmg_bonus: int = 0,
+		fire_mult: float = 1.0, hp_mult: float = 1.0) -> void:
+	speed *= minf(speed_mult, 1.35)
+	max_hp = int(round(float(max_hp) * minf(hp_mult, 1.5)))
+	hp = max_hp
+	_update_bar()
+
+
+func _physics_process(delta: float) -> void:
+	if NetEnemy.is_remote(self):
+		collision_layer = 2
+		collision_mask = 0
+		NetEnemy.follow(self, delta)
+		_tick_status(delta, false)
+		_bar.place_at(global_position + Vector2(0.0, 24.0))
+		return
+	if Net.is_online() and not Net.is_host():
+		return
+
+	_tick_status(delta)
+	_age += delta
+	var target := Net.target_player(global_position)
+	if target != null:
+		var offset := target.global_position - global_position
+		if not offset.is_zero_approx():
+			var direction := offset.normalized()
+			rotation = lerp_angle(rotation, direction.angle(), clampf(7.0 * delta, 0.0, 1.0))
+			var move_mult := 0.55 if _slow > 0.0 else 1.0
+			velocity = direction * speed * move_mult + _push
+		move_and_slide()
+		for index in get_slide_collision_count():
+			var other := get_slide_collision(index).get_collider()
+			if other != null and other.is_in_group("player"):
+				_detonate(true, false)
+				return
+		if offset.length() <= 22.0:
+			_detonate(true, false)
+			return
+	else:
+		velocity = Vector2.ZERO
+	_push = _push.move_toward(Vector2.ZERO, 500.0 * delta)
+	lifetime -= delta
+	if lifetime <= 0.0:
+		_detonate(false, false)
+	_bar.place_at(global_position + Vector2(0.0, 24.0))
+
+
+func take_damage(amount: float, kind: String = "normal") -> void:
+	if NetEnemy.report_hit(self, amount, kind):
+		return
+	if _slow > 0.0:
+		amount *= 1.0 + 0.35 * float(Game.upg_brittle)
+	Game.record_damage(mini(maxi(int(round(amount)), 1), maxi(hp, 0)))
+	hp -= maxi(1, int(round(amount)))
+	_update_bar()
+	_spawn_damage_number(amount)
+	if hp <= 0:
+		_detonate(false, true)
+
+
+func apply_push(impulse: Vector2) -> void:
+	_push = (_push + impulse).limit_length(360.0)
+
+
+func apply_status(burn_stacks: int, freeze_stacks: int) -> void:
+	NetEnemy.report_status(self, burn_stacks, freeze_stacks)
+	if burn_stacks > 0:
+		_burn = maxf(_burn, 2.0 + burn_stacks * 0.5)
+		_burn_damage = (0.6 + burn_stacks * 0.4) \
+			* (1.0 + 0.4 * float(Game.upg_inferno))
+		Game.sfx("sizzle", -23.0, 0.9, 1.15)
+	if freeze_stacks > 0:
+		_slow = maxf(_slow, 1.2 + freeze_stacks * 0.4)
+		Game.sfx("frost", -23.0, 0.92, 1.12)
+
+
+func _tick_status(delta: float, apply_burn_damage: bool = true) -> void:
+	if _burn > 0.0:
+		_burn = maxf(_burn - delta, 0.0)
+		_burn_tick -= delta
+		if _burn_tick <= 0.0:
+			_burn_tick = 0.4
+			if apply_burn_damage:
+				take_damage(_burn_damage, "burn")
+	if _slow > 0.0:
+		_slow = maxf(_slow - delta, 0.0)
+	_status_visual.call("set_status", _burn > 0.0, _slow > 0.0)
+
+
+func _detonate(hit_player: bool, shot_down: bool) -> void:
+	if not _net_alive:
+		return
+	_net_alive = false
+	Game.sfx("boom", -12.0, 0.82, 0.92)
+	var xp := 10 if shot_down else 0
+	var drop_xp := NetEnemy.died(self, xp)
+	if shot_down:
+		Game.on_enemy_killed("boss_drone")
+		if drop_xp:
+			XP_DROP.drop(get_tree(), global_position, xp)
+	var blast_radius := 180.0 if hit_player else 90.0
+	for candidate in get_tree().get_nodes_in_group("player"):
+		var player := candidate as Node2D
+		if player == null or not is_instance_valid(player):
+			continue
+		if player.get("_dead") == true or player.get("net_alive") == false:
+			continue
+		var distance_sq := player.global_position.distance_squared_to(global_position)
+		if distance_sq > blast_radius * blast_radius:
+			continue
+		var damage := 3 if hit_player and distance_sq < 70.0 * 70.0 else 1
+		var away := (player.global_position - global_position).normalized()
+		if player.has_method("apply_hit"):
+			player.call("apply_hit", float(damage), 0, 0,
+				away * 220.0, 0.35, true)
+		else:
+			if player.has_method("apply_orb_damage"):
+				player.apply_orb_damage(float(damage))
+			elif player.has_method("take_damage"):
+				player.take_damage(damage)
+			if player.has_method("apply_knockback"):
+				player.apply_knockback(away * 220.0, 0.35)
+	var explosion := Pool.acquire(EXPLOSION_SCENE,
+		get_tree().current_scene) as Explosion
+	if explosion == null:
+		return
+	explosion.global_position = global_position
+	explosion.setup(1.8 if hit_player else 0.9)
+	Net.broadcast_boss_drone_explosion(global_position, hit_player)
+	queue_free()
+
+
+func _spawn_damage_number(amount: float) -> void:
+	var number := Pool.acquire(DAMAGE_NUMBER,
+		get_tree().current_scene) as DamageNumber
+	if number == null:
+		return
+	number.global_position = global_position + Vector2(0.0, -25.0)
+	number.setup(amount, Color(0.82, 0.85, 0.9), 20)
+
+
+func _update_bar() -> void:
+	if _bar == null:
+		return
+	_bar.set_ratio(float(hp) / float(maxi(max_hp, 1)), Color(0.9, 0.55, 0.25))

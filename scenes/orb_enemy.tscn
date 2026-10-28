@@ -6,7 +6,7 @@
 [ext_resource type="Texture2D" path="res://assets/orb_projectile.svg" id="4_orb"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_orb_enemy"]
-radius = 29.0
+radius = 34.0
 
 [node name="OrbEnemy" type="CharacterBody2D" groups=["enemy", "monster"]]
 collision_layer = 8
@@ -20,7 +20,7 @@ texture = ExtResource("4_orb")
 [node name="Sprite2D" type="Sprite2D" parent="."]
 texture_filter = 2
 texture = ExtResource("2_texture")
-scale = Vector2(0.84, 0.84)
+scale = Vector2(0.98, 0.98)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("CircleShape2D_orb_enemy")

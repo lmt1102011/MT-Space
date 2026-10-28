@@ -35,11 +35,16 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
       - name: Set up the Android tools
         id: android_tools
-        continue-on-error: true
         env:
-          ANDROID_HOME: ${{ runner.temp }}/android-sdk
+          ANDROID_HOME: /usr/local/lib/android/sdk
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
         run: |
           mkdir -p "$ANDROID_HOME/cmdline-tools"
           cd "$ANDROID_HOME/cmdline-tools"
@@ -47,33 +52,68 @@ jobs:
           unzip -q tools.zip
           mv cmdline-tools latest
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
-          yes | sdkmanager --licenses
+          yes | sdkmanager --licenses >/dev/null
           sdkmanager --sdk_root="$ANDROID_HOME" "platform-tools" "build-tools;35.0.1" "platforms;android-35"
           ls "$ANDROID_HOME"
 
-      - name: Point Godot at the Android tools
-        if: steps.android_tools.outcome == 'success'
-        continue-on-error: true
+      - name: Build the Android installer plugin
         env:
-          ANDROID_HOME: ${{ runner.temp }}/android-sdk
+          ANDROID_HOME: /usr/local/lib/android/sdk
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
         run: |
+          cd addons/mt_space_android_updater
+          gradle --no-daemon :plugin:assembleDebug :plugin:assembleRelease
+          mkdir -p bin/debug bin/release
+          cp plugin/build/outputs/aar/plugin-debug.aar bin/debug/MTSpaceAndroidUpdater-debug.aar
+          cp plugin/build/outputs/aar/plugin-release.aar bin/release/MTSpaceAndroidUpdater-release.aar
+
+      - name: Configure stable Android release signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/mt-space-release.keystore
+          ANDROID_VERSION_CODE: ${{ github.run_number }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || \
+             [ -z "$ANDROID_KEY_ALIAS" ]; then
+            echo "::error::Configure ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD and ANDROID_KEY_ALIAS in GitHub Actions secrets."
+            exit 1
+          fi
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$ANDROID_KEYSTORE_PATH"
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          preset = Path("export_presets.cfg")
+          content = preset.read_text()
+          values = {
+              "keystore/release": os.environ["ANDROID_KEYSTORE_PATH"],
+              "keystore/release_user": os.environ["ANDROID_KEY_ALIAS"],
+              "keystore/release_password": os.environ["ANDROID_KEYSTORE_PASSWORD"],
+              "version/code": str(int(os.environ["ANDROID_VERSION_CODE"]) + 9),
+              "version/name": "2.0.6",
+          }
+          for key, value in values.items():
+              content, count = re.subn(
+                  rf"(?m)^{re.escape(key)}=.*$",
+                  f"{key}={json.dumps(value)}",
+                  content,
+                  count=1,
+              )
+              if count != 1:
+                  raise SystemExit(f"Android export setting not found: {key}")
+          preset.write_text(content)
+          PY
           mkdir -p ~/.config/godot
           cat > ~/.config/godot/editor_settings-4.7.tres <<EOF
           [gd_resource type="EditorSettings" format=3]
           [resource]
           export/android/android_sdk_path = "$ANDROID_HOME"
           export/android/java_sdk_path = "$JAVA_HOME"
-          export/android/debug_keystore = "$HOME/.android/debug.keystore"
-          export/android/debug_keystore_user = "androiddebugkey"
-          export/android/debug_keystore_pass = "android"
           EOF
-          if [ ! -f "$HOME/.android/debug.keystore" ]; then
-            keytool -genkeypair -v -keystore "$HOME/.android/debug.keystore" \
-              -storepass android -alias androiddebugkey -keypass android \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US" 2>/dev/null || true
-          fi
-          ls -la ~/.android/ || true
 
       - name: Import the project
         run: |
@@ -82,6 +122,12 @@ jobs:
 
       - name: Check level-up upgrade queue
         run: godot --headless --path . res://tools/levelupcheck.tscn
+
+      - name: Check boss wave and damage
+        run: godot --headless --path . res://tools/bosscheck.tscn
+
+      - name: Check Android updater validation
+        run: godot --headless --path . --script res://tools/androidupdatercheck.gd
 
       - name: Write the version into the build
         run: echo "${GITHUB_SHA}" > version_embedded.txt
@@ -103,17 +149,38 @@ jobs:
           zip -r mt-space-windows.zip mt-space.exe mt-space.pck
 
       - name: Build the game for Android
-        if: steps.android_tools.outcome == 'success'
-        continue-on-error: true
         env:
-          ANDROID_HOME: ${{ runner.temp }}/android-sdk
+          ANDROID_HOME: /usr/local/lib/android/sdk
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
         run: |
           mkdir -p build/web/downloads
-          godot --headless --path . --export-debug "Android" build/web/downloads/mt-space-android.apk
+          godot --headless --path . --install-android-build-template --export-release "Android" build/web/downloads/mt-space-android.apk
           rm -f build/web/downloads/mt-space-android.apk.idsig
 
-      - name: Make sure the phone download is there
-        run: test -s build/web/downloads/mt-space-android.apk
+      - name: Verify and publish Android update metadata
+        run: |
+          test -s build/web/downloads/mt-space-android.apk
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          apk = Path("build/web/downloads/mt-space-android.apk")
+          digest = hashlib.sha256()
+          with apk.open("rb") as apk_file:
+              for chunk in iter(lambda: apk_file.read(1024 * 1024), b""):
+                  digest.update(chunk)
+          metadata = {
+              "version": os.environ["GITHUB_SHA"],
+              "version_code": int(os.environ["GITHUB_RUN_NUMBER"]) + 9,
+              "size": str(apk.stat().st_size),
+              "sha256": digest.hexdigest(),
+          }
+          Path("build/web/android-update.json").write_text(
+              json.dumps(metadata, separators=(",", ":")) + "\n"
+          )
+          PY
 
       - name: Put the website together
         run: |

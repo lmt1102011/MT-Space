@@ -25,7 +25,7 @@ static func drop(tree: SceneTree, pos: Vector2, amount: int) -> void:
 	# merge into a nearby orb when there is one
 	for o in orbs:
 		var n := o as Node2D
-		if n == null:
+		if n == null or n.is_queued_for_deletion():
 			continue
 		if n.global_position.distance_to(pos) < MERGE_DIST:
 			_add_xp(o, amount)
@@ -37,7 +37,7 @@ static func drop(tree: SceneTree, pos: Vector2, amount: int) -> void:
 		var best_d := INF
 		for o in orbs:
 			var n := o as Node2D
-			if n == null:
+			if n == null or n.is_queued_for_deletion():
 				continue
 			var d := n.global_position.distance_squared_to(pos)
 			if d < best_d:
@@ -51,7 +51,10 @@ static func drop(tree: SceneTree, pos: Vector2, amount: int) -> void:
 
 
 static func _add_xp(orb: Node, amount: int) -> void:
-	orb.set("xp_value", int(orb.get("xp_value")) + amount)
+	if orb.has_method("add_xp_value"):
+		orb.call("add_xp_value", amount)
+	else:
+		orb.set("xp_value", int(orb.get("xp_value")) + amount)
 
 
 static func _spawn(tree: SceneTree, pos: Vector2, amount: int) -> void:
